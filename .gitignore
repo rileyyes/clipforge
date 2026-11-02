@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+backend/.venv/
+node_modules/
+frontend/dist/
+frontend/.test-build/
+*.partial*
+.env
+# media never belongs in git
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+ClipForgeWorkspace/
