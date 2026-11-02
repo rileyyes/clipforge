@@ -1,0 +1,108 @@
+import type { MediaAsset, OutputSettings, Project, Timeline } from "./timeline/types";
+
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public data?: any) { super(message); }
+}
+
+const H = { "X-ClipForge": "1" };
+
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: body !== undefined ? { ...H, "Content-Type": "application/json" } : H,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status, data);
+  return data as T;
+}
+
+export interface ProjectSummary {
+  id: string; name: string; updated_at: string; created_at: string; media_count: number;
+  duration: number; thumbnail_media_id: string | null; clip_count: number; error?: boolean;
+}
+
+export interface Job {
+  id: string; kind: string; project_id: string | null; params: Record<string, any>;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  stage: string; stage_index: number; stage_count: number; progress: number | null;
+  error: string | null; error_detail: string | null; result: Record<string, any>;
+  created_at: string; started_at: string | null; finished_at: string | null; elapsed_s: number | null;
+}
+
+export interface ValidationReport {
+  ok: boolean; checks: { check: string; ok: boolean; detail: string }[];
+  file_size: number; duration: number; encoder?: string; quality?: string;
+}
+
+export interface ExportItem { file: string; size: number; modified: number; validation: ValidationReport | null }
+
+export interface SystemInfo {
+  ffmpeg: string; h264_encoder: string; workspace: string; workspace_bytes: number;
+  workspace_quota_bytes: number; disk_free_bytes: number; disk_total_bytes: number;
+  max_upload_bytes: number; cpu_count: number;
+}
+
+export const api = {
+  system: () => call<SystemInfo>("GET", "/api/system"),
+  cleanup: () => call<{ freed_bytes: number }>("POST", "/api/maintenance/cleanup"),
+  projects: () => call<{ projects: ProjectSummary[] }>("GET", "/api/projects").then((r) => r.projects),
+  createProject: (name: string) => call<Project>("POST", "/api/projects", { name }),
+  project: (id: string) => call<Project>("GET", `/api/projects/${id}`),
+  saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings) =>
+    call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output }),
+  rename: (id: string, name: string) => call<Project>("POST", `/api/projects/${id}/rename`, { name }),
+  duplicate: (id: string) => call<Project>("POST", `/api/projects/${id}/duplicate`),
+  deleteProject: (id: string) => call<void>("DELETE", `/api/projects/${id}`),
+  deleteMedia: (pid: string, mid: string) => call<void>("DELETE", `/api/projects/${pid}/media/${mid}`),
+  exports: (pid: string) => call<{ exports: ExportItem[] }>("GET", `/api/projects/${pid}/exports`).then((r) => r.exports),
+  startExport: (pid: string, body: { filename: string; quality: string; output: OutputSettings }) =>
+    call<Job>("POST", `/api/projects/${pid}/exports`, body),
+  deleteExport: (pid: string, name: string) => call<void>("DELETE", `/api/projects/${pid}/exports/${encodeURIComponent(name)}`),
+  jobs: (projectId?: string) =>
+    call<{ jobs: Job[] }>("GET", "/api/jobs" + (projectId ? `?project_id=${projectId}` : "")).then((r) => r.jobs),
+  cancelJob: (id: string) => call<{ cancelling: boolean }>("POST", `/api/jobs/${id}/cancel`),
+  retryJob: (id: string) => call<Job>("POST", `/api/jobs/${id}/retry`),
+};
+
+export const mediaUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/stream`;
+export const thumbUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/thumbnail`;
+export const waveformUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/waveform`;
+export const exportUrl = (pid: string, name: string, inline = false) =>
+  `/api/projects/${pid}/exports/${encodeURIComponent(name)}${inline ? "?inline=1" : ""}`;
+
+/** Streaming upload with real byte-level progress (XHR exposes upload progress; fetch doesn't). */
+export function uploadMedia(pid: string, file: File, onProgress: (f: number) => void):
+  Promise<{ media: MediaAsset; job_id?: string; duplicate: boolean }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/projects/${pid}/media?filename=${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader("X-ClipForge", "1");
+    xhr.setRequestHeader("Content-Type", "application/octet-stream");
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = () => {
+      let data: any = {};
+      try { data = JSON.parse(xhr.responseText); } catch { /* ignore */ }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data);
+      else reject(new ApiError(data.error || `Upload failed (${xhr.status})`, xhr.status));
+    };
+    xhr.onerror = () => reject(new ApiError("Network error during upload", 0));
+    xhr.send(file);
+  });
+}
+
+export function fmtTime(s: number, withFrac = true): string {
+  if (!isFinite(s)) return "--:--";
+  const neg = s < 0; s = Math.abs(s);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const ss = withFrac ? sec.toFixed(2).padStart(5, "0") : Math.floor(sec).toString().padStart(2, "0");
+  return (neg ? "-" : "") + (h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`);
+}
+
+export function fmtBytes(n: number): string {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(u.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${u[i]}`;
+}

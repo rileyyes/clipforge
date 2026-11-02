@@ -22,8 +22,6 @@ from .schema import MediaAsset
 from .storage import SAFE_INPUT_FORMATS, safe_join
 
 # Codec/container combos every mainstream browser can play directly.
-BROWSER_FRIENDLY_VIDEO = {"h264", "vp8", "vp9", "av1"}
-BROWSER_FRIENDLY_AUDIO = {"aac", "mp3", "opus", "vorbis", "flac", None}
 
 WAVEFORM_PEAKS_PER_SECOND = 20
 
@@ -69,11 +67,20 @@ def build_asset(settings: Settings, asset_id: str, stored: Path, original_name: 
 
 
 def needs_proxy(asset: MediaAsset) -> bool:
+    """True unless every mainstream browser (incl. Safari) can play the file as-is.
+
+    Decided by real file type + codecs; ffprobe reports MKV as "matroska,webm",
+    so the container name alone isn't enough.
+    """
+    ext = Path(asset.stored_name).suffix.lower()
     if asset.has_video:
-        container_ok = any(c in asset.container for c in ("mp4", "mov", "webm", "matroska"))
-        return not (container_ok and asset.video_codec in BROWSER_FRIENDLY_VIDEO
-                    and asset.audio_codec in BROWSER_FRIENDLY_AUDIO)
-    return asset.audio_codec not in BROWSER_FRIENDLY_AUDIO or asset.audio_codec is None
+        if ext in (".mp4", ".m4v", ".mov"):
+            return not (asset.video_codec == "h264" and asset.audio_codec in ("aac", "mp3", None))
+        if ext == ".webm":
+            return not (asset.video_codec in ("vp8", "vp9", "av1")
+                        and asset.audio_codec in ("opus", "vorbis", None))
+        return True  # mkv, avi, …
+    return ext not in (".mp3", ".wav", ".m4a", ".aac", ".flac")
 
 
 def make_thumbnail(settings: Settings, asset: MediaAsset, src: Path, out: Path) -> None:
