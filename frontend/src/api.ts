@@ -66,6 +66,32 @@ export const api = {
   retryJob: (id: string) => call<Job>("POST", `/api/jobs/${id}/retry`),
 };
 
+export interface AutoEditSettings {
+  target_mode: "original" | "duration" | "percent"; target_seconds: number; target_percent: number;
+  style: "balanced" | "excitement" | "information" | "reactions" | "action" | "humor" | "story";
+  silence: "off" | "conservative" | "balanced" | "aggressive"; keep_opening: boolean; context: boolean;
+  include: number[]; exclude: number[];
+}
+export interface Beat {
+  id: number; start: number; end: number; kept: number; score: number; reasons: string[];
+  selected: boolean; why: string; features: Record<string, number>;
+}
+export interface Plan {
+  source_duration: number; usable_duration: number; target_duration: number; output_duration: number;
+  dead_air_removed: number; beats: Beat[]; segments: { source_in: number; source_out: number; beat: number }[];
+  warnings: string[]; transcript: boolean; levels: Record<string, number | null>;
+}
+
+export const autoedit = {
+  status: (pid: string) =>
+    call<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean }[]; transcriber: string | null }>("GET", `/api/projects/${pid}/autoedit`),
+  analyze: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/autoedit/analyze`, { media_id }),
+  plan: (pid: string, media_id: string, settings: AutoEditSettings) =>
+    call<Plan>("POST", `/api/projects/${pid}/autoedit/plan`, { media_id, settings }),
+  apply: (pid: string, media_id: string, settings: AutoEditSettings, expected_output: number) =>
+    call<{ project: Project; plan: Plan }>("POST", `/api/projects/${pid}/autoedit/apply`, { media_id, settings, expected_output }),
+};
+
 export const mediaUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/stream`;
 export const thumbUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/thumbnail`;
 export const waveformUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/waveform`;

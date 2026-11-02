@@ -22,7 +22,10 @@ from . import media as media_svc
 from .config import Settings
 from .jobs import JobContext, JobManager
 from .projects import ProjectNotFound, ProjectStore, RevisionConflict
+from . import analysis as analysis_svc
+from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
+from .transcription import available_transcriber
 from .schema import OutputSettings, Project, Timeline
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
@@ -79,6 +82,7 @@ class Services:
         self.jobs = JobManager(settings.jobs_dir, workers=settings.job_workers)
         self.jobs.register("derive_media", self._derive_media)
         self.jobs.register("render", self._render)
+        self.jobs.register("analyze", self._analyze)
 
     # -- job handlers -----------------------------------------------------
     def _derive_media(self, ctx: JobContext) -> dict:
@@ -115,6 +119,12 @@ class Services:
             return d
         self.store.update(pid, apply)
         return {"media_id": mid, **updates}
+
+    def _analyze(self, ctx: JobContext) -> dict:
+        pid, mid = ctx.job.project_id, ctx.job.params["media_id"]
+        asset = self.store.load(pid).media_by_id()[mid]
+        transcriber = available_transcriber() if ctx.job.params.get("transcribe", True) else None
+        return analysis_svc.analyze_media(ctx, self.settings, self.store.dir(pid), asset, transcriber)
 
     def _render(self, ctx: JobContext) -> dict:
         pid = ctx.job.project_id
@@ -341,6 +351,7 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, "This media is used on the timeline. Remove its clips first.")
         store.update(pid, lambda d: {**d, "media": [m for m in d["media"]
                                                      if m["id"] != asset.id]})
+        (store.dir(pid) / "analysis" / f"{asset.id}.json").unlink(missing_ok=True)
         base = store.dir(pid) / "media"
         for sub, name in (("original", asset.stored_name), ("proxy", asset.proxy),
                           ("thumbs", asset.thumbnail), ("waveforms", asset.waveform)):
@@ -420,6 +431,88 @@ def build_routes(svc: Services) -> list[Route]:
         expected = prev.get("duration") or p.timeline.duration
         return JSONResponse(validate_export(S, path, p.output, expected))
 
+    # -- auto editor ------------------------------------------------------
+    class AnalyzeBody(BaseModel):
+        media_id: str
+        transcribe: bool = True
+
+    class PlanBody(BaseModel):
+        media_id: str
+        settings: AutoEditSettings = Field(default_factory=AutoEditSettings)
+
+    class ApplyBody(PlanBody):
+        expected_output: Optional[float] = None  # guards against stale review screens
+
+    def _asset_for(pid: str, mid: str):
+        try:
+            validate_id(mid)
+        except PathSecurityError:
+            raise HTTPException(404, "media not found")
+        p = load(pid)
+        a = p.media_by_id().get(mid)
+        if a is None:
+            raise HTTPException(404, "media not found")
+        return p, a
+
+    async def autoedit_status(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        items = []
+        for m in p.media:
+            a = analysis_svc.load_analysis(store.dir(pid), m.id)
+            items.append({"media_id": m.id, "analyzed": a is not None,
+                          "has_transcript": bool(a and a.get("words"))})
+        t = available_transcriber()
+        return JSONResponse({"media": items, "transcriber": t.name if t else None})
+
+    async def start_analysis(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, AnalyzeBody)
+        _asset_for(pid, body.media_id)
+        running = [j for j in svc.jobs.active_for_project(pid)
+                   if j.kind == "analyze" and j.params.get("media_id") == body.media_id]
+        if running:
+            return JSONResponse(running[0].model_dump(), status_code=202)
+        job = svc.jobs.submit("analyze", pid, {"media_id": body.media_id, "transcribe": body.transcribe})
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    def _plan(pid: str, body) -> tuple[Project, Any, dict]:
+        p, asset = _asset_for(pid, body.media_id)
+        data = analysis_svc.load_analysis(store.dir(pid), asset.id)
+        if data is None:
+            raise HTTPException(409, "Analyze this media first.")
+        return p, asset, plan_edit(data, body.settings)
+
+    async def autoedit_plan(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, PlanBody)
+        _, _, result = _plan(pid, body)
+        return JSONResponse(result)
+
+    async def autoedit_apply(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, ApplyBody)
+        p, asset, result = _plan(pid, body)  # recomputed server-side; client EDL never trusted
+        if body.expected_output is not None and abs(result["output_duration"] - body.expected_output) > 0.01:
+            return err(409, "The plan changed since you reviewed it. Review it again before applying.")
+        if not result["segments"]:
+            return err(400, "The plan has no selected moments.")
+        hist = store.dir(pid) / "history"
+        hist.mkdir(exist_ok=True)
+        import json as _json, time as _time
+        (hist / f"timeline-{int(_time.time() * 1000)}.json").write_text(
+            _json.dumps(p.timeline.model_dump(mode="json")))
+
+        def apply(d: dict) -> dict:
+            d = edl_to_timeline(d, asset.model_dump(mode="json"), result["segments"], new_id)
+            d["edit_revision"] = d.get("edit_revision", 0) + 1
+            return d
+        try:
+            saved = store.update(pid, apply)
+        except (EDLError, ValidationError) as exc:
+            return err(422, f"Generated edit failed validation: {exc}")
+        return JSONResponse({"project": project_payload(saved), "plan": result})
+
     # -- jobs -------------------------------------------------------------
     async def list_jobs(request: Request):
         pid = request.query_params.get("project_id")
@@ -479,6 +572,10 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/exports/{name}", download_export),
         Route(P + "/exports/{name}", delete_export, methods=["DELETE"]),
         Route(P + "/exports/{name}/validate", revalidate_export, methods=["POST"]),
+        Route(P + "/autoedit", autoedit_status),
+        Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
+        Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
+        Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
         Route("/api/jobs", list_jobs),
         Route("/api/jobs/{jid}", get_job),
         Route("/api/jobs/{jid}/cancel", cancel_job, methods=["POST"]),

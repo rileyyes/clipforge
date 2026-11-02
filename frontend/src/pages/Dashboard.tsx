@@ -71,8 +71,8 @@ export default function Dashboard() {
         <button className="action" onClick={() => go("editor")}>
           <Icon name="film" /><strong>Open manual editor</strong><span>Pick a project to edit</span>
         </button>
-        <button className="action" disabled title="The automatic editing engine is Phase 3 of the roadmap">
-          <Icon name="wand" /><strong>AI auto edit</strong><span>Coming in Phase 3 — not built yet</span>
+        <button className="action" onClick={() => go("auto")}>
+          <Icon name="wand" /><strong>Start AI auto edit</strong><span>Turn a long recording into a tight video</span>
         </button>
       </div>
       <input ref={fileRef} type="file" accept={ACCEPT} hidden

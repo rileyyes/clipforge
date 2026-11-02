@@ -32,21 +32,22 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Unlink / relink A/V clips
 - ⬜ Timeline markers
 
-## Phase 3 — Automatic editing engine ⬜ ← **next milestone**
+## Phase 3 — Automatic editing engine ✅ (signal-based) / 🟡 (transcript features)
 
-- ⬜ Audio extraction for analysis (16 kHz mono, chunked)
-- ⬜ Transcription with word timestamps (faster-whisper, local, CPU-capable) behind a provider interface
-- ⬜ Silence / pause detection with conservative / balanced / aggressive presets and minimum retained pause
-- ⬜ Scene / shot detection on a low-res proxy (chunked, memory-bounded)
-- ⬜ Audio energy, speech rate, laughter/reaction heuristics
-- ⬜ Highlight candidates with explainable, weighted scores (humor / excitement / information / story / reactions / balanced)
-- ⬜ Duration planner (target length, % reduction, original; feasibility warnings; natural boundaries; setup→payoff preservation)
-- ⬜ Structured, validated, deterministic edit decision list (EDL)
-- ⬜ Review UI: accept / reject / adjust each cut with its reason
-- ⬜ "Send to Manual Editor" → EDL becomes normal timeline clips
-- ⬜ Optional LLM provider (local or API) for context reasoning; rule-based mode works without it
+- ✅ Streaming analysis: loudness (20/s), on-screen motion, hard scene cuts. ~3.4 s per minute of 720p on 2 cores, < 50 MB RAM
+- ✅ Silence & pacing presets (off / conservative / balanced / aggressive) with a retained pause; natural short pauses never cut
+- ✅ Moments ("beats") split only at pauses; size adapts to the target length
+- ✅ Explainable weighted scoring: balanced, excitement, reactions, information, visual action (+ humor/story approximations with warning)
+- ✅ Duration planner: custom duration, % of original, original length; opening hook; setup-before-payoff context; feasibility warnings
+- ✅ Keep / drop overrides per moment; deterministic plans; validated EDL; stale-review protection
+- ✅ Review UI: summary, warnings, source strip, per-moment preview, play rough cut
+- ✅ Send to Manual Editor / Apply & export (previous timeline backed up to `history/`)
+- 🟡 Transcription (faster-whisper adapter written behind a provider interface, **not yet run in tests**: it couldn't be installed in the build environment). Word-boundary snapping is implemented and tested with synthetic word data.
+- ⬜ Laughter classifier, repetition detection, transcript keyword/topic scoring
+- ⬜ Optional LLM reasoning provider (local or API, opt-in)
+- ⬜ Short-form (9:16) auto-reframe
 
-## Phase 4 — YouTube entertainment features ⬜
+## Phase 4 — YouTube entertainment features ⬜ ← **next milestone**
 
 - ⬜ Captions: subtitle track, styling, dynamic/animated captions, SRT/VTT import/export, burn-in
 - ⬜ Profanity censoring at the audio level (beep / boing / record scratch / mute / custom), word-boundary padding, review warnings, matching subtitle censoring
@@ -79,6 +80,9 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Cloud deployment design (separate threat model)
 
 ## Known limitations / bugs
+
+- Without a transcript, "humor" and "story" styles are approximations (the UI says so).
+- Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 
 - Preview shows only the top-most visible video track and doesn't show scale/position. Export is correct.
 - Browser preview volume can't exceed 100%. Export applies up to 400%.

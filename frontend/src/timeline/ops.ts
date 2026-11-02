@@ -154,7 +154,8 @@ export function trimEdge(tl: Timeline, id: string, edge: "start" | "end", time: 
       lo = Math.max(lo, prevEnd - clip.start, -clip.source_in / clip.speed);
       hi = Math.min(hi, clipDuration(clip) - MIN_CLIP);
     } else {
-      const nextStart = Math.min(Infinity, ...others.filter((c) => c.start >= clipEnd(clip) - EPS).map((c) => c.start));
+      // neighbours by order (start), not by comparing nearly-equal float edges
+      const nextStart = Math.min(Infinity, ...others.filter((c) => c.start > clip.start).map((c) => c.start));
       hi = Math.min(hi, nextStart - clipEnd(clip), m ? (m.duration - clip.source_out) / clip.speed : Infinity);
       lo = Math.max(lo, MIN_CLIP - clipDuration(clip));
     }
@@ -217,20 +218,52 @@ export function deleteClips(tl: Timeline, ids: string[], ripple = false): OpResu
   const refs = [...all].map((i) => findClip(tl, i)!);
   const le = lockedError(refs);
   if (le) return { error: le };
+  const removed = withTracks(tl, (track) =>
+    track.clips.some((c) => all.has(c.id)) ? { ...track, clips: track.clips.filter((c) => !all.has(c.id)) } : track);
+  if (!ripple) return { timeline: removed };
+
+  // Ripple: close only the time that is now empty on EVERY track, and shift every
+  // track by the same amount, so linked picture/sound and other tracks stay in sync.
+  const holes = emptySpans(removed, refs.map((r) => [r.clip.start, clipEnd(r.clip)] as [number, number]));
+  if (!holes.length) return { timeline: removed };
+  const shiftAt = (t: number) => holes.reduce((s, [a, b]) => (b <= t + EPS ? s + (b - a) : s), 0);
+  const firstHole = holes[0][0];
+  const blocked = removed.tracks.find((t) => t.locked && t.clips.some((c) => c.start >= firstHole - EPS && shiftAt(c.start) > EPS));
+  if (blocked) return { error: `Ripple would move clips on locked track ${blocked.name}` };
   return {
-    timeline: withTracks(tl, (track) => {
-      const removed = track.clips.filter((c) => all.has(c.id));
-      if (!removed.length) return track;
-      let clips = track.clips.filter((c) => !all.has(c.id));
-      if (ripple) {
-        clips = clips.map((c) => {
-          const shift = removed.filter((r) => clipEnd(r) <= c.start + EPS).reduce((s, r) => s + clipDuration(r), 0);
-          return shift ? { ...c, start: round6(Math.max(0, c.start - shift)) } : c;
-        });
-      }
-      return { ...track, clips: sortClips(clips) };
-    }),
+    timeline: withTracks(removed, (track) => ({
+      ...track,
+      clips: track.clips.map((c) => {
+        const sh = shiftAt(c.start);
+        return sh > EPS ? { ...c, start: round6(Math.max(0, c.start - sh)) } : c;
+      }),
+    })),
   };
+}
+
+/** Parts of the given ranges that no remaining clip on any track covers (merged, sorted). */
+function emptySpans(tl: Timeline, ranges: [number, number][]): [number, number][] {
+  const merged: [number, number][] = [];
+  for (const [a, b] of [...ranges].sort((x, y) => x[0] - y[0])) {
+    const last = merged[merged.length - 1];
+    if (last && a <= last[1] + EPS) last[1] = Math.max(last[1], b); else merged.push([a, b]);
+  }
+  const occupied = tl.tracks.flatMap((t) => t.clips.map((c) => [c.start, clipEnd(c)] as [number, number]));
+  const out: [number, number][] = [];
+  for (const [a, b] of merged) {
+    let pieces: [number, number][] = [[a, b]];
+    for (const [oa, ob] of occupied) {
+      pieces = pieces.flatMap(([pa, pb]) => {
+        if (ob <= pa + EPS || oa >= pb - EPS) return [[pa, pb]] as [number, number][];
+        const keep: [number, number][] = [];
+        if (oa > pa + EPS) keep.push([pa, oa]);
+        if (ob < pb - EPS) keep.push([ob, pb]);
+        return keep;
+      });
+    }
+    out.push(...pieces.filter(([pa, pb]) => pb - pa > EPS));
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- duplicate
@@ -285,6 +318,8 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
   if (patch.speed !== undefined && (patch.speed < 0.25 || patch.speed > 4)) return { error: "Speed must be between 0.25x and 4x" };
   if (patch.volume !== undefined && (patch.volume < 0 || patch.volume > 4)) return { error: "Volume must be between 0 and 400%" };
   if (patch.transform?.scale !== undefined && (patch.transform.scale <= 0.01 || patch.transform.scale > 10)) return { error: "Scale must be between 1% and 1000%" };
+  if (patch.speed !== undefined && targets.some((r) => (r.clip.source_out - r.clip.source_in) / patch.speed! < MIN_CLIP - EPS))
+    return { error: "Clip would be too short at that speed" };
   const ids = new Set(targets.map((r) => r.clip.id));
   const next = withTracks(tl, (track) => ({
     ...track,
@@ -327,6 +362,7 @@ export function removeTrack(tl: Timeline, trackId: string): OpResult {
   const t = tl.tracks.find((x) => x.id === trackId);
   if (!t) return { error: "Track not found" };
   if (t.clips.length) return { error: "Only empty tracks can be removed" };
+  if (tl.tracks.filter((x) => x.kind === t.kind).length <= 1) return { error: `Keep at least one ${t.kind} track` };
   return { timeline: { ...tl, tracks: tl.tracks.filter((x) => x.id !== trackId) } };
 }
 

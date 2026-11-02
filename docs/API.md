@@ -38,6 +38,16 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 | POST | `/api/projects/{pid}/exports/{name}/validate` | | re-run validation |
 | DELETE | `/api/projects/{pid}/exports/{name}` | | |
 
+## AI Auto Editor
+| Method | Path | Body | Description |
+|---|---|---|---|
+| GET | `/api/projects/{pid}/autoedit` | | per-media analysis status, installed transcriber |
+| POST | `/api/projects/{pid}/autoedit/analyze` | `{media_id, transcribe?}` | starts (or returns the running) analysis job |
+| POST | `/api/projects/{pid}/autoedit/plan` | `{media_id, settings}` | → plan: durations, warnings, `beats` (score, reasons, selected, why), `segments` (EDL). 409 if not analysed. |
+| POST | `/api/projects/{pid}/autoedit/apply` | `{media_id, settings, expected_output}` | recomputes the plan server-side (client EDLs are never trusted), refuses with 409 if it differs from what was reviewed, backs up the old timeline, writes linked V1/A1 clips |
+
+`settings`: `target_mode` (`original`/`duration`/`percent`), `target_seconds`, `target_percent`, `style` (`balanced`/`excitement`/`information`/`reactions`/`action`/`humor`/`story`), `silence` (`off`/`conservative`/`balanced`/`aggressive`), `keep_opening`, `context`, `include[]`, `exclude[]` (beat ids).
+
 ## Jobs
 | Method | Path | Description |
 |---|---|---|

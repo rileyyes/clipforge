@@ -54,7 +54,7 @@ function App() {
         {route.page === "projects" && <Projects />}
         {route.page === "editor" && (route.id ? <Editor key={route.id} projectId={route.id} /> : <Projects pickFor="editor" />)}
         {route.page === "export" && (route.id ? <ExportPage key={route.id} projectId={route.id} /> : <Projects pickFor="export" />)}
-        {route.page === "auto" && <AutoEditor />}
+        {route.page === "auto" && <AutoEditor projectId={route.id || undefined} />}
         {route.page === "settings" && <SettingsPage />}
       </main>
     </div>

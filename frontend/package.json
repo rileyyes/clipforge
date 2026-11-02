@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node build.mjs --watch",
-    "test": "esbuild src/timeline/ops.test.ts --bundle --platform=node --format=esm --outfile=.test-build/ops.test.mjs --log-level=warning && node --test .test-build/ops.test.mjs",
+    "test": "esbuild src/timeline/ops.test.ts src/timeline/fuzz.test.ts --bundle --platform=node --format=esm --outdir=.test-build --out-extension:.js=.mjs --log-level=warning && node --test .test-build/ops.test.mjs .test-build/fuzz.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

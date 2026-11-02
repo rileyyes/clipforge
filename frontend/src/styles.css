@@ -78,7 +78,7 @@ label.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
 .grid { display: grid; gap: 16px; }
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; font-size: 11px; background: var(--panel-3); color: var(--muted); }
+.chip { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 99px; font-size: 11px; background: var(--panel-3); color: var(--muted); }
 .chip.ok { background: rgba(55, 200, 138, .14); color: var(--ok); }
 .chip.warn { background: rgba(242, 184, 75, .14); color: var(--warn); }
 .chip.err { background: rgba(255, 90, 106, .14); color: var(--err); }

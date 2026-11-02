@@ -1,10 +1,21 @@
 # ClipForge
 
-A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, cut it on a real multitrack timeline, and export a validated, YouTube-ready MP4. An automatic editing engine (turn a 2-hour recording into a tight 30-minute video) is the next major phase.
+A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phase 1 + core Phase 2 complete.** The manual editor and export pipeline work end-to-end and are tested. The AI Auto Editor is **not built yet** — see [ROADMAP.md](ROADMAP.md) for the live feature checklist.
+> **Status: Phases 1–3 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
+
+### AI Auto Editor
+- Analyses loudness, pauses, on-screen motion and scene cuts **locally** (~7 min for a 2-hour 720p recording on a 2-core laptop, < 50 MB RAM).
+- Target length as a duration, a percentage, or "original" (just remove dead air). Warns when a target is unrealistic.
+- Pause presets (off / conservative / balanced / aggressive). Short natural pauses are always kept, and cuts only happen in silence, never mid-sentence.
+- Styles: balanced, excitement, reactions, information, visual action (humor/story are approximations without a transcript).
+- Every moment gets a score **and the reasons**. Keep or drop any moment, preview it, or play the whole rough cut.
+- **Send to Manual Editor** turns the edit into normal linked clips. The previous timeline is backed up, and the source file is never touched.
+- Optional transcription: `pip install faster-whisper` adds word timestamps (experimental, see ROADMAP).
+
+### Manual editor & export
 
 - **Import** video/audio (MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A, FLAC, OGG) with streaming upload and real progress. Files are validated with FFprobe, checksummed, de-duplicated and stored read-only.
 - **Background preparation**: thumbnails, audio waveforms, and browser-playable preview proxies for formats like MKV.
@@ -55,10 +66,12 @@ cd backend && python -m app.main
 Tests (see [TESTING.md](TESTING.md)):
 
 ```bash
-cd backend && python -m pytest          # 46 backend unit + integration tests
-cd frontend && npm test                 # 20 timeline-engine tests
+scripts/verify_all.sh                   # everything below, in one go
+cd backend && python -m pytest          # 76 backend tests (unit, integration, auto-edit)
+cd frontend && npm test                 # timeline engine: 20 unit tests + randomized fuzz
 cd frontend && npm run typecheck        # strict TS check of the editing engine
-python scripts/e2e_browser.py           # headless browser end-to-end flow (needs Playwright)
+python scripts/e2e_browser.py           # browser E2E: manual editor (needs Playwright)
+python scripts/e2e_autoedit.py          # browser E2E: AI auto editor
 ```
 
 ## Configuration
@@ -74,6 +87,8 @@ CLIPFORGE_RENDER_TIMEOUT_S=21600            # max time for one processing step
 CLIPFORGE_JOB_WORKERS=1                     # parallel background jobs
 CLIPFORGE_FFMPEG=/opt/ffmpeg/bin/ffmpeg     # optional custom binaries
 CLIPFORGE_FFPROBE=/opt/ffmpeg/bin/ffprobe
+CLIPFORGE_TRANSCRIBER=auto                 # 'off' to skip transcription even if installed
+CLIPFORGE_WHISPER_MODEL=small              # faster-whisper model size
 ```
 
 ## Keyboard shortcuts (editor)

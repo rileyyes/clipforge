@@ -120,7 +120,7 @@ export function useJobs(projectId?: string, enabled = true) {
   return { jobs, refresh };
 }
 
-const KIND_LABEL: Record<string, string> = { derive_media: "Prepare media", render: "Export" };
+const KIND_LABEL: Record<string, string> = { derive_media: "Prepare media", render: "Export", analyze: "Analyse recording" };
 
 export function statusChip(s: Job["status"]) {
   const cls = s === "succeeded" ? "ok" : s === "running" || s === "queued" ? "run" : s === "cancelled" ? "" : "err";

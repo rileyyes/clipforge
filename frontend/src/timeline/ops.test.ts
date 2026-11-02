@@ -155,7 +155,9 @@ test("tracks: add keeps video above audio, remove only when empty", () => {
   assert.deepEqual(tl.tracks.map((t) => t.name), ["V1", "V2", "V3", "A1"]);
   const { tl: t2 } = withOne();
   assert.ok(removeTrack(t2, id(10)).error);
-  assert.equal(ok(removeTrack(t2, id(11))).tracks.length, 2);
+  const t3 = ok(removeTrack(t2, id(11)));
+  assert.equal(t3.tracks.length, 2);
+  assert.ok(removeTrack(ok(deleteClips(t3, [t3.tracks[0].clips[0].id])), id(10)).error, "last video track stays");
 });
 
 test("snap picks nearest point within threshold", () => {

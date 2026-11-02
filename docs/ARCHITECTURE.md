@@ -68,6 +68,15 @@ Master clock → playhead. One `<video>` shows the top visible video clip. One h
 | No auth | Local single-user app bound to 127.0.0.1. Accounts are designed in SECURITY.md for a future cloud mode. |
 | Upload copies media | Safest (no arbitrary path access). Import-by-reference needs an allow-listed folder model. |
 
-## Phase 3 plan (AI Auto Editor), in brief
+## AI Auto Editor (`analysis.py`, `autoedit.py`, `transcription.py`)
 
-`analysis/` providers behind interfaces (`Transcriber`, `SceneDetector`, `SilenceDetector`, optional `LLMReasoner`), each a resumable job writing timestamped results to `analysis/<media_id>/*.json` (later SQLite). The `decisions/` engine scores candidate segments with configurable weights and explanations, plans duration with constraints (word boundaries, setup/payoff, minimum pause), and emits a validated, deterministic EDL. The EDL converts directly into timeline clips via the same schema. LLM output is only ever *suggestions* that are validated and clamped before use.
+**Analysis** (job `analyze`) streams decoded audio (16 kHz mono) and tiny grey frames (64×36 @ 4 fps) out of FFmpeg in chunks. It stores loudness and motion on a 50 ms grid plus hard-cut timestamps in `<project>/analysis/<media_id>.json`. A 2-hour file is ~144k values per signal. An optional `Transcriber` provider adds word timestamps.
+
+**Planning** (`plan()`, pure and deterministic, ~10 ms for 10 min, < 10 s for 2 h):
+1. Adaptive threshold between the noise floor (10th percentile) and speech level (90th) → sound regions. Gaps shorter than the preset's minimum silence are bridged (natural pauses stay). Regions are padded by the retained pause. With a transcript, edges are extended so no word is cut.
+2. Regions are grouped into *beats*, split only at their longest pause. Beat size adapts to the target (≤ target/4, 4–45 s). A pause-less run over 45 s is split at its quietest point.
+3. Features per beat → tie-aware percentile ranks → style weights → score 0–100, plus the top contributing reasons in plain words.
+4. Selection: user includes → opening hook (if it fits) → highest scores that fit → setup beats before chosen ones. Chronological EDL.
+5. `validate_edl` (inside media, ordered, non-overlapping, ≥ min length) before anything touches a project. `apply` recomputes the plan server-side and refuses if it differs from what the user reviewed.
+
+The EDL becomes ordinary linked clips, so everything the Manual Editor can do applies to an AI edit. An LLM, if added later, will only ever *suggest* include/exclude/score adjustments that go through the same validation.
