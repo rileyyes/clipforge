@@ -11,7 +11,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Safe media import: streaming upload, size/quota limits, extension allow-list, FFprobe validation, SHA-256 de-dup, read-only originals
 - ✅ FFmpeg/FFprobe integration (argument lists, protocol + demuxer whitelists, timeouts, measured progress, cancel)
 - ✅ Thumbnails, waveforms, browser preview proxies (background jobs)
-- ✅ Dark UI shell: Dashboard, AI Auto Editor (status page), Manual Editor, Projects, Export, Settings
+- ✅ Dark UI shell: Dashboard, AI Auto Editor, Manual Editor, Projects, Export, Settings
 - ✅ Initial tests (backend unit + integration, frontend engine, browser E2E)
 
 ## Phase 2 — Manual editor foundation ✅ (core) / 🟡 (rest)
@@ -58,9 +58,9 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Intensity presets: minimal / balanced (default) / highly edited
 - ⬜ Licensed/traceable visual inserts only
 
-## Phase 5 — AI + manual integration ⬜
+## Phase 5 — AI + manual integration 🟡
 
-- ⬜ Open AI rough cut in the timeline, edit, re-render
+- ✅ Open AI rough cut in the timeline, edit, re-render (tested in browser E2E)
 - ⬜ Project history / versions and comparison
 
 ## Phase 6 — Advanced editor ⬜
