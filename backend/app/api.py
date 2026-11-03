@@ -83,8 +83,14 @@ class Services:
         self.jobs.register("derive_media", self._derive_media)
         self.jobs.register("render", self._render)
         self.jobs.register("analyze", self._analyze)
-        from .thumb_api import register_thumb_jobs
-        register_thumb_jobs(self)
+        try:  # the thumbnail maker is optional: never let it stop the editor starting
+            from .thumb_api import register_thumb_jobs
+            register_thumb_jobs(self)
+            self.thumbnails_error = None
+        except ImportError as exc:
+            self.thumbnails_error = (f"Thumbnail Maker unavailable ({exc}). Run: "
+                                     "pip install -r requirements.txt")
+            print("WARNING:", self.thumbnails_error)
 
     # -- job handlers -----------------------------------------------------
     def _derive_media(self, ctx: JobContext) -> dict:
@@ -552,8 +558,14 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, str(exc))
         return JSONResponse(j.model_dump(), status_code=202)
 
-    from .thumb_api import build_thumb_routes
-    thumb_routes = build_thumb_routes(svc, load, pid_of, body_model, err)
+    if svc.thumbnails_error is None:
+        from .thumb_api import build_thumb_routes
+        thumb_routes = build_thumb_routes(svc, load, pid_of, body_model, err)
+    else:
+        async def thumbs_unavailable(request: Request):
+            return err(503, svc.thumbnails_error)
+        thumb_routes = [Route("/api/projects/{pid}/thumbnails{rest:path}", thumbs_unavailable,
+                              methods=["GET", "POST", "PUT", "DELETE"])]
 
     P = "/api/projects/{pid}"
     return thumb_routes + [
