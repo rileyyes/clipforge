@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–4 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–5 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -12,7 +12,8 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - Pause presets (off / conservative / balanced / aggressive). Short natural pauses are always kept, and cuts only happen in silence, never mid-sentence.
 - Styles: balanced, excitement, reactions, information, visual action (humor/story are approximations without a transcript).
 - Every moment gets a score **and the reasons**. Keep or drop any moment, preview it, or play the whole rough cut.
-- **Send to Manual Editor** turns the edit into normal linked clips. The previous timeline is backed up, and the source file is never touched.
+- **Send to Manual Editor** turns the edit into normal linked clips. The previous edit is saved as a version first, and the source file is never touched.
+- **One click, fully finished**: tick *Finishing touches* (bleep swears, comedy edits, captions, audio polish) and they're applied together with the cut. You're told exactly what was added or skipped.
 - Optional transcription: `pip install faster-whisper` adds word timestamps (experimental, see ROADMAP).
 
 ### Effects, audio & transitions (free & local)
@@ -36,6 +37,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Clip properties**: speed (0.25–4×, audio pitch preserved), volume, scale and position (e.g. picture-in-picture on V2).
 - **Program monitor** that plays the *timeline* (switching clips and mixing audio tracks), with frame stepping.
 - **Autosave** with crash-safe atomic writes, a backup copy, and conflict detection across windows.
+- **Version history** (Editor → History): save named versions, automatic checkpoints, one-click restore (undoable), and a side-by-side compare showing which footage was cut or added and what changed.
 - **Export**: 1080p, 720p, 4K, 9:16 vertical, 1:1 square or custom; 24–60 fps; letterbox or crop (never stretched); H.264 + AAC MP4. Hardware encoders are used when one actually works, with libx264 as the fallback.
 - **Export validation**: codec, resolution, duration, A/V sync, exact frame count, and a full decode check, shown in the UI.
 - **Projects**: create, open, rename, duplicate, delete. Dashboard shows recent projects, running jobs and storage use.

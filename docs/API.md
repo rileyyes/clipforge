@@ -44,9 +44,23 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 | GET | `/api/projects/{pid}/autoedit` | | per-media analysis status, installed transcriber |
 | POST | `/api/projects/{pid}/autoedit/analyze` | `{media_id, transcribe?}` | starts (or returns the running) analysis job |
 | POST | `/api/projects/{pid}/autoedit/plan` | `{media_id, settings}` | → plan: durations, warnings, `beats` (score, reasons, selected, why), `segments` (EDL). 409 if not analysed. |
-| POST | `/api/projects/{pid}/autoedit/apply` | `{media_id, settings, expected_output}` | recomputes the plan server-side (client EDLs are never trusted), refuses with 409 if it differs from what was reviewed, backs up the old timeline, writes linked V1/A1 clips |
+| POST | `/api/projects/{pid}/autoedit/apply` | `{media_id, settings, expected_output}` | recomputes the plan server-side (client EDLs are never trusted), refuses with 409 if it differs from what was reviewed, saves the current edit as a "Before AI edit" version, writes linked V1/A1 clips. Optional `extras` (below) run the finishing touches; the response's `extras[]` lists `{step, ok, detail}` for each one |
+
+`extras` (all optional): `censor` (bool), `censor_sound` (`beep`/`boing`/`scratch`/`honk`/`quack`/`mute`), `fun` (`off`/`minimal`/`balanced`/`chaotic`), `captions` (bool), `audio_polish` (bool: −14 LUFS + voice enhance). Bleeps and captions need a transcript and are reported as skipped without one.
 
 `settings`: `target_mode` (`original`/`duration`/`percent`), `target_seconds`, `target_percent`, `style` (`balanced`/`excitement`/`information`/`reactions`/`action`/`humor`/`story`), `silence` (`off`/`conservative`/`balanced`/`aggressive`), `keep_opening`, `context`, `include[]`, `exclude[]` (beat ids).
+
+## Version history (Phase 5)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/projects/{pid}/history` | versions, newest first (`id, label, origin, created_at, duration, clips, effects, media_names`). `origin`: `manual`, `auto`, `before_ai`, `before_restore` |
+| POST | `/api/projects/{pid}/history` | `{label}` saves the current edit as a named version (201) |
+| PUT | `/api/projects/{pid}/history/{sid}` | `{label}` renames a version |
+| DELETE | `/api/projects/{pid}/history/{sid}` | deletes a version (204) |
+| POST | `/api/projects/{pid}/history/{sid}/restore` | saves the current edit as "Before restoring …", then restores timeline, effects, captions, audio and output, and bumps `edit_revision` (open editors get a 409 on their next save). 409 if the version uses media that was since removed |
+| GET | `/api/projects/{pid}/history/compare?a=&b=` | `a`/`b` are a version id or `current`. Returns per-source kept ranges and the ranges `removed`/`added`, stats, effect changes by kind, changed settings, and `identical` |
+
+Saving the timeline also takes an automatic checkpoint, at most every 10 minutes and only when something changed. The newest 30 automatic versions are kept; manual versions are kept until deleted (maximum 200).
 
 ## Effects & captions (Phase 4)
 | Method | Path | Description |

@@ -69,13 +69,17 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - 🟡 Free local Stable Diffusion + optional OpenAI Images + Ollama/OpenAI text model: integrated, contract-tested against fake servers, **not run against real services**
 - ⬜ Design scoring/review, text-model refinement in UI, image upload UI, crop handles, version compare, subject cut-outs
 
-## Phase 5 — AI + manual integration 🟡
+## Phase 5 — AI + manual integration ✅
 
 - ✅ Open AI rough cut in the timeline, edit, re-render (tested in browser E2E)
-- ⬜ Combined one-click "AI edit + effects + captions" flow
-
-
-- ⬜ Project history / versions and comparison
+- ✅ One-click "AI edit + finishing touches": bleeps, comedy edits, captions and audio polish run with the edit. Each step reports whether it was applied or skipped, and why (for example, no transcript). Re-running replaces earlier automatic effects rather than stacking them.
+- ✅ Version history (Editor → History):
+  - save named versions
+  - automatic checkpoints every 10 minutes while editing, and before every AI edit and restore
+  - rename and delete versions
+  - restore a version (the current edit is saved first, so a restore can be undone)
+  - compare any two versions: footage cut or added per source, clip, effect and transition counts, and changed settings
+- ✅ Older "history/timeline-*.json" AI backups are imported as versions automatically
 
 ## Phase 6 — Advanced editor ⬜
 

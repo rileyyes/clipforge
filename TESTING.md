@@ -20,6 +20,7 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Auto Editor (`tests/test_autoedit.py`) | 30 (incl. 400 random recordings) | ✅ |
 | Effects (`tests/test_effects.py`) | 49 (incl. audio-level censor verification by FFT, frame diffs for every visual effect, fake-transcriber API flow) | ✅ |
 | Audio & transitions (`tests/test_audio_transitions.py`) | 12 (pixel-measured crossfade/dip/fades, ducking measured in the 220 Hz band, noise floor, −14/−16 LUFS) | ✅ |
+| Version history & one-click extras (`tests/test_history.py`) | 9 (snapshots, throttled checkpoints, pruning, legacy import, compare maths, restore/undo-restore/conflict, deleted-media guard, one-click extras with and without a transcript, idempotent re-run, render) | ✅ |
 | Thumbnail Maker (`tests/test_thumbnails.py`) | 36 (incl. provider contract tests vs fake servers) | ✅ |
 | Frontend thumbnail model (`thumbs/model.test.ts`) | 5 | ✅ |
 | Frontend engine unit (`ops.test.ts`) | 20 | ✅ |
@@ -27,7 +28,8 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Engine → backend cross-check (`scripts/crosscheck.py`) | 1,000 random timelines / 79,920 clips accepted | ✅ |
 | Renderer stress (`scripts/render_stress.py 3`) | 3 fuzz timelines, 112–138 clips, 10–29 min | ✅ all validated |
 | Browser E2E: manual editor | full flow | ✅ no console errors |
-| Browser E2E: AI auto editor | full flow | ✅ no console errors |
+| Browser E2E: AI auto editor | full flow incl. finishing touches (applied/skipped report) | ✅ no console errors |
+| Browser E2E: version history | save version → delete clip → compare → restore → undo the restore → reload | ✅ no console errors |
 | Browser E2E: effects | transcript → bleeps → auto comedy edits → pop-up → captions → undo/redo → export → reopen | ✅ no console errors |
 | Browser E2E: audio | crossfade + fades + music role + noise/enhance/ducking → export with loudness check → reopen | ✅ no console errors |
 | Browser E2E: thumbnail maker | analyse → concepts → studio → version → export → reopen | ✅ no console errors |
@@ -58,6 +60,9 @@ Run everything: `scripts/verify_all.sh`.
 | transition tests | FFmpeg's "fadeblack" never reaches black — dip to black rebuilt as fade-out/fade-in |
 | noise tests | `afftdn` barely reduced broadband hiss — switched to `anlmdn` (−85–95% hiss, voice level unchanged) |
 | fuzz cross-check | Editor rounded a max transition length up by 1 µs, which the server rejected |
+| history tests | Two versions saved in the same second could sort in the wrong order, which broke checkpoint throttling. Versions now store a precise timestamp |
+| browser E2E | Compare with "Current edit" could show the server's stale copy while an edit was still waiting to autosave. Unsaved edits are now saved before comparing |
+| screenshots | Long version names pushed the History panel wider than the sidebar |
 
 ## What's covered
 

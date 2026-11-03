@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, autoedit, fmtTime, mediaUrl, uploadMedia, type AutoEditSettings, type Beat, type Plan, type ProjectSummary,
+  api, autoedit, fmtTime, mediaUrl, uploadMedia, type AutoEditSettings, type Extras, type Beat, type Plan, type ProjectSummary,
 } from "../api";
 import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import type { MediaAsset, Project } from "../timeline/types";
@@ -100,7 +100,7 @@ function Strip({ plan, active, onPick }: { plan: Plan; active: number | null; on
 function Workspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [mediaId, setMediaId] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ media: { media_id: string; analyzed: boolean }[]; transcriber: string | null } | null>(null);
+  const [status, setStatus] = useState<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean }[]; transcriber: string | null } | null>(null);
   const [settings, setSettings] = useState<AutoEditSettings>(DEFAULTS);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -109,6 +109,14 @@ function Workspace({ projectId }: { projectId: string }) {
   const [applying, setApplying] = useState(false);
   const [filter, setFilter] = useState<"all" | "kept" | "dropped">("all");
   const [roughCut, setRoughCut] = useState(false);
+  const [extras, setExtrasState] = useState<Extras>(() => {
+    try { return { ...EXTRAS_DEFAULT, ...JSON.parse(localStorage.getItem("cf:autoExtras") || "{}") }; } catch { return EXTRAS_DEFAULT; }
+  });
+  const setExtras = (patch: Partial<Extras>) => setExtrasState((x) => {
+    const n = { ...x, ...patch };
+    try { localStorage.setItem("cf:autoExtras", JSON.stringify(n)); } catch { /* storage unavailable */ }
+    return n;
+  });
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
   const { jobs, refresh } = useJobs(projectId);
@@ -126,6 +134,7 @@ function Workspace({ projectId }: { projectId: string }) {
 
   const media: MediaAsset | undefined = project?.media.find((m) => m.id === mediaId);
   const analyzed = !!status?.media.find((m) => m.media_id === mediaId)?.analyzed;
+  const hasTranscript = !!status?.media.find((m) => m.media_id === mediaId)?.has_transcript;
   const job = jobs.find((j) => j.kind === "analyze" && j.params.media_id === mediaId);
   const jobActive = job && (job.status === "queued" || job.status === "running");
   useEffect(() => { if (job?.status === "succeeded") loadStatus(); }, [job?.status]);
@@ -192,10 +201,14 @@ function Workspace({ projectId }: { projectId: string }) {
   const apply = async (then: "editor" | "export") => {
     if (!plan || !mediaId || !project) return;
     const clips = project.timeline.tracks.reduce((n, t) => n + t.clips.length, 0);
-    if (clips && !confirm(`This replaces the ${clips} clip(s) currently on "${project.name}"'s timeline with the AI rough cut. The previous timeline is saved in the project's history folder. Continue?`)) return;
+    if (clips && !confirm(`This replaces the ${clips} clip(s) currently on "${project.name}"'s timeline with the AI rough cut. The current edit is saved as a version first (Editor → History), so you can go back. Continue?`)) return;
     setApplying(true);
     try {
-      await autoedit.apply(projectId, mediaId, settings, plan.output_duration);
+      const r = await autoedit.apply(projectId, mediaId, settings, plan.output_duration, extras);
+      const done = r.extras.filter((n) => n.ok).map((n) => `${n.step}: ${n.detail}`);
+      const skipped = r.extras.filter((n) => !n.ok).map((n) => `${n.step} ${n.detail}`);
+      if (done.length) toast(done.join(" · "));
+      skipped.forEach((t) => toast(t, true));
       localStorage.setItem("cf:lastProject", projectId);
       go(`${then}/${projectId}`);
     } catch (e: any) { toast(e.message, true); } finally { setApplying(false); }
@@ -302,6 +315,31 @@ function Workspace({ projectId }: { projectId: string }) {
               <button className="btn sm ghost" onClick={async () => { await autoedit.analyze(projectId, mediaId!); setStatus(null); refresh(); loadStatus(); }}>Re-analyse</button>
             </div>
           )}
+          {analyzed && (
+            <div className="card grid" style={{ gap: 8 }} data-testid="extras">
+              <h3 style={{ margin: 0 }}>Finishing touches <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— applied with the edit</span></h3>
+              <label className="row" style={{ fontSize: 12 }}>
+                <input type="checkbox" checked={extras.censor} onChange={(e) => setExtras({ censor: e.target.checked })} />Bleep swear words with
+                <select value={extras.censor_sound} disabled={!extras.censor} onChange={(e) => setExtras({ censor_sound: e.target.value as Extras["censor_sound"] })}>
+                  {["beep", "boing", "scratch", "honk", "quack", "mute"].map((v) => <option key={v} value={v}>{v === "mute" ? "silence" : `a ${v}`}</option>)}
+                </select>
+              </label>
+              <label className="row" style={{ fontSize: 12 }}>Comedy edits on reactions
+                <select value={extras.fun} onChange={(e) => setExtras({ fun: e.target.value as Extras["fun"] })}>
+                  <option value="off">Off</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="chaotic">Chaotic</option>
+                </select>
+              </label>
+              <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={extras.captions} onChange={(e) => setExtras({ captions: e.target.checked })} />Captions</label>
+              <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={extras.audio_polish} onChange={(e) => setExtras({ audio_polish: e.target.checked })} />Audio polish (YouTube loudness + voice enhance)</label>
+              {(extras.censor || extras.captions) && !hasTranscript && (
+                <div className="muted" style={{ fontSize: 11 }}>
+                  <Icon name="warn" size={12} /> Bleeps and captions need a transcript of the speech.
+                  {status?.transcriber ? " Re-analyse to transcribe it, or transcribe from Editor → Effects." : " Install the free transcriber (see README → Transcription), then re-analyse."} Without one they're skipped.
+                </div>
+              )}
+              <div className="muted" style={{ fontSize: 11 }}>Every touch shows up in Editor → Effects, where you can tweak or delete it.</div>
+            </div>
+          )}
         </div>
 
         {/* ---------------- right: review */}
@@ -372,6 +410,8 @@ function Workspace({ projectId }: { projectId: string }) {
     </div>
   );
 }
+
+const EXTRAS_DEFAULT: Extras = { censor: true, censor_sound: "beep", fun: "off", captions: false, audio_polish: true };
 
 export default function AutoEditor({ projectId }: { projectId?: string }) {
   return projectId ? <Workspace key={projectId} projectId={projectId} /> : <ProjectPicker />;

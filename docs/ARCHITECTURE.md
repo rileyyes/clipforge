@@ -11,9 +11,10 @@
  │ timeline/ops.ts  ◄──────┼── editing    │ media.py      ingest, thumbs, proxies │
  │   (pure edit engine)    │   engine     │ render.py     timeline → MP4          │
  │ timeline/history.ts     │              │ jobs.py       background jobs         │
- └─────────────────────────┘              │ ffmpeg.py     safe FFmpeg wrapper     │
+ └─────────────────────────┘              │ history.py    versions, compare       │
+                                          │ ffmpeg.py     safe FFmpeg wrapper     │
                                           │ storage.py    path safety, atomic IO  │
-                                          │ schema.py     project schema (v1)     │
+                                          │ schema.py     project schema (v3)     │
                                           └───────────────┬──────────────────────┘
                                                           │ argument lists only
                                                     FFmpeg / FFprobe
@@ -30,6 +31,17 @@
 - **Versioned**: `schema_version` + `migrate()` chain. Newer files are refused rather than corrupted.
 - **Crash-safe**: write to temp → fsync → keep previous as `.bak` → atomic rename. A corrupt main file falls back to `.bak`.
 - **Two revisions**: `revision` bumps on any write (including background jobs adding thumbnails). `edit_revision` bumps only on user timeline saves and is the conflict check. That way a background job never makes the user's autosave fail.
+
+### Version history
+
+`<project>/history/snapshots/<id>.json` holds a copy of the editable document (timeline, effects, captions, audio, output) plus a small summary used for the list. It never holds media. Origins:
+
+- `manual`: "Save version"
+- `auto`: at most one every 10 minutes, taken on save, and only when something changed
+- `before_ai`: taken before the AI edit replaces the timeline
+- `before_restore`: taken before a restore, so every restore can be undone
+
+Automatic versions are pruned to the newest 30. Restoring bumps `edit_revision`, so another open editor gets a conflict instead of silently overwriting the restored state. Compare works on source-time coverage: for each recording it shows which ranges are used in A and B and which were cut or added, so it stays meaningful even after clips have been moved around.
 
 ### Why JSON files, not a database (yet)
 

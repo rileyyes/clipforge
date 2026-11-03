@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { api, ApiError } from "../api";
 import Inspector from "../components/Inspector";
 import EffectsPanel, { FX_COLOR } from "../components/EffectsPanel";
+import HistoryPanel from "../components/HistoryPanel";
 import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
@@ -25,7 +26,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [effects, setEffects] = useState<Effect[]>([]);
   const [captions, setCaptions] = useState<CaptionSettings | null>(null);
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
-  const [rightTab, setRightTab] = useState<"clip" | "fx">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "history">("clip");
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -128,6 +129,18 @@ export default function Editor({ projectId }: { projectId: string }) {
     const e = history.current.redo(snapshot());
     if (!e) return;
     restore(e.state); toast(`Redo: ${e.label}`);
+  };
+  /** Save pending edits now (used before snapshots and restores). */
+  const flushNow = async () => {
+    for (let i = 0; i < 50 && saving.current; i++) await new Promise((r) => setTimeout(r, 100));
+    if (dirty.current) await flush();
+  };
+  const onRestored = (p: Project) => {
+    dirty.current = false;
+    history.current.clear();
+    editRev.current = p.edit_revision;
+    setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); setAudioState(p.audio);
+    setSelection([]); setSave("saved");
   };
   /** Effects/captions edits share the timeline's undo history; rapid slider moves coalesce. */
   const setFx = (next: Effect[], caps: CaptionSettings, label: string) => {
@@ -274,8 +287,11 @@ export default function Editor({ projectId }: { projectId: string }) {
           <div className="pane-head" style={{ gap: 4 }}>
             <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
             <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />Effects{effects.length ? ` (${effects.length})` : ""}</button>
+            <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} onClick={() => setRightTab("history")}><Icon name="undo" size={13} />History</button>
           </div>
-          {rightTab === "clip" ? (
+          {rightTab === "history" ? (
+            <HistoryPanel projectId={projectId} beforeChange={flushNow} onRestored={onRestored} revision={editRev.current} />
+          ) : rightTab === "clip" ? (
             <Inspector timeline={timeline} media={media} selection={selection}
               onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label)}
               onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}

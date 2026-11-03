@@ -40,6 +40,7 @@ const P: Record<string, string> = {
   music: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
   image: "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9a1.5 1.5 0 1 0 0-.01",
   fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
+  pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
 };
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {

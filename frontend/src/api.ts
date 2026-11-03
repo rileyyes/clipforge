@@ -88,8 +88,39 @@ export const autoedit = {
   analyze: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/autoedit/analyze`, { media_id }),
   plan: (pid: string, media_id: string, settings: AutoEditSettings) =>
     call<Plan>("POST", `/api/projects/${pid}/autoedit/plan`, { media_id, settings }),
-  apply: (pid: string, media_id: string, settings: AutoEditSettings, expected_output: number) =>
-    call<{ project: Project; plan: Plan }>("POST", `/api/projects/${pid}/autoedit/apply`, { media_id, settings, expected_output }),
+  apply: (pid: string, media_id: string, settings: AutoEditSettings, expected_output: number, extras?: Extras) =>
+    call<{ project: Project; plan: Plan; extras: ExtraNote[] }>("POST", `/api/projects/${pid}/autoedit/apply`, { media_id, settings, expected_output, extras }),
+};
+
+/** Optional finishing touches run right after the AI edit (one-click edit). */
+export interface Extras {
+  censor: boolean; censor_sound: "beep" | "boing" | "scratch" | "honk" | "quack" | "mute";
+  fun: "off" | "minimal" | "balanced" | "chaotic"; captions: boolean; audio_polish: boolean;
+}
+export interface ExtraNote { step: string; ok: boolean; detail: string }
+
+// ---------------------------------------------------------------- version history
+export interface VersionMeta {
+  id: string; label: string; origin: "manual" | "auto" | "before_ai" | "before_restore" | "imported";
+  created_at: string; edit_revision: number; duration: number; clips: number; effects: number; media_names: string[];
+}
+type Range = [number, number];
+export interface Comparison {
+  a_label: string; b_label: string; identical: boolean;
+  a: { duration: number; clips: number; effects: number; transitions: number };
+  b: { duration: number; clips: number; effects: number; transitions: number };
+  sources: { media_id: string; name: string; duration: number | null; a: Range[]; b: Range[]; removed: Range[]; added: Range[]; removed_s: number; added_s: number }[];
+  effects: { added: Record<string, number>; removed: Record<string, number>; changed: number };
+  settings: { group: string; setting: string; a: unknown; b: unknown }[];
+}
+export const versions = {
+  list: (pid: string) => call<{ versions: VersionMeta[] }>("GET", `/api/projects/${pid}/history`).then((r) => r.versions),
+  save: (pid: string, label: string) => call<VersionMeta>("POST", `/api/projects/${pid}/history`, { label }),
+  rename: (pid: string, sid: string, label: string) => call<VersionMeta>("PUT", `/api/projects/${pid}/history/${sid}`, { label }),
+  remove: (pid: string, sid: string) => call<void>("DELETE", `/api/projects/${pid}/history/${sid}`),
+  restore: (pid: string, sid: string) => call<Project>("POST", `/api/projects/${pid}/history/${sid}/restore`),
+  compare: (pid: string, a: string, b: string) =>
+    call<Comparison>("GET", `/api/projects/${pid}/history/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
 };
 
 export const mediaUrl = (pid: string, mid: string) => `/api/projects/${pid}/media/${mid}/stream`;

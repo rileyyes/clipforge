@@ -1,8 +1,8 @@
 """Browser end-to-end test of the AI Auto Editor.
 
 Dashboard -> Start AI auto edit -> import a synthetic 'talking' recording -> Analyse ->
-set a 12 s target -> drop a moment -> play rough cut -> Send to Manual Editor ->
-verify clips -> Export -> validation passes. Fails on any console/page error.
+set a 12 s target -> drop a moment -> play rough cut -> pick finishing touches ->
+Send to Manual Editor -> verify clips + the touches that were applied/skipped -> Export -> validation passes. Fails on any console/page error.
 
 Run:  python scripts/e2e_autoedit.py      (needs Playwright + built frontend)
 """
@@ -68,6 +68,10 @@ async def main():
         print("kept moments before/after drop:", kept_before, await pg.locator(".chip.ok", has_text="kept").count())
         await pg.get_by_role("button", name="Play rough cut").click()
         await pg.wait_for_timeout(1500)
+        # one-click finishing touches (no transcriber in this test -> bleeps are skipped, honestly)
+        extras = pg.get_by_test_id("extras")
+        await extras.locator("select").nth(1).select_option("balanced")
+        assert await extras.get_by_text("need a transcript").count() == 1
         await pg.screenshot(path=str(TMP / "auto_review.png"), full_page=True)
         await pg.get_by_role("button", name="Send to Manual Editor").click()
         await pg.wait_for_url(re.compile(r".*#/editor/[0-9a-f]{32}$"), timeout=20000)
@@ -75,6 +79,13 @@ async def main():
         clips = await pg.locator(".clip").count()
         print("clips in editor:", clips)
         assert clips >= 2
+        toasts = await pg.locator(".toast").all_inner_texts()
+        print("finishing touches:", toasts)
+        assert any("Audio polish" in t for t in toasts) and any("Bleep swears skipped" in t for t in toasts), toasts
+        assert any("Comedy edits" in t for t in toasts), toasts
+        await pg.get_by_role("button", name=re.compile(r"^Effects")).click()
+        await pg.get_by_role("button", name="History").click()
+        assert await pg.get_by_test_id("version").count() == 0  # timeline was empty before: nothing to back up
         await pg.screenshot(path=str(TMP / "auto_editor.png"))
         await pg.get_by_role("button", name="Export").first.click()
         await pg.wait_for_url("**/#/export/*")

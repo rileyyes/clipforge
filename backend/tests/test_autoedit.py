@@ -284,8 +284,12 @@ def test_api_analyze_plan_apply_export(server, talk_video):
     assert all(x["link_id"] == y["link_id"] for x, y in zip(v, a))
     total = sum(c["source_out"] - c["source_in"] for c in v)
     assert total == pytest.approx(plan_r["output_duration"], abs=1e-3)
-    # previous timeline backed up
-    assert list((server.settings.projects_dir / pid / "history").glob("timeline-*.json"))
+    # applying again snapshots the previous edit first, so the AI edit can be undone
+    st, again, _ = server.req("POST", f"/api/projects/{pid}/autoedit/apply",
+                              {"media_id": mid, "settings": settings, "expected_output": plan_r["output_duration"]})
+    assert st == 200 and again["extras"] == []
+    _, hist, _ = server.req("GET", f"/api/projects/{pid}/history")
+    assert [v["origin"] for v in hist["versions"]].count("before_ai") == 1
     # bad settings rejected by validation
     st, _, _ = server.req("POST", f"/api/projects/{pid}/autoedit/plan",
                           {"media_id": mid, "settings": {"target_seconds": -5}})

@@ -27,6 +27,7 @@ from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_
 from .render import render_project, validate_export
 from .transcription import available_transcriber
 from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline
+from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
 
@@ -265,6 +266,10 @@ def build_routes(svc: Services) -> list[Route]:
             d.update(timeline=data["timeline"], output=data["output"], effects=data["effects"],
                      captions=data["captions"], audio=data["audio"], edit_revision=latest.edit_revision + 1)
             saved = store.save(Project.model_validate(d), expected_revision=latest.revision)
+        try:
+            HistoryStore(store.dir(pid)).maybe_checkpoint(saved.model_dump(mode="json"))
+        except Exception:  # noqa: BLE001 - history must never block saving
+            pass
         return JSONResponse(project_payload(saved))
 
     async def rename_project(request: Request):
@@ -479,8 +484,16 @@ def build_routes(svc: Services) -> list[Route]:
         media_id: str
         settings: AutoEditSettings = Field(default_factory=AutoEditSettings)
 
+    class Extras(BaseModel):
+        censor: bool = False
+        censor_sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute"] = "beep"
+        fun: Literal["off", "minimal", "balanced", "chaotic"] = "off"
+        captions: bool = False
+        audio_polish: bool = False
+
     class ApplyBody(PlanBody):
         expected_output: Optional[float] = None  # guards against stale review screens
+        extras: Extras = Field(default_factory=Extras)
 
     def _asset_for(pid: str, mid: str):
         try:
@@ -536,11 +549,8 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, "The plan changed since you reviewed it. Review it again before applying.")
         if not result["segments"]:
             return err(400, "The plan has no selected moments.")
-        hist = store.dir(pid) / "history"
-        hist.mkdir(exist_ok=True)
-        import json as _json, time as _time
-        (hist / f"timeline-{int(_time.time() * 1000)}.json").write_text(
-            _json.dumps(p.timeline.model_dump(mode="json")))
+        if any(t.clips for t in p.timeline.tracks):
+            HistoryStore(store.dir(pid)).snapshot(p.model_dump(mode="json"), "Before AI edit", "before_ai")
 
         def apply(d: dict) -> dict:
             d = edl_to_timeline(d, asset.model_dump(mode="json"), result["segments"], new_id)
@@ -550,7 +560,54 @@ def build_routes(svc: Services) -> list[Route]:
             saved = store.update(pid, apply)
         except (EDLError, ValidationError) as exc:
             return err(422, f"Generated edit failed validation: {exc}")
-        return JSONResponse({"project": project_payload(saved), "plan": result})
+        notes = apply_extras(pid, saved, body.extras) if body.extras != Extras() else []
+        if notes:
+            saved = store.load(pid)
+        return JSONResponse({"project": project_payload(saved), "plan": result, "extras": notes})
+
+    def apply_extras(pid: str, project: Project, ex) -> list[dict]:
+        """Run the Phase 4 tools on a fresh AI edit in one go; report what happened."""
+        from . import effects as fx
+        pdir = store.dir(pid)
+        notes: list[dict] = []
+        has_words = fx.transcript_status(project, pdir)["transcribed"] > 0
+        no_words = ("skipped — no transcript yet (transcribe in Editor → Effects, then run again)"
+                    if available_transcriber() else
+                    "skipped — no transcript (install the free transcriber, then re-analyse)")
+        # re-running replaces earlier automatic results of the same kind instead of stacking them
+        drop: set[str] = set()
+        if ex.censor and has_words:
+            drop.add("censor")
+        if ex.fun != "off":
+            drop |= {"zoom", "shake", "flash", "text", "sfx"}
+        effects = [e for e in project.effects if not (e.origin == "auto" and e.kind in drop)]
+        if ex.censor:
+            if has_words:
+                found = fx.suggest_censors(project, pdir, sound=ex.censor_sound)
+                effects += found
+                notes.append({"step": "Bleep swears", "ok": True, "detail": f"{len(found)} bleep(s) added"})
+            else:
+                notes.append({"step": "Bleep swears", "ok": False, "detail": no_words})
+        if ex.fun != "off":
+            tmp = project.model_copy(update={"effects": effects})
+            fun = fx.suggest_fun(tmp, pdir, ex.fun)
+            effects += fun
+            notes.append({"step": "Comedy edits", "ok": True, "detail": f"{len(fun)} effect(s) on reactions"})
+        caps = project.captions.model_dump()
+        if ex.captions:
+            if has_words:
+                caps["enabled"] = True
+                notes.append({"step": "Captions", "ok": True, "detail": "turned on"})
+            else:
+                notes.append({"step": "Captions", "ok": False, "detail": no_words})
+        audio = project.audio.model_dump()
+        if ex.audio_polish:
+            audio.update(normalize=True, enhance_voice=True)
+            notes.append({"step": "Audio polish", "ok": True, "detail": "loudness to -14 LUFS + voice enhance"})
+        eff_json = [e.model_dump(mode="json") for e in effects]
+        store.update(pid, lambda d: {**d, "effects": eff_json, "captions": caps, "audio": audio,
+                                     "edit_revision": d.get("edit_revision", 0) + 1})
+        return notes
 
     # -- phase 4: transcription, effects, captions ------------------------
     from . import effects as fx
@@ -680,6 +737,99 @@ def build_routes(svc: Services) -> list[Route]:
             return err(500, "could not generate sound")
         return Response(proc.stdout, media_type="audio/wav", headers={"cache-control": "max-age=86400"})
 
+    # -- version history ----------------------------------------------------
+    class SnapBody(BaseModel):
+        label: str = Field(default="", max_length=80)
+
+    def sid_of(request: Request) -> str:
+        try:
+            return validate_id(request.path_params["sid"])
+        except PathSecurityError:
+            raise HTTPException(404, "version not found")
+
+    async def history_list(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        return JSONResponse({"versions": HistoryStore(store.dir(pid)).list()})
+
+    async def history_create(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, SnapBody)
+        p = load(pid)
+        try:
+            meta = HistoryStore(store.dir(pid)).snapshot(p.model_dump(mode="json"), body.label or "Saved version")
+        except ValueError as exc:
+            return err(409, str(exc))
+        return JSONResponse(meta.model_dump(), status_code=201)
+
+    async def history_rename(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        body = await body_model(request, SnapBody)
+        try:
+            return JSONResponse(HistoryStore(store.dir(pid)).rename(sid_of(request), body.label))
+        except HistoryNotFound:
+            return err(404, "version not found")
+
+    async def history_delete(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        try:
+            HistoryStore(store.dir(pid)).delete(sid_of(request))
+        except HistoryNotFound:
+            return err(404, "version not found")
+        return Response(status_code=204)
+
+    async def history_restore(request: Request):
+        pid = pid_of(request)
+        sid = sid_of(request)
+        hs = HistoryStore(store.dir(pid))
+        try:
+            snap = hs.get(sid)
+        except HistoryNotFound:
+            return err(404, "version not found")
+        cur = load(pid)
+        media_ids = {m.id for m in cur.media}
+        used = {c["media_id"] for t in snap["doc"]["timeline"]["tracks"] for c in t["clips"]} | \
+            {e["media_id"] for e in snap["doc"].get("effects") or []}
+        if used - media_ids:
+            return err(409, "This version uses media that has since been removed from the project, so it "
+                            "can't be restored.")
+        hs.snapshot(cur.model_dump(mode="json"), f"Before restoring “{snap['label']}”"[:80], "before_restore")
+
+        def apply(d: dict) -> dict:
+            for k, v in snap["doc"].items():
+                if v is not None:
+                    d[k] = v
+            d["edit_revision"] = d.get("edit_revision", 0) + 1
+            return d
+        try:
+            saved = store.update(pid, apply)
+        except ValidationError as exc:
+            return pydantic_error(exc)
+        return JSONResponse(project_payload(saved))
+
+    async def history_compare(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        hs = HistoryStore(store.dir(pid))
+
+        def resolve(key: str):
+            if key == "current":
+                return doc_of(p.model_dump(mode="json")), "Current edit"
+            try:
+                validate_id(key)
+                snap = hs.get(key)
+            except (PathSecurityError, HistoryNotFound):
+                raise HTTPException(404, "version not found")
+            cur = doc_of(p.model_dump(mode="json"))
+            doc = {k: (v if v is not None else cur[k]) for k, v in snap["doc"].items()}
+            return doc, snap["label"]
+        a, la = resolve(request.query_params.get("a", "current"))
+        b, lb = resolve(request.query_params.get("b", "current"))
+        media = {m.id: m.model_dump(mode="json") for m in p.media}
+        return JSONResponse({**compare_docs(a, b, media), "a_label": la, "b_label": lb})
+
     # -- jobs -------------------------------------------------------------
     async def list_jobs(request: Request):
         pid = request.query_params.get("project_id")
@@ -752,6 +902,12 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
+        Route(P + "/history", history_list),
+        Route(P + "/history", history_create, methods=["POST"]),
+        Route(P + "/history/compare", history_compare),
+        Route(P + "/history/{sid}", history_rename, methods=["PUT"]),
+        Route(P + "/history/{sid}", history_delete, methods=["DELETE"]),
+        Route(P + "/history/{sid}/restore", history_restore, methods=["POST"]),
         Route(P + "/fx/status", fx_status),
         Route(P + "/transcribe", start_transcribe, methods=["POST"]),
         Route(P + "/transcript", transcript),

@@ -202,3 +202,15 @@ a.btn { color: var(--text); text-decoration: none; }
 a.btn.primary { color: #fff; }
 .insp-grid > * { min-width: 0; }
 .insp-grid select, .insp-grid input[type=text], .insp-grid input[type=number] { width: 100%; }
+
+/* version history */
+.version-row { display: grid; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cmp-table th, .cmp-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.cmp-table th { color: var(--muted); font-weight: 500; }
+.extras-note { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
+.hist-body { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
+.hist-body select { width: 100%; min-width: 0; }
+.version-row { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.version-row .row > strong { min-width: 0; flex: 1 1 auto; }
+.version-row .chip { flex: none; }
