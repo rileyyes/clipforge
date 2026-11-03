@@ -30,7 +30,7 @@ from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettin
 from . import rcache
 from .library import Library, LibraryError, project_sound
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
-from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
+from .storage import (replace_retry, PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
 
 
@@ -333,7 +333,7 @@ def build_routes(svc: Services) -> list[Route]:
                     fh.write(chunk)
             if size == 0:
                 raise HTTPException(400, "empty upload")
-            os.replace(partial, final)
+            replace_retry(partial, final)
             try:
                 asset = media_svc.build_asset(S, mid, final, display_name(filename))
             except ff.FFmpegError as exc:

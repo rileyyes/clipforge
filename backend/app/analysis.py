@@ -13,6 +13,8 @@ engine works with or without it.
 """
 from __future__ import annotations
 
+from .storage import replace_retry
+
 import json
 import os
 import subprocess
@@ -178,7 +180,7 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
     out = analysis_path(project_dir, asset.id)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps(result), encoding="utf-8")
-    os.replace(tmp, out)
+    replace_retry(tmp, out)
     return {"media_id": asset.id, "values": len(result["rms_db"]), "cuts": len(result["cuts"]),
             "words": len(result["words"]) if result["words"] is not None else None,
             **({"warning": "Speech transcription failed, so this analysis uses sound and picture only: "
@@ -213,5 +215,5 @@ def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAss
     out = analysis_path(project_dir, asset.id)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing), encoding="utf-8")
-    os.replace(tmp, out)
+    replace_retry(tmp, out)
     return {"media_id": asset.id, "words": len(existing["words"])}

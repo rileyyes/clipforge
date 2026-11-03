@@ -52,6 +52,25 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 
 `settings`: `target_mode` (`original`/`duration`/`percent`), `target_seconds`, `target_percent`, `style` (`balanced`/`excitement`/`information`/`reactions`/`action`/`humor`/`story`), `silence` (`off`/`conservative`/`balanced`/`aggressive`), `keep_opening`, `context`, `include[]`, `exclude[]` (beat ids).
 
+## My library (your own sounds & images)
+Shared by all projects; stored under `<workspace>/library`.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/library` | `{sounds: [...], images: [...]}` (`id, name, source: recorded/imported, duration / width, height`) |
+| POST | `/api/library/sounds?name=&recorded=1` | raw audio/video bytes (≤ 50 MB). Decoded with FFmpeg, silence trimmed, levelled to −1 dBFS, ≤ 30 s → 201 |
+| POST | `/api/library/images?name=` | raw PNG/JPEG/WebP/GIF (≤ 15 MB), re-encoded to PNG, ≤ 2000 px → 201 |
+| GET | `/api/library/{sounds|images}/{id}` | the WAV / PNG |
+| PUT | `/api/library/{sounds|images}/{id}` | `{name}` rename |
+| DELETE | `/api/library/{sounds|images}/{id}` | 204. Projects that used it keep their copy |
+| POST | `/api/projects/{pid}/fx/library` | `{kind: sound|image, id}` copies the item into the project so effects can use it (safe to repeat) |
+| GET | `/api/projects/{pid}/fx/sounds/{id}` | a project's copy of a sound |
+
+Effects use a library sound with `sound: "custom", sound_asset: <id>`. Censor suggestions (`fx/censor/suggest`) and the Auto Editor's `extras` accept the same pair (`sound` / `censor_sound` + `sound_asset` / `censor_sound_asset`).
+
+## Machine-readable spec
+`GET /api/openapi.json` (OpenAPI 3.1) and `GET /api/docs` (readable page) are generated from the live routes, including request-body schemas.
+
 ## Version history (Phase 5)
 | Method | Path | Description |
 |---|---|---|

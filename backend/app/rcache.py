@@ -8,6 +8,8 @@ cached; the final mix/encode always runs. Oldest entries are evicted past the si
 """
 from __future__ import annotations
 
+from .storage import replace_retry
+
 import functools
 import hashlib
 import os
@@ -90,7 +92,7 @@ class RenderCache:
         tmp = p.with_name(p.name + f".{uuid.uuid4().hex[:8]}.tmp")
         try:
             _link_or_copy(src, tmp)
-            os.replace(tmp, p)
+            replace_retry(tmp, p)
         except OSError:
             tmp.unlink(missing_ok=True)
 

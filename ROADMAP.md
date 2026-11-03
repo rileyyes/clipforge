@@ -97,14 +97,26 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Detailed waveforms when zoomed in (100 peaks/s, interpolated past that); "Rebuild previews" upgrades older media
 - ✅ Stereo peak audio meters with peak hold and a clip light; preview volume above 100% now works (Web Audio)
 
-## Phase 7 — Production readiness ⬜
+## Phase 7 — Production readiness 🟡
 
-- ⬜ FastAPI migration (see ARCHITECTURE.md) + OpenAPI docs
-- ⬜ Vite dev server + React types + component tests (Testing Library)
-- ⬜ Performance benchmarks on 2-hour sources (memory, time)
-- ⬜ Packaging (Tauri wrapper evaluation, Windows installer)
-- ⬜ Dependency scanning in CI (pip-audit, npm audit), GitHub Actions
-- ⬜ Cloud deployment design (separate threat model)
+- ✅ **My sounds & images**: record sounds with the mic or import audio/video/images into a library shared by all projects. Use them as the bleep sound (Effects panel and the Auto Editor), as sound effects, or as image pop-ups. They're copied into each project that uses them
+- ✅ GitHub Actions CI on every push:
+  - backend tests on **Ubuntu and Windows**
+  - frontend tests, typecheck and build
+  - engine → backend cross-check
+  - all 8 browser E2E flows
+  - a from-scratch Windows launcher run
+  - `pip-audit` and `npm audit`
+- ✅ Windows bugs found by that CI and fixed:
+  - UTF-8 file reading
+  - a crash in FFmpeg's denoiser, now with a fallback
+- ✅ OpenAPI 3.1 at `/api/openapi.json` and a readable page at `/api/docs`, generated from the routes so they can't drift (the goal of the planned FastAPI move)
+- ✅ Performance benchmark on a 2-hour source (`scripts/benchmark.py`; results in [docs/BENCHMARKS.md](docs/BENCHMARKS.md))
+- ✅ One-click Windows launcher (`Start ClipForge.bat` / `Update ClipForge.bat`); packaging options evaluated in [docs/PACKAGING.md](docs/PACKAGING.md)
+- ✅ Cloud deployment design and threat model ([docs/CLOUD.md](docs/CLOUD.md)); design only, not built
+- ⬜ FastAPI migration. **Blocked here:** FastAPI can't be installed in this development environment, and a framework swap that can't be run can't be tested. The generated OpenAPI spec already covers its main benefit
+- ⬜ Vite dev server + React types + component tests. **Blocked the same way** (no `vite`, `@types/react` or Testing Library packages available). Typechecking covers the engine; the UI is covered by the 8 browser E2E flows
+- ⬜ Windows installer (embedded Python + FFmpeg, Inno Setup), built and smoke-tested in CI. See PACKAGING.md
 
 ## Known limitations / bugs
 

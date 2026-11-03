@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import time
+import shutil
 import re
 import tempfile
 import uuid
@@ -78,6 +80,23 @@ def display_name(filename: str, limit: int = 120) -> str:
     return (cleaned or "untitled")[:limit]
 
 
+def replace_retry(src, dst, attempts: int = 40) -> None:
+    """os.replace, retried briefly on Windows "file in use" errors.
+
+    On Windows, replacing a file fails with PermissionError (sharing violation) while
+    another thread or process has it open, e.g. a background job reading project.json.
+    Those opens last milliseconds, so retrying for up to ~2 s turns a random failure
+    into a short wait. On Linux/macOS the first attempt always succeeds."""
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.05)
+
+
 def atomic_write_json(path: Path, data: Any, keep_backup: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=path.parent)
@@ -87,8 +106,12 @@ def atomic_write_json(path: Path, data: Any, keep_backup: bool = True) -> None:
             fh.flush()
             os.fsync(fh.fileno())
         if keep_backup and path.exists():
-            os.replace(path, path.with_suffix(path.suffix + ".bak"))
-        os.replace(tmp_name, path)
+            # copy (not move) so the file never disappears for a concurrent reader
+            try:
+                shutil.copyfile(path, path.with_suffix(path.suffix + ".bak"))
+            except OSError:
+                pass  # a backup is best-effort; the atomic replace below is what matters
+        replace_retry(tmp_name, path)
     except BaseException:
         try:
             os.unlink(tmp_name)
@@ -100,8 +123,14 @@ def atomic_write_json(path: Path, data: Any, keep_backup: bool = True) -> None:
 def read_json(path: Path) -> Any:
     """Read JSON, falling back to the .bak copy if the main file is corrupt."""
     try:
-        with open(path, encoding="utf-8") as fh:
-            return json.load(fh)
+        for i in range(40):  # Windows: the file may be mid-replace for a moment
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    return json.load(fh)
+            except PermissionError:
+                if i == 39:
+                    raise
+                time.sleep(0.05)
     except (json.JSONDecodeError, UnicodeDecodeError):
         bak = path.with_suffix(path.suffix + ".bak")
         with open(bak, encoding="utf-8") as fh:

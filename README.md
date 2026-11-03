@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–6 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–6 working and tested; Phase 7 mostly done** (CI on Windows + Linux, launcher, API docs, benchmarks, your own sounds & images). Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -22,6 +22,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Animated captions** (bold pop / word highlight / clean) burned in, plus `.srt` export. Censored words are masked.
 - **Audio polish**: loudness normalised to YouTube's −14 LUFS (verified in the export report), background-noise removal, voice enhancement, music that ducks under your voice.
 - **Transitions & fades**: 21 transitions between clips (crossfade, dips, wipes, slides, circle, zoom, pixelize, blur…; audio follows), fades from/to black, volume fades for music.
+- **My sounds & images**: record your own sounds with the mic (or import MP3/WAV/M4A/OGG, or a video's audio) and your own images. Use them as the bleep sound, as sound effects, or as pop-ups, in every project.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
 
 ### Thumbnail Maker (basic, free & local)
@@ -47,7 +48,17 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ## Quick start
 
-Requirements: **Python 3.11+**, **Node.js 18+**, **FFmpeg 6+** (with `ffprobe`) on your PATH.
+**Windows, easiest:** install the three tools once:
+
+```powershell
+winget install Python.Python.3.13
+winget install OpenJS.NodeJS.LTS
+winget install Gyan.FFmpeg
+```
+
+Then double-click **`Start ClipForge.bat`** in the `clipforge` folder. The first run sets everything up (a few minutes); later runs start in seconds and open the browser. **`Update ClipForge.bat`** gets the latest version from GitHub (and the free speech-to-text) and then starts ClipForge.
+
+**Manual setup (any OS).** Requirements: **Python 3.11+**, **Node.js 18+**, **FFmpeg 6+** (with `ffprobe`) on your PATH.
 
 ```bash
 git clone https://github.com/rileyyes/clipforge && cd clipforge

@@ -1,8 +1,8 @@
-# Hands-on test guide: Phases 4–6
+# Hands-on test guide: Phases 4–7
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
-**Before you start**
+**Before you start.** The easiest way is to double-click **`Update ClipForge.bat`** in the clipforge folder. It gets the latest version, installs what's needed (including speech-to-text) and starts ClipForge. Or do it by hand:
 
 ```powershell
 cd C:\Users\Riley\clipforge
@@ -58,5 +58,20 @@ Use a 2–10 minute video with talking, a few loud reactions and at least one sw
 | 6.11 | Click **Light preview** | Plays a 540p copy (smoother on slow PCs). The first time, it makes the copies in the background |
 | 6.12 | Zoom the timeline far in on an audio clip | The waveform stays detailed. For files imported before this update, click ⟳ on the file in Media to rebuild it |
 | 6.13 | Export, then change one clip and export again | The second export is much faster: only the changed part re-renders. Settings shows the render cache size |
+
+## Phase 7: your own sounds & images, launcher
+
+| # | Do this | You should see |
+|---|---|---|
+| 7.1 | Close ClipForge, then double-click **`Start ClipForge.bat`** in the clipforge folder | A window that sets things up (first time only), then the browser opens ClipForge |
+| 7.2 | Editor → **Effects** → *My sounds & images* → **Record sound**. Allow the microphone, say something funny, then **Stop** | A player with your take. Silence at the start and end is trimmed after saving |
+| 7.3 | Name it → **Save** | It appears under *Sounds* with its length and a "mic" tag |
+| 7.4 | Press **Bleep** on your sound, then **Find & bleep swears** | Swears are bleeped with *your* sound. The bleep sound list shows it as ★ name |
+| 7.5 | Move the playhead → **Add** on your sound | A sound effect at the playhead that plays its full length |
+| 7.6 | **Import image** → pick a PNG/JPG → **Add** | It pops up on screen at the playhead |
+| 7.7 | Open **another project** → Effects | The same sounds and images are there |
+| 7.8 | AI Auto Editor → Finishing touches → bleep sound list | Your sounds are listed with ★ |
+| 7.9 | Delete a sound from the library that a project uses, then export that project | The export still has the sound (each project keeps its own copy) |
+| 7.10 | Open http://127.0.0.1:8765/api/docs | A list of every API route |
 
 **Known preview limits (the export is always exact):** colour is approximate and transitions show as cuts in the preview.

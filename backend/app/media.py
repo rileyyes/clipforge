@@ -19,7 +19,7 @@ import numpy as np
 from . import ffmpeg as ff
 from .config import Settings
 from .schema import MediaAsset
-from .storage import SAFE_INPUT_FORMATS, safe_join
+from .storage import replace_retry, SAFE_INPUT_FORMATS, safe_join
 
 # Codec/container combos every mainstream browser can play directly.
 
@@ -127,7 +127,7 @@ def make_waveform(settings: Settings, asset: MediaAsset, src: Path, out: Path,
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps({"peaks_per_second": WAVEFORM_PEAKS_PER_SECOND,
                                "peaks": peaks}), encoding="utf-8")
-    os.replace(tmp, out)
+    replace_retry(tmp, out)
 
 
 def make_proxy(settings: Settings, asset: MediaAsset, src: Path, out: Path,
@@ -145,7 +145,7 @@ def make_proxy(settings: Settings, asset: MediaAsset, src: Path, out: Path,
     ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=asset.duration,
                   on_progress=on_progress, cancel_event=cancel,
                   timeout=settings.render_timeout_s)
-    os.replace(tmp, out)
+    replace_retry(tmp, out)
 
 
 def mark_read_only(path: Path) -> None:

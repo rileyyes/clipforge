@@ -175,3 +175,33 @@ def test_text_files_are_always_utf8():
                     and not line.rstrip().endswith(","):
                 bad.append(f"{f.name}:{n}: {line.strip()}")
     assert not bad, "\n".join(bad)
+
+
+def test_project_file_never_disappears_under_concurrent_reads(tmp_path):
+    """Windows CI: an upload failed because saving project.json raced a background job
+    reading it. The file must always be readable while it's being rewritten."""
+    import threading
+    from app.storage import atomic_write_json, read_json
+    f = tmp_path / "project.json"
+    atomic_write_json(f, {"n": 0})
+    errors: list[BaseException] = []
+    stop = threading.Event()
+
+    def reader():
+        while not stop.is_set():
+            try:
+                assert "n" in read_json(f)
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+                return
+
+    threads = [threading.Thread(target=reader) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for i in range(400):
+        atomic_write_json(f, {"n": i, "pad": "x" * 2000})
+    stop.set()
+    for t in threads:
+        t.join()
+    assert not errors, errors[:3]
+    assert read_json(f)["n"] == 399 and read_json(f.with_suffix(".json.bak"))["n"] == 398
