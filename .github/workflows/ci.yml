@@ -157,6 +157,8 @@ jobs:
     name: Windows launcher (first run from scratch)
     runs-on: windows-latest
     timeout-minutes: 30
+    env:
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -172,10 +174,15 @@ jobs:
                  -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File scripts\windows\start.ps1 -NoBrowser"
           $ok = $false
           for ($i = 0; $i -lt 300; $i++) {
+            if ($p.HasExited) { break }  # launcher stopped (error): don't wait for nothing
             try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8765/api/health).StatusCode -eq 200) { $ok = $true; break } } catch { }
             Start-Sleep -Seconds 2
           }
-          Get-Content out.txt, err.txt -ErrorAction SilentlyContinue
+          $log = (Get-Content out.txt, err.txt -ErrorAction SilentlyContinue) -join "`n"
+          Write-Output $log
+          # the launcher's own output as one annotation (readable without opening the log)
+          $tail = (($log -split "`n") | Select-Object -Last 60) -join "%0A"
+          Write-Output "::warning title=launcher output::$tail"
           if (-not $ok) { Write-Output "::error title=launcher::ClipForge didn't start from the launcher"; exit 1 }
           $page = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/
           if ($page.Content -notmatch "<div id=`"root`"") { Write-Output "::error title=launcher::UI not served"; exit 1 }

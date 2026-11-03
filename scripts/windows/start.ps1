@@ -20,7 +20,7 @@ function Fail($msg) {
   Write-Host ""
   Write-Host "  $msg" -ForegroundColor Red
   Write-Host ""
-  Read-Host "  Press Enter to close"
+  if (-not $env:CI) { Read-Host "  Press Enter to close" }
   exit 1
 }
 function Have($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
