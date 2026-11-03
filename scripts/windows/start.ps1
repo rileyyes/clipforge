@@ -52,15 +52,35 @@ if ($Update) {
 }
 
 # ---- tools
-$Py = $null
-foreach ($c in @("py", "python")) {
-  if (Have $c) {
-    $probe = if ($c -eq "py") { @("-3", "-c") } else { @("-c") }
-    $v = & $c @probe "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null
-    if ($LASTEXITCODE -eq 0 -and [version]$v -ge [version]"3.11") { $Py = $c; $PyArgs = if ($c -eq "py") { @("-3") } else { @() }; break }
+# Find one concrete python.exe (3.11+), preferring versions every dependency has wheels for.
+# (Arguments are always passed literally; no splatting, which Windows PowerShell 5.1 mangles.)
+function PyVersion($exe) {
+  try { $v = & $exe -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null } catch { return $null }
+  if ($LASTEXITCODE -ne 0 -or -not $v) { return $null }
+  return [version]("$v".Trim())
+}
+$PyExe = $null
+$candidates = @()
+if (Have python) { $candidates += (Get-Command python).Source }
+if (Have py) {
+  foreach ($ver in @("3.13", "3.12", "3.11", "3.14", "3")) {
+    try { $exe = & py "-$ver" -c "import sys; print(sys.executable)" 2>$null } catch { $exe = $null }
+    if ($LASTEXITCODE -eq 0 -and $exe) { $candidates += "$exe".Trim() }
   }
 }
-if (-not $Py) { Fail "Python 3.11 or newer is needed. Install it: winget install Python.Python.3.13  (then open a new window)" }
+foreach ($exe in $candidates) {
+  if ($exe -like "*WindowsApps*") { continue }  # the Microsoft Store "python" stub
+  $ver = PyVersion $exe
+  if ($ver -and $ver -ge [version]"3.11" -and $ver -lt [version]"3.15") { $PyExe = $exe; break }
+}
+if (-not $PyExe) {
+  foreach ($exe in $candidates) {  # a newer Python is OK as a last resort
+    $ver = PyVersion $exe
+    if ($ver -and $ver -ge [version]"3.11") { $PyExe = $exe; break }
+  }
+}
+if (-not $PyExe) { Fail "Python 3.11 or newer is needed. Install it: winget install Python.Python.3.13  (then open a new window)" }
+Say "Using Python $(PyVersion $PyExe) at $PyExe"
 if (-not (Have node) -or -not (Have npm)) { Fail "Node.js is needed to build the screen part. Install it: winget install OpenJS.NodeJS.LTS  (then open a new window)" }
 
 # ---- Python environment
@@ -68,7 +88,7 @@ $Venv = Join-Path $Root "backend\.venv"
 $VenvPy = Join-Path $Venv "Scripts\python.exe"
 if (-not (Test-Path $VenvPy)) {
   Say "First run: creating the Python environment..."
-  & $Py @PyArgs -m venv $Venv
+  & $PyExe -m venv "$Venv"
   if ($LASTEXITCODE -ne 0) { Fail "Couldn't create backend\.venv" }
 }
 $req = FileHash (Join-Path $Root "backend\requirements.txt")

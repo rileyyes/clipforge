@@ -36,17 +36,19 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
       - name: Install Python dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install -r backend/requirements.txt pytest-timeout
       - name: Run tests
         shell: bash
         working-directory: backend
         run: |
           ffmpeg -version | head -1
           set +e
-          python -m pytest -p no:randomly -q -rf 2>&1 | tee pytest.log
+          python -m pytest -p no:randomly -q -rf --timeout=600 --durations=15 2>&1 | tee pytest.log
           code=${PIPESTATUS[0]}
           # failures as annotations so they're visible without opening the log
-          grep -E "^FAILED " pytest.log | head -40 | sed 's/^/::error title=pytest (${{ matrix.os }})::/'
+          grep -E "^FAILED |Timeout" pytest.log | head -40 | sed 's/^/::error title=pytest (${{ matrix.os }})::/'
+          # slowest tests, to spot platform-specific slowness
+          echo "::notice title=slowest tests (${{ matrix.os }})::$(grep -E '^[0-9.]+s (call|setup)' pytest.log | head -15 | tr '\n' '|')"
           exit $code
 
   frontend:

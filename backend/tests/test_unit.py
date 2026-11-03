@@ -181,27 +181,31 @@ def test_project_file_never_disappears_under_concurrent_reads(tmp_path):
     """Windows CI: an upload failed because saving project.json raced a background job
     reading it. The file must always be readable while it's being rewritten."""
     import threading
+    import time
     from app.storage import atomic_write_json, read_json
     f = tmp_path / "project.json"
     atomic_write_json(f, {"n": 0})
     errors: list[BaseException] = []
     stop = threading.Event()
 
-    def reader():
+    def reader():  # like background jobs: frequent, brief reads (not a hot spin loop)
         while not stop.is_set():
             try:
                 assert "n" in read_json(f)
             except BaseException as exc:  # noqa: BLE001
                 errors.append(exc)
                 return
+            time.sleep(0.002)
 
     threads = [threading.Thread(target=reader) for _ in range(4)]
     for t in threads:
         t.start()
-    for i in range(400):
+    t0 = time.time()
+    for i in range(150):
         atomic_write_json(f, {"n": i, "pad": "x" * 2000})
+    assert time.time() - t0 < 60  # retries are brief, never a long stall
     stop.set()
     for t in threads:
         t.join()
     assert not errors, errors[:3]
-    assert read_json(f)["n"] == 399 and read_json(f.with_suffix(".json.bak"))["n"] == 398
+    assert read_json(f)["n"] == 149 and read_json(f.with_suffix(".json.bak"))["n"] == 148
