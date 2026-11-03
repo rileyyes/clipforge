@@ -26,8 +26,9 @@ class FFmpegError(RuntimeError):
         self.stderr = stderr[-4000:]
 
 
-MISSING_FFMPEG = ("FFmpeg isn't installed or isn't on your PATH. On Windows run "
-                  "`winget install Gyan.FFmpeg`, then close and reopen the terminal and restart ClipForge.")
+MISSING_FFMPEG = ("FFmpeg wasn't found. Easiest fix on Windows: download ffmpeg-release-essentials.zip "
+                  "from gyan.dev/ffmpeg/builds, extract it so C:\\ffmpeg\\bin\\ffmpeg.exe exists, then "
+                  "restart ClipForge (it checks C:\\ffmpeg\\bin automatically).")
 
 
 def tools_available(ffmpeg_bin: str, ffprobe_bin: str) -> bool:

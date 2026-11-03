@@ -312,10 +312,10 @@ def test_missing_ffmpeg_gives_clear_message(server, media_dir, monkeypatch):
     monkeypatch.setattr(ff, "tools_available", lambda a, b: False)
     p = new_project(server)
     st, r, _ = server.upload(p["id"], media_dir / "av.mp4")
-    assert st == 503 and "FFmpeg isn't installed" in r["error"]
+    assert st == 503 and "FFmpeg wasn't found" in r["error"]
 
 
 def test_probe_reports_missing_binary(tmp_path):
     from app import ffmpeg as ff
-    with pytest.raises(ff.FFmpegError, match="FFmpeg isn't installed"):
+    with pytest.raises(ff.FFmpegError, match="FFmpeg wasn't found"):
         ff.probe("definitely-not-ffprobe-xyz", tmp_path / "x.mp4")

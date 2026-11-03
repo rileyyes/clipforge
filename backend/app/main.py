@@ -135,6 +135,8 @@ def main() -> None:
     from .ffmpeg import MISSING_FFMPEG, tools_available
     if not tools_available(settings.ffmpeg_bin, settings.ffprobe_bin):
         print("\n*** WARNING: " + MISSING_FFMPEG + "\n*** Importing and exporting videos won't work until it's fixed.\n")
+    else:
+        print(f"Using FFmpeg: {settings.ffmpeg_bin}")
     print(f"ClipForge workspace: {settings.workspace}")
     print(f"Open http://{settings.host}:{settings.port}")
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port,

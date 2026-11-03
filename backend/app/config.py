@@ -48,6 +48,29 @@ class Settings:
         return self.workspace / "tmp"
 
 
+def find_tool(name: str) -> str:
+    """Locate ffmpeg/ffprobe: PATH first, then common Windows/macOS install folders
+    (manual C:\\ffmpeg, winget, Chocolatey, Scoop, Homebrew) so a PATH problem
+    doesn't stop ClipForge from working."""
+    found = shutil.which(name)
+    if found:
+        return found
+    exe = name + (".exe" if os.name == "nt" else "")
+    home = Path.home()
+    local = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+    candidates = [Path("C:/ffmpeg/bin"), Path("C:/Program Files/ffmpeg/bin"), home / "ffmpeg" / "bin",
+                  local / "Microsoft" / "WinGet" / "Links", Path("C:/ProgramData/chocolatey/bin"),
+                  home / "scoop" / "shims", Path("/opt/homebrew/bin"), Path("/usr/local/bin")]
+    for d in candidates:
+        if (d / exe).is_file():
+            return str(d / exe)
+    pkgs = local / "Microsoft" / "WinGet" / "Packages"
+    if pkgs.is_dir():
+        for hit in pkgs.glob(f"*FFmpeg*/**/bin/{exe}"):
+            return str(hit)
+    return name
+
+
 def load_settings() -> Settings:
     workspace = Path(
         os.environ.get("CLIPFORGE_WORKSPACE", str(Path.home() / "ClipForgeWorkspace"))
@@ -67,8 +90,8 @@ def load_settings() -> Settings:
         max_workspace_bytes=_env_int("CLIPFORGE_MAX_WORKSPACE_GB", 200) * 1024**3,
         render_timeout_s=_env_int("CLIPFORGE_RENDER_TIMEOUT_S", 6 * 3600),
         job_workers=max(1, _env_int("CLIPFORGE_JOB_WORKERS", 1)),
-        ffmpeg_bin=os.environ.get("CLIPFORGE_FFMPEG", shutil.which("ffmpeg") or "ffmpeg"),
-        ffprobe_bin=os.environ.get("CLIPFORGE_FFPROBE", shutil.which("ffprobe") or "ffprobe"),
+        ffmpeg_bin=os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
+        ffprobe_bin=os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"),
         allowed_origins=origins,
     )
 
