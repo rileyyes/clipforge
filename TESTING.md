@@ -11,13 +11,14 @@ cd frontend && npm run typecheck           # strict TypeScript on the engine
 python scripts/e2e_browser.py              # headless Chromium end-to-end (needs Playwright + built frontend)
 ```
 
-## Current results (2026-11-02) — full suite run 3× in a row, all green
+## Current results (2026-11-03) — full suite run 3× in a row, all green
 
 | Suite | Tests | Result |
 |---|---|---|
 | Backend unit (`tests/test_unit.py`) | 29 | ✅ |
 | Backend integration (`tests/test_api.py`) | 17 | ✅ |
 | Auto Editor (`tests/test_autoedit.py`) | 30 (incl. 400 random recordings) | ✅ |
+| Effects (`tests/test_effects.py`) | 49 (incl. audio-level censor verification by FFT, frame diffs for every visual effect, fake-transcriber API flow) | ✅ |
 | Thumbnail Maker (`tests/test_thumbnails.py`) | 36 (incl. provider contract tests vs fake servers) | ✅ |
 | Frontend thumbnail model (`thumbs/model.test.ts`) | 5 | ✅ |
 | Frontend engine unit (`ops.test.ts`) | 20 | ✅ |
@@ -26,6 +27,7 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Renderer stress (`scripts/render_stress.py 3`) | 3 fuzz timelines, 112–138 clips, 10–29 min | ✅ all validated |
 | Browser E2E: manual editor | full flow | ✅ no console errors |
 | Browser E2E: AI auto editor | full flow | ✅ no console errors |
+| Browser E2E: effects | transcript → bleeps → auto comedy edits → pop-up → captions → undo/redo → export → reopen | ✅ no console errors |
 | Browser E2E: thumbnail maker | analyse → concepts → studio → version → export → reopen | ✅ no console errors |
 
 Run everything: `scripts/verify_all.sh`.
@@ -47,6 +49,10 @@ Run everything: `scripts/verify_all.sh`.
 | screenshots | Ruler label drift, duration rounding mismatch, wrapping badges |
 | test runner | Frontend tests were running stale compiled copies after adding a second test folder |
 | screenshots | Footage-built thumbnails were wrongly labelled as AI artwork |
+| effects tests | Frequent reactions raised the loudness percentile so none were detected |
+| browser E2E | Transcript status hidden when transcripts existed but the transcriber wasn't installed |
+| screenshots | New pop-ups could stack on top of a showing one; effects panel controls clipped |
+| user report | requirements.txt missed OpenCV; missing FFmpeg gave a vague "Upload failed" |
 
 ## What's covered
 

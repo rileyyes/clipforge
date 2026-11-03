@@ -160,13 +160,14 @@ def run_ffmpeg(
     on_progress: Optional[ProgressFn] = None,
     cancel_event: Optional[threading.Event] = None,
     timeout: Optional[float] = None,
+    cwd: Optional[Path] = None,
 ) -> None:
     """Run ffmpeg with measured progress (fraction of expected output time)."""
     cmd = [ffmpeg_bin, "-hide_banner", "-nostdin", "-y", "-v", "error",
            "-progress", "pipe:1", "-nostats"] + args
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, bufsize=1)
+                                text=True, bufsize=1, cwd=str(cwd) if cwd else None)
     except OSError as exc:
         raise FFmpegError(MISSING_FFMPEG) from exc
     stderr_chunks: list[str] = []

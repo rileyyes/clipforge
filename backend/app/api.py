@@ -26,7 +26,7 @@ from . import analysis as analysis_svc
 from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
 from .transcription import available_transcriber
-from .schema import OutputSettings, Project, Timeline
+from .schema import SOUNDS, CaptionSettings, Effect, OutputSettings, Project, Timeline
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
 
@@ -66,6 +66,8 @@ class TimelineSave(BaseModel):
     base_edit_revision: int
     timeline: Timeline
     output: OutputSettings
+    effects: Optional[list[Effect]] = None
+    captions: Optional[CaptionSettings] = None
 
 
 class ExportRequest(BaseModel):
@@ -83,6 +85,7 @@ class Services:
         self.jobs.register("derive_media", self._derive_media)
         self.jobs.register("render", self._render)
         self.jobs.register("analyze", self._analyze)
+        self.jobs.register("transcribe", self._transcribe)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -133,6 +136,20 @@ class Services:
         asset = self.store.load(pid).media_by_id()[mid]
         transcriber = available_transcriber() if ctx.job.params.get("transcribe", True) else None
         return analysis_svc.analyze_media(ctx, self.settings, self.store.dir(pid), asset, transcriber)
+
+    def _transcribe(self, ctx: JobContext) -> dict:
+        pid = ctx.job.project_id
+        transcriber = available_transcriber()
+        if transcriber is None:
+            raise RuntimeError("No transcriber installed (pip install -r requirements-ai.txt)")
+        media = self.store.load(pid).media_by_id()
+        ids = [m for m in ctx.job.params.get("media_ids", []) if m in media and media[m].has_audio]
+        results = []
+        for i, mid in enumerate(ids, 1):
+            ctx.check_cancel()
+            results.append(analysis_svc.transcribe_media(ctx, self.settings, self.store.dir(pid), media[mid],
+                                                         transcriber))
+        return {"media": results}
 
     def _render(self, ctx: JobContext) -> dict:
         pid = ctx.job.project_id
@@ -226,6 +243,10 @@ def build_routes(svc: Services) -> list[Route]:
             data = cur.model_dump(mode="json")
             data["timeline"] = body.timeline.model_dump(mode="json")
             data["output"] = body.output.model_dump(mode="json")
+            if body.effects is not None:
+                data["effects"] = [e.model_dump(mode="json") for e in body.effects]
+            if body.captions is not None:
+                data["captions"] = body.captions.model_dump(mode="json")
             data["edit_revision"] = cur.edit_revision + 1
             try:
                 candidate = Project.model_validate(data)
@@ -238,8 +259,8 @@ def build_routes(svc: Services) -> list[Route]:
             # a background job updated media in between; merge once more
             latest = store.load(pid)
             d = latest.model_dump(mode="json")
-            d.update(timeline=data["timeline"], output=data["output"],
-                     edit_revision=latest.edit_revision + 1)
+            d.update(timeline=data["timeline"], output=data["output"], effects=data["effects"],
+                     captions=data["captions"], edit_revision=latest.edit_revision + 1)
             saved = store.save(Project.model_validate(d), expected_revision=latest.revision)
         return JSONResponse(project_payload(saved))
 
@@ -528,6 +549,134 @@ def build_routes(svc: Services) -> list[Route]:
             return err(422, f"Generated edit failed validation: {exc}")
         return JSONResponse({"project": project_payload(saved), "plan": result})
 
+    # -- phase 4: transcription, effects, captions ------------------------
+    from . import effects as fx
+
+    class TranscribeBody(BaseModel):
+        media_ids: Optional[list[str]] = None
+
+    class CensorBody(BaseModel):
+        sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute"] = "beep"
+        level: Literal["strong", "all"] = "strong"
+        custom: list[str] = Field(default_factory=list, max_length=200)
+        allow: list[str] = Field(default_factory=list, max_length=200)
+        padding: float = Field(default=0.06, ge=0, le=0.5)
+
+    class FunBody(BaseModel):
+        intensity: Literal["minimal", "balanced", "chaotic"] = "balanced"
+
+    async def fx_status(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        t = available_transcriber()
+        return JSONResponse({"transcriber": t.name if t else None,
+                             "transcript": fx.transcript_status(p, store.dir(pid)),
+                             "font": fx.find_font(), "sounds": list(SOUNDS),
+                             "install_help": "pip install -r requirements-ai.txt (free, runs locally)"})
+
+    async def start_transcribe(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, TranscribeBody)
+        p = load(pid)
+        if available_transcriber() is None:
+            return err(409, "Speech-to-text isn't installed. In the backend folder run: "
+                            "pip install -r requirements-ai.txt  — then restart ClipForge. (Free, runs on your PC.)")
+        ids = body.media_ids or fx.transcript_status(p, store.dir(pid))["missing"] or \
+            sorted({c.media_id for t in p.timeline.tracks if t.kind == "audio" for c in t.clips})
+        if not ids:
+            return err(400, "There's no audio on the timeline to transcribe.")
+        running = [j for j in svc.jobs.active_for_project(pid) if j.kind == "transcribe"]
+        if running:
+            return JSONResponse(running[0].model_dump(), status_code=202)
+        return JSONResponse(svc.jobs.submit("transcribe", pid, {"media_ids": ids}).model_dump(), status_code=202)
+
+    async def transcript(request: Request):
+        pid = pid_of(request)
+        return JSONResponse({"words": fx.edit_words(load(pid), store.dir(pid))[:20000]})
+
+    async def suggest_censor(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, CensorBody)
+        p = load(pid)
+        status = fx.transcript_status(p, store.dir(pid))
+        if status["transcribed"] == 0:
+            return err(409, "Transcribe the video first — swears are found from the transcript.")
+        effs = fx.suggest_censors(p, store.dir(pid), sound=body.sound, level=body.level, custom=body.custom,
+                                  allow=body.allow, padding=body.padding)
+        return JSONResponse({"effects": [e.model_dump(mode="json") for e in effs],
+                             "missing_transcripts": status["missing"]})
+
+    async def suggest_fun(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, FunBody)
+        p = load(pid)
+        if not any(analysis_svc.load_analysis(store.dir(pid), m.id) for m in p.media):
+            return err(409, "Analyse the recording first (AI Auto Editor → Analyse, or Transcribe) so reactions can be found.")
+        effs = fx.suggest_fun(p, store.dir(pid), body.intensity)
+        return JSONResponse({"effects": [e.model_dump(mode="json") for e in effs]})
+
+    async def captions_srt(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        chunks = fx.caption_chunks(p, store.dir(pid))
+        if not chunks:
+            return err(409, "No transcript words in the current edit — transcribe first.")
+        return Response(fx.captions_srt(chunks), media_type="application/x-subrip",
+                        headers={"content-disposition": f'attachment; filename="{p.id[:8]}-captions.srt"'})
+
+    async def upload_fx_image(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        data = b""
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > 15 * 1024 * 1024:
+                return err(413, "image is larger than 15 MB")
+        try:
+            from .thumb_store import AssetError, decode_image
+            import cv2
+            img = decode_image(data)
+        except ImportError:
+            return err(503, "Image support needs OpenCV: pip install -r requirements.txt")
+        except AssetError as exc:
+            return err(415, str(exc))
+        d = store.dir(pid) / "fx"
+        d.mkdir(exist_ok=True)
+        aid = new_id()
+        ok, buf = cv2.imencode(".png", img)
+        (d / f"{aid}.png").write_bytes(buf.tobytes())
+        return JSONResponse({"id": aid, "width": int(img.shape[1]), "height": int(img.shape[0])}, status_code=201)
+
+    async def list_fx_images(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        d = store.dir(pid) / "fx"
+        return JSONResponse({"images": [f.stem for f in sorted(d.glob("*.png"))] if d.exists() else []})
+
+    async def fx_image(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        try:
+            path = safe_join(store.dir(pid), "fx", validate_id(request.path_params["aid"]) + ".png")
+        except PathSecurityError:
+            return err(404, "not found")
+        if not path.is_file():
+            return err(404, "not found")
+        return FileResponse(path, media_type="image/png")
+
+    async def sound_preview(request: Request):
+        name = request.path_params["name"]
+        if name not in SOUNDS or name == "mute":
+            return err(404, "unknown sound")
+        import subprocess as _sp
+        n = int(48000 * (0.5 if name in ("beep", "honk", "airhorn") else 0.8))
+        proc = _sp.run([S.ffmpeg_bin, "-hide_banner", "-nostdin", "-v", "error",
+                        *fx.sound_input_args(name, n, 0.8, 48000), "-f", "wav", "pipe:1"],
+                       capture_output=True, timeout=20)
+        if proc.returncode != 0 or not proc.stdout:
+            return err(500, "could not generate sound")
+        return Response(proc.stdout, media_type="audio/wav", headers={"cache-control": "max-age=86400"})
+
     # -- jobs -------------------------------------------------------------
     async def list_jobs(request: Request):
         pid = request.query_params.get("project_id")
@@ -600,6 +749,16 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
+        Route(P + "/fx/status", fx_status),
+        Route(P + "/transcribe", start_transcribe, methods=["POST"]),
+        Route(P + "/transcript", transcript),
+        Route(P + "/fx/censor/suggest", suggest_censor, methods=["POST"]),
+        Route(P + "/fx/fun/suggest", suggest_fun, methods=["POST"]),
+        Route(P + "/captions.srt", captions_srt),
+        Route(P + "/fx/images", list_fx_images),
+        Route(P + "/fx/images", upload_fx_image, methods=["POST"]),
+        Route(P + "/fx/images/{aid}", fx_image),
+        Route("/api/sounds/{name}.wav", sound_preview),
         Route("/api/jobs", list_jobs),
         Route("/api/jobs/{jid}", get_job),
         Route("/api/jobs/{jid}/cancel", cancel_job, methods=["POST"]),

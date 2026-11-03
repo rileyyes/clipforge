@@ -47,16 +47,16 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Optional LLM reasoning provider (local or API, opt-in)
 - ⬜ Short-form (9:16) auto-reframe
 
-## Phase 4 — YouTube entertainment features ⬜ ← **next milestone**
+## Phase 4 — YouTube entertainment features ✅ core / 🟡 rest
 
-- ⬜ Captions: subtitle track, styling, dynamic/animated captions, SRT/VTT import/export, burn-in
-- ⬜ Profanity censoring at the audio level (beep / boing / record scratch / mute / custom), word-boundary padding, review warnings, matching subtitle censoring
-- ⬜ Punch-ins / zooms, text callouts, chapter cards
-- ⬜ Sound effects & music library with license metadata; ducking
-- ⬜ Transitions (crossfade, dip to black)
-- ⬜ Audio enhancement: loudness normalization (EBU R128 / −14 LUFS), noise reduction, dialogue EQ, fades
-- ⬜ Intensity presets: minimal / balanced (default) / highly edited
-- ⬜ Licensed/traceable visual inserts only
+- ✅ Transcription job (faster-whisper, free/local, optional install) — 🟡 not yet run on a real machine
+- ✅ Swear censoring at the audio level: strong/mild lists + custom & allow words, padding, review flags, 6 synthesised sounds, masked captions
+- ✅ Comedy edits: zoom punch-ins, shake, flash, pop-up text, 10 synthesised SFX, user images; auto-placement on reactions (minimal/balanced/chaotic)
+- ✅ Effects pinned to source time (follow trims/moves, vanish when cut); timeline markers; monitor preview; undo/redo; autosave
+- ✅ Animated burned-in captions (bold pop / word highlight / clean) + SRT export
+- ⬜ Loudness normalisation (−14 LUFS), noise reduction, music ducking
+- ⬜ Transitions (crossfade / dip to black)
+- ⬜ Background music library, animated GIF pop-ups (first frame only today), drag effects on the timeline
 
 ## Phase 4b — Thumbnail Maker 🟡 basic version (back burner)
 
@@ -70,6 +70,9 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 ## Phase 5 — AI + manual integration 🟡
 
 - ✅ Open AI rough cut in the timeline, edit, re-render (tested in browser E2E)
+- ⬜ Combined one-click "AI edit + effects + captions" flow
+
+<!-- next milestone: audio polish (loudness, ducking, music) + transitions -->
 - ⬜ Project history / versions and comparison
 
 ## Phase 6 — Advanced editor ⬜

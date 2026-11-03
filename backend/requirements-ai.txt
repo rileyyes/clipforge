@@ -1,0 +1,5 @@
+# Optional, free, runs on your computer: speech-to-text for swear censoring and captions.
+#   pip install -r requirements-ai.txt
+# First use downloads the Whisper model (~250 MB for "small") once.
+# Uses the CPU by default; set CLIPFORGE_WHISPER_DEVICE=cuda for an NVIDIA GPU (needs CUDA libraries).
+faster-whisper>=1.0

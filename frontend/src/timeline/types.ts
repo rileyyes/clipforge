@@ -68,6 +68,21 @@ export interface OutputSettings {
   fit_mode: "fit" | "fill";
 }
 
+export type EffectKind = "censor" | "zoom" | "shake" | "flash" | "text" | "sfx" | "image";
+export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn";
+
+export interface Effect {
+  id: string; kind: EffectKind; media_id: string; source_time: number; duration: number;
+  enabled: boolean; origin: "auto" | "user"; sound: Sound | null; volume: number;
+  text: string | null; word: string | null; context: string | null; confidence: number | null; needs_review: boolean;
+  scale: number; intensity: number; x: number; y: number; size: number; color: string; asset: string | null;
+}
+
+export interface CaptionSettings {
+  enabled: boolean; style: "bold_pop" | "clean" | "highlight"; position: "bottom" | "middle" | "top";
+  size: number; color: string; highlight: string; max_words: number; uppercase: boolean;
+}
+
 export interface Project {
   schema_version: number;
   id: string;
@@ -79,6 +94,8 @@ export interface Project {
   media: MediaAsset[];
   timeline: Timeline;
   output: OutputSettings;
+  effects: Effect[];
+  captions: CaptionSettings;
   missing_media?: string[];
 }
 

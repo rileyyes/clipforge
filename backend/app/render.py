@@ -30,6 +30,8 @@ from . import ffmpeg as ff
 from .config import Settings
 from .jobs import JobContext
 from .schema import Clip, MediaAsset, OutputSettings, Project, Track
+from . import effects as fx
+from .effects import mutes_for_clip
 
 AUDIO_RATE = 48000
 QUALITY_CRF = {"draft": 28, "standard": 21, "high": 17}
@@ -166,11 +168,18 @@ def gap_video_args(seg: Seg, out: OutputSettings, fps: Fraction, dest: Path) -> 
             "-video_track_timescale", "90000", str(dest)]
 
 
-def audio_segment_args(src: Path, seg: Seg, dest: Path) -> list[str]:
+def audio_segment_args(src: Path, seg: Seg, dest: Path,
+                       mutes: list[tuple[float, float]] = ()) -> list[str]:
+    """``mutes``: censor windows (seconds from the clip's in-point) where the original
+    speech is silenced — the bleep is mixed in separately, so nothing leaks through."""
     c = seg.clip
     assert c is not None
     span = c.source_out - c.source_in
-    chain = atempo_chain(c.speed) + [
+    mute = []
+    if mutes:
+        cond = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in mutes)
+        mute = ["asetpts=PTS-STARTPTS", f"volume=0:enable='{cond}'"]
+    chain = mute + atempo_chain(c.speed) + [
         f"aresample={AUDIO_RATE}",
         "aformat=sample_fmts=s16:channel_layouts=stereo",
         f"volume={c.volume:.4f}",
@@ -259,10 +268,49 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
             for i, s in enumerate(segs):
                 name = f"a{ti:02d}_{i:05d}.wav"
                 names.append(name)
-                args = (audio_segment_args(src_of(s.clip), s, work / name)
+                args = (audio_segment_args(src_of(s.clip), s, work / name, mutes_for_clip(project, s.clip))
                         if s.kind == "clip" else gap_audio_args(s, work / name))
                 # audio is ~10x cheaper than video; weight accordingly
                 jobs.append((args, s.count / AUDIO_RATE * 0.1, name))
+            audio_lists.append(names)
+
+        # sound-effect / bleep lanes (non-overlapping events per lane)
+        events = []
+        for e in project.effects:
+            if not e.enabled or e.kind not in ("censor", "sfx") or e.sound in (None, "mute"):
+                continue
+            wins = fx.map_to_timeline(project, e, "audio") or (fx.map_to_timeline(project, e, "video")
+                                                                 if e.kind == "sfx" else [])
+            for w in wins:
+                a = int(round(w.start * AUDIO_RATE))
+                n = int(round(w.end * AUDIO_RATE)) - a
+                if e.kind == "sfx":  # sound effects play their natural length
+                    n = int(e.duration * AUDIO_RATE)
+                n = min(n, plan.total_samples - a)
+                if n > 32:
+                    events.append((a, n, e.sound, e.volume))
+        lanes: list[list[tuple]] = []
+        for ev in sorted(events):
+            lane = next((l for l in lanes if l[-1][0] + l[-1][1] <= ev[0]), None)
+            if lane is None:
+                lanes.append([ev])
+            else:
+                lane.append(ev)
+        for li, lane in enumerate(lanes[:8]):
+            names, cursor = [], 0
+            for k, (a, n, sound, vol) in enumerate(lane):
+                if a > cursor:
+                    nm = f"fx{li}_{k:05d}g.wav"
+                    jobs.append((gap_audio_args(Seg("gap", a - cursor), work / nm), 0.01, nm))
+                    names.append(nm)
+                nm = f"fx{li}_{k:05d}.wav"
+                jobs.append((fx.sound_args(sound, n, vol, AUDIO_RATE, work / nm), 0.01, nm))
+                names.append(nm)
+                cursor = a + n
+            if plan.total_samples > cursor:
+                nm = f"fx{li}_end.wav"
+                jobs.append((gap_audio_args(Seg("gap", plan.total_samples - cursor), work / nm), 0.01, nm))
+                names.append(nm)
             audio_lists.append(names)
 
         total_work = sum(j[1] for j in jobs) or 1.0
@@ -300,6 +348,8 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
             g.append(f"[{last}][o{i}]overlay=x=(W-w)/2+({c.transform.x:.1f}):"
                      f"y=(H-h)/2+({c.transform.y:.1f}):eof_action=pass[v{i}]")
             last = f"v{i}"
+        n_inputs = 1 + len(overlay_names) + max(1, len(audio_lists))
+        last, more_inputs, ass_cwd = _video_effects(project, project_dir, plan, out, work, g, last, n_inputs)
         first_audio = 1 + len(overlay_names)
         n_audio = max(1, len(audio_lists))
         a_in = "".join(f"[{first_audio + k}:a]" for k in range(n_audio))
@@ -308,7 +358,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
 
         encoder = ff.pick_h264_encoder(settings.ffmpeg_bin, encoder_pref)
         partial = dest.with_name(dest.stem + ".partial.mp4")
-        args = inputs + [
+        args = inputs + more_inputs + [
             "-filter_complex", ";".join(g), "-map", f"[{last}]", "-map", "[aout]",
             *encoder_args(encoder, quality), "-pix_fmt", "yuv420p", "-r", str(plan.fps),
             "-frames:v", str(plan.total_frames),
@@ -317,7 +367,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         ]
         ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=plan.duration,
                       cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s,
-                      on_progress=lambda f: ctx.progress(seg_weight + final_weight * f))
+                      on_progress=lambda f: ctx.progress(seg_weight + final_weight * f), cwd=ass_cwd)
         partial.replace(dest)
 
         ctx.stage(2, stages, "Validating export")
@@ -331,6 +381,70 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out: OutputSettings,
+                   work: Path, g: list[str], last: str, n_inputs: int) -> tuple[str, list[str], Optional[Path]]:
+    """Append zoom/shake (zoompan), flashes, pop-up overlays and burned captions."""
+    W, H, F = out.width, out.height, plan.fps
+    D = plan.duration
+    wins = {k: [] for k in ("zoom", "shake", "flash", "text", "image")}
+    for e in project.effects:
+        if e.enabled and e.kind in wins:
+            for w in fx.map_to_timeline(project, e, "video"):
+                if w.start < D:
+                    wins[e.kind].append((w.start, min(w.end, D), e))
+    more: list[str] = []
+    # zoom + shake in one zoompan pass ('it' = timeline seconds)
+    if wins["zoom"] or wins["shake"]:
+        zt = [f"{e.scale - 1:.3f}*between(it,{a:.3f},{b:.3f})*min(1,(it-{a:.3f})/0.06)" for a, b, e in wins["zoom"]]
+        zt += [f"0.06*between(it,{a:.3f},{b:.3f})" for a, b, _ in wins["shake"]]
+        cx = "+".join(f"{e.x - 0.5:.3f}*between(it,{a:.3f},{b:.3f})" for a, b, e in wins["zoom"]) or "0"
+        cy = "+".join(f"{e.y - 0.5:.3f}*between(it,{a:.3f},{b:.3f})" for a, b, e in wins["zoom"]) or "0"
+        sx = "+".join(f"{0.025 * e.intensity:.4f}*iw*sin(it*61)*between(it,{a:.3f},{b:.3f})" for a, b, e in wins["shake"]) or "0"
+        sy = "+".join(f"{0.025 * e.intensity:.4f}*ih*cos(it*47)*between(it,{a:.3f},{b:.3f})" for a, b, e in wins["shake"]) or "0"
+        z = "1+" + "+".join(zt)
+        x = f"clip((iw-iw/zoom)*(0.5+({cx}))+({sx}),0,iw-iw/zoom)"
+        y = f"clip((ih-ih/zoom)*(0.5+({cy}))+({sy}),0,ih-ih/zoom)"
+        g.append(f"[{last}]zoompan=z='{z}':x='{x}':y='{y}':d=1:s={W}x{H}:fps={F},setsar=1[zp]")
+        last = "zp"
+    for i, (a, b, e) in enumerate(wins["flash"]):
+        g.append(f"[{last}]drawbox=x=0:y=0:w=iw:h=ih:color=white@0.8:t=fill:"
+                 f"enable='between(t,{a:.3f},{min(b, a + 0.18):.3f})'[fl{i}]")
+        last = f"fl{i}"
+    k = n_inputs
+    pops = sorted(wins["text"] + wins["image"], key=lambda x: x[0])
+    for i, (a, b, e) in enumerate(pops):
+        png = work / f"pop{i:04d}.png"
+        try:
+            if e.kind == "text":
+                pw, ph = fx.text_png(e.text or "", max(12, int(H * e.size)), e.color, png)
+            else:
+                src = project_dir / "fx" / f"{e.asset}.png"
+                if not src.exists():
+                    continue
+                pw, ph = fx.image_png(src, max(16, int(W * e.size * 2.5)), png)
+        except Exception:  # noqa: BLE001 - a broken pop-up must not kill the export
+            continue
+        dur = max(0.1, b - a)
+        px = int(min(max(0, W * e.x - pw / 2), max(0, W - pw)))
+        py = int(min(max(0, H * e.y - ph / 2), max(0, H - ph)))
+        more += ["-loop", "1", "-framerate", str(F), "-t", f"{dur:.3f}", "-i", str(png)]
+        g.append(f"[{k}:v]format=rgba,fade=t=in:st=0:d=0.08:alpha=1,"
+                 f"fade=t=out:st={max(0.0, dur - 0.12):.3f}:d=0.12:alpha=1,"
+                 f"setpts=PTS-STARTPTS+{a:.4f}/TB[p{i}]")
+        g.append(f"[{last}][p{i}]overlay=x={px}:y={py}:eof_action=pass[po{i}]")
+        last = f"po{i}"
+        k += 1
+    cwd = None
+    if project.captions.enabled:
+        chunks = fx.caption_chunks(project, project_dir)
+        if chunks:
+            family = fx.prepare_caption_font(work) or "Arial"
+            (work / "captions.ass").write_text(fx.captions_ass(project, chunks, family, H, W), encoding="utf-8")
+            g.append(f"[{last}]ass=captions.ass:fontsdir=.[cap]")
+            last, cwd = "cap", work
+    return last, more, cwd
 
 
 def validate_export(settings: Settings, path: Path, out: OutputSettings,

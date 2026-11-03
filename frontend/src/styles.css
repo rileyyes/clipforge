@@ -200,3 +200,5 @@ table.list tr:hover td { background: var(--panel); }
 pre.err { white-space: pre-wrap; font-size: 11px; background: var(--bg); padding: 8px; border-radius: 6px; max-height: 160px; overflow: auto; color: var(--muted); }
 a.btn { color: var(--text); text-decoration: none; }
 a.btn.primary { color: #fff; }
+.insp-grid > * { min-width: 0; }
+.insp-grid select, .insp-grid input[type=text], .insp-grid input[type=number] { width: 100%; }

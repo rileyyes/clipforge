@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -149,6 +149,73 @@ class OutputSettings(Strict):
         return self
 
 
+SOUNDS = ("beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh", "ding", "pop", "airhorn")
+COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
+
+
+class Effect(Strict):
+    """A creative effect pinned to a moment in a *source* media file.
+
+    Because it's anchored to the source (not the timeline), it follows the clip
+    when you trim, move or reorder, and simply doesn't render if that moment is cut.
+    """
+    id: str
+    kind: Literal["censor", "zoom", "shake", "flash", "text", "sfx", "image"]
+    media_id: str
+    source_time: float = Field(ge=0)
+    duration: float = Field(ge=0.03, le=30)
+    enabled: bool = True
+    origin: Literal["auto", "user"] = "user"
+    sound: Optional[Literal["beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh",
+                            "ding", "pop", "airhorn"]] = None
+    volume: float = Field(default=0.8, ge=0, le=2)
+    text: Optional[str] = Field(default=None, max_length=40)
+    word: Optional[str] = Field(default=None, max_length=60)
+    context: Optional[str] = Field(default=None, max_length=160)
+    confidence: Optional[float] = Field(default=None, ge=0, le=1)
+    needs_review: bool = False
+    scale: float = Field(default=1.25, ge=1.02, le=2.5)
+    intensity: float = Field(default=0.5, ge=0, le=1)
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.5, ge=0, le=1)
+    size: float = Field(default=0.12, gt=0.02, le=0.9)  # fraction of output height (text) / width (image)
+    color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+    asset: Optional[str] = None
+
+    @field_validator("id", "media_id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+    @field_validator("asset")
+    @classmethod
+    def _v_asset(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _check_id(v)
+
+    @model_validator(mode="after")
+    def _kind_fields(self) -> "Effect":
+        if self.kind in ("censor", "sfx") and self.sound is None:
+            raise ValueError(f"{self.kind} effects need a sound")
+        if self.kind == "sfx" and self.sound == "mute":
+            raise ValueError("a sound effect can't be 'mute'")
+        if self.kind == "text" and not (self.text or "").strip():
+            raise ValueError("text pop-ups need text")
+        if self.kind == "image" and not self.asset:
+            raise ValueError("image pop-ups need an image")
+        return self
+
+
+class CaptionSettings(Strict):
+    enabled: bool = False
+    style: Literal["bold_pop", "clean", "highlight"] = "bold_pop"
+    position: Literal["bottom", "middle", "top"] = "bottom"
+    size: float = Field(default=0.075, ge=0.03, le=0.2)  # fraction of output height
+    color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+    highlight: str = Field(default="#ffde00", pattern=COLOR_HEX)
+    max_words: int = Field(default=4, ge=1, le=12)
+    uppercase: bool = True
+
+
 class Project(Strict):
     schema_version: int = SCHEMA_VERSION
     id: str
@@ -160,6 +227,8 @@ class Project(Strict):
     media: list[MediaAsset] = Field(default_factory=list)
     timeline: Timeline = Field(default_factory=Timeline)
     output: OutputSettings = Field(default_factory=OutputSettings)
+    effects: list[Effect] = Field(default_factory=list, max_length=5000)
+    captions: CaptionSettings = Field(default_factory=CaptionSettings)
 
     @field_validator("id")
     @classmethod
@@ -178,6 +247,16 @@ class Project(Strict):
 def validate_timeline(project: Project) -> None:
     """Cross-object rules Pydantic field validation can't express."""
     media = project.media_by_id()
+    eids: set[str] = set()
+    for e in project.effects:
+        if e.id in eids:
+            raise ValueError("duplicate effect id")
+        eids.add(e.id)
+        m = media.get(e.media_id)
+        if m is None:
+            raise ValueError(f"effect {e.id} references unknown media")
+        if e.source_time > m.duration + 0.05:
+            raise ValueError(f"effect {e.id} is past the end of its media")
     seen_ids: set[str] = set()
     track_ids: set[str] = set()
     for track in project.timeline.tracks:
@@ -229,4 +308,6 @@ def migrate(data: dict) -> dict:
         raise ValueError(
             f"project was saved by a newer version (schema {v}); please update ClipForge"
         )
+    if v < 2:  # v1 -> v2: effects + captions added
+        data = {**data, "effects": [], "captions": {}, "schema_version": 2}
     return data

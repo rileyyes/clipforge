@@ -170,3 +170,20 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
     os.replace(tmp, out)
     return {"media_id": asset.id, "values": len(result["rms_db"]), "cuts": len(result["cuts"]),
             "words": len(result["words"]) if result["words"] is not None else None}
+
+
+def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset, transcriber) -> dict:
+    """Add word timestamps to a media file's analysis (running the signal analysis
+    first if it doesn't exist yet)."""
+    existing = load_analysis(project_dir, asset.id)
+    if existing is None:
+        return analyze_media(ctx, settings, project_dir, asset, transcriber)
+    src = project_dir / "media" / "original" / asset.stored_name
+    ctx.stage(1, 1, f"Transcribing speech ({transcriber.name})")
+    existing["words"] = transcriber.transcribe(src, ctx.progress, ctx.cancel_event)
+    existing["transcriber"] = transcriber.name
+    out = analysis_path(project_dir, asset.id)
+    tmp = out.with_suffix(".tmp")
+    tmp.write_text(json.dumps(existing))
+    os.replace(tmp, out)
+    return {"media_id": asset.id, "words": len(existing["words"])}

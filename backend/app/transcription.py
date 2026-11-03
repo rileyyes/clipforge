@@ -37,7 +37,9 @@ class FasterWhisperTranscriber:
     def _load(self):
         if self._model is None:
             from faster_whisper import WhisperModel  # type: ignore
-            self._model = WhisperModel(self.model_size, device="auto", compute_type="int8")
+            device = os.environ.get("CLIPFORGE_WHISPER_DEVICE", "cpu")
+            self._model = WhisperModel(self.model_size, device=device,
+                                       compute_type="int8" if device == "cpu" else "float16")
         return self._model
 
     def transcribe(self, src, on_progress, cancel):

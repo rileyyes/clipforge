@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import Inspector from "../components/Inspector";
+import EffectsPanel, { FX_COLOR } from "../components/EffectsPanel";
+import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
 import TimelineView from "../components/TimelineView";
@@ -10,7 +12,9 @@ import {
   addMedia, addTrack, deleteClips, duplicateClip, findClip, moveClip, removeTrack, splitAt, timelineDuration,
   toggleTrack, trimEdge, updateClip, type ClipPatch, type OpResult,
 } from "../timeline/ops";
-import type { MediaMap, Project, Timeline } from "../timeline/types";
+import type { CaptionSettings, Effect, MediaMap, Project, Timeline } from "../timeline/types";
+
+type Doc = { timeline: Timeline; effects: Effect[]; captions: CaptionSettings };
 import { go } from "../router";
 
 type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
@@ -18,6 +22,9 @@ type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
 export default function Editor({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [timeline, setTimeline] = useState<Timeline | null>(null);
+  const [effects, setEffects] = useState<Effect[]>([]);
+  const [captions, setCaptions] = useState<CaptionSettings | null>(null);
+  const [rightTab, setRightTab] = useState<"clip" | "fx">("clip");
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -28,12 +35,13 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [loadError, setLoadError] = useState("");
   const [tlHeight, setTlHeight] = useState(() => Math.round(window.innerHeight * 0.38));
   const [, force] = useState(0);
-  const history = useRef(new History<Timeline>());
+  const history = useRef(new History<Doc>());
+  const lastLabel = useRef<{ label: string; at: number }>({ label: "", at: 0 });
   const editRev = useRef(0);
   const dirty = useRef(false);
   const saving = useRef(false);
-  const latest = useRef<{ timeline: Timeline | null; project: Project | null }>({ timeline: null, project: null });
-  latest.current = { timeline, project };
+  const latest = useRef<{ timeline: Timeline | null; project: Project | null; effects: Effect[]; captions: CaptionSettings | null }>({ timeline: null, project: null, effects: [], captions: null });
+  latest.current = { timeline, project, effects, captions };
   const toast = useToast();
   const { jobs, refresh: refreshJobs } = useJobs(projectId);
 
@@ -46,7 +54,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   useEffect(() => {
     localStorage.setItem("cf:lastProject", projectId);
     api.project(projectId).then((p) => {
-      setProject(p); setTimeline(p.timeline); editRev.current = p.edit_revision;
+      setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); editRev.current = p.edit_revision;
       // zoom so the edit roughly fits
       const d = timelineDuration(p.timeline);
       if (d > 0) setPps(Math.max(2, Math.min(200, (window.innerWidth - 220) / (d * 1.15))));
@@ -62,11 +70,11 @@ export default function Editor({ projectId }: { projectId: string }) {
   // ---------------------------------------------------------------- autosave
   const flush = useCallback(async () => {
     if (saving.current || !dirty.current) return;
-    const { timeline: tl, project: p } = latest.current;
+    const { timeline: tl, project: p, effects: fxs, captions: caps } = latest.current;
     if (!tl || !p) return;
     saving.current = true; dirty.current = false; setSave("saving");
     try {
-      const saved = await api.saveTimeline(projectId, editRev.current, tl, p.output);
+      const saved = await api.saveTimeline(projectId, editRev.current, tl, p.output, fxs, caps ?? undefined);
       editRev.current = saved.edit_revision;
       setProject((cur) => (cur ? { ...cur, media: saved.media, revision: saved.revision, updated_at: saved.updated_at } : saved));
       setSave(dirty.current ? "pending" : "saved");
@@ -84,7 +92,7 @@ export default function Editor({ projectId }: { projectId: string }) {
     setSave("pending");
     const t = setTimeout(flush, 700);
     return () => clearTimeout(t);
-  }, [timeline]);
+  }, [timeline, effects, captions]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); } };
@@ -93,26 +101,39 @@ export default function Editor({ projectId }: { projectId: string }) {
   }, [flush]);
 
   // ---------------------------------------------------------------- editing
+  function snapshot(): Doc {
+    const l = latest.current;
+    return { timeline: l.timeline!, effects: l.effects, captions: l.captions! };
+  }
+
   const commit = useCallback((r: OpResult, label: string) => {
     if (r.error !== undefined) { toast(r.error, true); return false; }
     const cur = latest.current.timeline!;
     if (r.timeline === cur) return true;
-    history.current.push(cur, label);
+    history.current.push(snapshot(), label);
     dirty.current = true;
     setTimeline(r.timeline);
     if (r.created?.length && label !== "Split") setSelection([r.created[0]]);
     return true;
   }, [toast]);
 
+  const restore = (d: Doc) => { dirty.current = true; setTimeline(d.timeline); setEffects(d.effects); setCaptions(d.captions); };
   const undo = () => {
-    const e = history.current.undo(timeline!);
+    const e = history.current.undo(snapshot());
     if (!e) return;
-    dirty.current = true; setTimeline(e.state); toast(`Undo: ${e.label}`);
+    restore(e.state); toast(`Undo: ${e.label}`);
   };
   const redo = () => {
-    const e = history.current.redo(timeline!);
+    const e = history.current.redo(snapshot());
     if (!e) return;
-    dirty.current = true; setTimeline(e.state); toast(`Redo: ${e.label}`);
+    restore(e.state); toast(`Redo: ${e.label}`);
+  };
+  /** Effects/captions edits share the timeline's undo history; rapid slider moves coalesce. */
+  const setFx = (next: Effect[], caps: CaptionSettings, label: string) => {
+    const now = Date.now();
+    if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
+    lastLabel.current = { label, at: now };
+    dirty.current = true; setEffects(next); setCaptions(caps); force((n) => n + 1);
   };
 
   const seek = useCallback((t: number) => setPlayhead(Math.max(0, t)), []);
@@ -240,12 +261,23 @@ export default function Editor({ projectId }: { projectId: string }) {
         <MediaLibrary project={project} jobs={jobs} usedIds={usedIds}
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
-        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output}
+        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
-        <Inspector timeline={timeline} media={media} selection={selection}
-          onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label)}
-          onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}
-          onMove={(id, s) => commit(moveClip(timeline, id, s), "Move clip")} />
+        <div className="pane">
+          <div className="pane-head" style={{ gap: 4 }}>
+            <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
+            <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />Effects{effects.length ? ` (${effects.length})` : ""}</button>
+          </div>
+          {rightTab === "clip" ? (
+            <Inspector timeline={timeline} media={media} selection={selection}
+              onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label)}
+              onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}
+              onMove={(id, s) => commit(moveClip(timeline, id, s), "Move clip")} />
+          ) : captions && (
+            <EffectsPanel projectId={projectId} timeline={timeline} effects={effects} captions={captions} playhead={playhead}
+              jobs={jobs} onJobs={refreshJobs} setFx={setFx} seek={(t) => { setPlaying(false); seek(t); }} />
+          )}
+        </div>
       </div>
       <div className="splitter" onPointerDown={startResize} />
       <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection} setSelection={setSelection}
@@ -259,6 +291,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         }}
         onTrackToggle={(id, flag) => commit(toggleTrack(timeline, id, flag), `Toggle ${flag}`)}
         onRemoveTrack={(id) => commit(removeTrack(timeline, id), "Remove track")}
+        markers={effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null) as any}
         toolbar={toolbar} />
     </div>
   );

@@ -48,6 +48,20 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 
 `settings`: `target_mode` (`original`/`duration`/`percent`), `target_seconds`, `target_percent`, `style` (`balanced`/`excitement`/`information`/`reactions`/`action`/`humor`/`story`), `silence` (`off`/`conservative`/`balanced`/`aggressive`), `keep_opening`, `context`, `include[]`, `exclude[]` (beat ids).
 
+## Effects & captions (Phase 4)
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/projects/{pid}/fx/status` | transcriber installed?, transcript coverage of the edit, font |
+| POST | `/api/projects/{pid}/transcribe` | `{media_ids?}` → transcription job (409 + install help if not installed) |
+| GET | `/api/projects/{pid}/transcript` | words surviving in the final edit (timeline times) |
+| POST | `/api/projects/{pid}/fx/censor/suggest` | `{sound, level, custom[], allow[], padding}` → bleep effects (not saved) |
+| POST | `/api/projects/{pid}/fx/fun/suggest` | `{intensity}` → zoom/shake/text/sfx effects (not saved) |
+| GET | `/api/projects/{pid}/captions.srt` | SRT of the final edit (censored words masked) |
+| GET/POST | `/api/projects/{pid}/fx/images`, GET `/fx/images/{id}` | your pop-up images |
+| GET | `/api/sounds/{name}.wav` | preview a synthesised sound |
+
+Effects and caption settings are saved with `PUT /timeline` (`effects`, `captions`). Project schema v2. v1 projects migrate automatically.
+
 ## Thumbnail Maker (`/api/projects/{pid}/thumbnails`)
 | Method | Path | Description |
 |---|---|---|

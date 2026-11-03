@@ -74,6 +74,7 @@ export interface TimelineProps {
   onTrackToggle: (trackId: string, flag: "muted" | "hidden" | "locked") => void;
   onRemoveTrack: (trackId: string) => void;
   toolbar: React.ReactNode;
+  markers?: { t: number; color: string; title: string }[];
 }
 
 export default function TimelineView(p: TimelineProps) {
@@ -262,6 +263,10 @@ export default function TimelineView(p: TimelineProps) {
         <div className="tl-scroll" ref={scrollRef}>
           <div className="tl-canvas" style={{ width: contentW }}>
             <div className="ruler" onPointerDown={scrub} style={{ position: "relative" }}>
+              {(p.markers ?? []).filter((m) => m.t * pps >= view.left - 10 && m.t * pps <= view.left + view.width + 10).map((m, i) => (
+                <div key={"m" + i} title={m.title} style={{ position: "absolute", left: m.t * pps - 4, bottom: 0, width: 8, height: 8,
+                  borderRadius: 2, background: m.color, transform: "rotate(45deg)", zIndex: 1, pointerEvents: "auto" }} />
+              ))}
               {ticks.out.map(({ t, major }) => (
                 <div key={t.toFixed(4)} className={"tick" + (major ? "" : " minor")} style={{ left: t * pps }}>
                   {major && <span>{fmtTime(t, ticks.step < 1)}</span>}

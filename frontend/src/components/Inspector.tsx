@@ -30,8 +30,7 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
   const ref = selection.length === 1 ? findClip(timeline, selection[0]) : null;
   if (!ref) {
     return (
-      <div className="pane">
-        <div className="pane-head">Inspector</div>
+      <div style={{ display: "contents" }}>
         <div className="pane-body muted" style={{ fontSize: 12 }}>
           {selection.length > 1 ? `${selection.length} clips selected.` : "Select a clip to see and edit its properties."}
           <div style={{ marginTop: 18, display: "grid", gap: 6 }}>
@@ -49,9 +48,9 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
   const { clip, track } = ref;
   const m = media[clip.media_id];
   return (
-    <div className="pane">
-      <div className="pane-head">Clip <span className={"chip " + (track.kind === "video" ? "run" : "ok")}>{track.name}</span></div>
+    <div style={{ display: "contents" }}>
       <div className="pane-body">
+        <div className="row" style={{ marginBottom: 6 }}><strong style={{ fontSize: 12 }}>Clip</strong><span className={"chip " + (track.kind === "video" ? "run" : "ok")}>{track.name}</span></div>
         <div className="insp-section">
           <div className="ellipsis" style={{ fontWeight: 600 }} title={m?.original_name}>{m?.original_name ?? "missing media"}</div>
           <dl className="kv">

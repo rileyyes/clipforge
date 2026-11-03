@@ -1,4 +1,4 @@
-import type { MediaAsset, OutputSettings, Project, Timeline } from "./timeline/types";
+import type { CaptionSettings, Effect, MediaAsset, OutputSettings, Project, Timeline } from "./timeline/types";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public data?: any) { super(message); }
@@ -50,8 +50,8 @@ export const api = {
   projects: () => call<{ projects: ProjectSummary[] }>("GET", "/api/projects").then((r) => r.projects),
   createProject: (name: string) => call<Project>("POST", "/api/projects", { name }),
   project: (id: string) => call<Project>("GET", `/api/projects/${id}`),
-  saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings) =>
-    call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output }),
+  saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings, effects?: Effect[], captions?: CaptionSettings) =>
+    call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output, effects, captions }),
   rename: (id: string, name: string) => call<Project>("POST", `/api/projects/${id}/rename`, { name }),
   duplicate: (id: string) => call<Project>("POST", `/api/projects/${id}/duplicate`),
   deleteProject: (id: string) => call<void>("DELETE", `/api/projects/${id}`),

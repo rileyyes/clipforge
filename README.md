@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–3 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–4 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -14,6 +14,12 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - Every moment gets a score **and the reasons**. Keep or drop any moment, preview it, or play the whole rough cut.
 - **Send to Manual Editor** turns the edit into normal linked clips. The previous timeline is backed up, and the source file is never touched.
 - Optional transcription: `pip install faster-whisper` adds word timestamps (experimental, see ROADMAP).
+
+### Effects: bleeps, comedy edits & captions (free & local)
+- **Swear bleeps** from the transcript, with beep, boing, scratch, honk, quack or mute. The word is removed from the audio, not just covered. Every bleep can be reviewed.
+- **Comedy edits** auto-placed on reactions (zooms, shakes, pop-up text, sound effects) or added at the playhead, plus your own images.
+- **Animated captions** (bold pop / word highlight / clean) burned in, plus `.srt` export. Censored words are masked.
+- Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
 
 ### Thumbnail Maker (basic, free & local)
 - Pulls representative frames from your **final edit** (trims, order, overlays applied), proposes 3 distinct concepts with headline ideas, and builds an editable layered design.
@@ -72,12 +78,13 @@ Tests (see [TESTING.md](TESTING.md)):
 
 ```bash
 scripts/verify_all.sh                   # everything below, in one go
-cd backend && python -m pytest          # 112 backend tests (unit, integration, auto-edit, thumbnails)
+cd backend && python -m pytest          # 161 backend tests (unit, integration, auto-edit, effects, thumbnails)
 cd frontend && npm test                 # timeline engine: 20 unit tests + randomized fuzz
 cd frontend && npm run typecheck        # strict TS check of the editing engine
 python scripts/e2e_browser.py           # browser E2E: manual editor (needs Playwright)
 python scripts/e2e_autoedit.py          # browser E2E: AI auto editor
 python scripts/e2e_thumbnails.py        # browser E2E: thumbnail maker
+python scripts/e2e_effects.py           # browser E2E: bleeps, comedy edits, captions
 ```
 
 ## Configuration
@@ -96,6 +103,8 @@ CLIPFORGE_FFPROBE=/opt/ffmpeg/bin/ffprobe
 CLIPFORGE_TRANSCRIBER=auto                 # 'off' to skip transcription even if installed
 CLIPFORGE_WHISPER_MODEL=small              # faster-whisper model size
 CLIPFORGE_SDWEBUI_URL=http://127.0.0.1:7860 # optional free local AI thumbnail art
+CLIPFORGE_WHISPER_DEVICE=cpu               # 'cuda' to transcribe on an NVIDIA GPU
+CLIPFORGE_FONT=C:\\Windows\\Fonts\\impact.ttf  # font for pop-ups and captions
 ```
 
 ## Keyboard shortcuts (editor)
@@ -129,6 +138,7 @@ Drag media from the library onto a track, or double-click it to append.
 - [ROADMAP.md](ROADMAP.md) – phases and the **feature status checklist**
 - [SECURITY.md](SECURITY.md) – threat model and controls
 - [TESTING.md](TESTING.md) – test strategy, fixtures, how to run
+- [docs/EFFECTS.md](docs/EFFECTS.md) – bleeps, comedy edits, captions, transcriber setup
 - [docs/THUMBNAILS.md](docs/THUMBNAILS.md) – Thumbnail Maker, free local AI setup
 - [docs/API.md](docs/API.md) – REST API reference
 - [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) – dependency, license and cost inventory
