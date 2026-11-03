@@ -18,12 +18,15 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Backend unit (`tests/test_unit.py`) | 29 | ✅ |
 | Backend integration (`tests/test_api.py`) | 17 | ✅ |
 | Auto Editor (`tests/test_autoedit.py`) | 30 (incl. 400 random recordings) | ✅ |
+| Thumbnail Maker (`tests/test_thumbnails.py`) | 36 (incl. provider contract tests vs fake servers) | ✅ |
+| Frontend thumbnail model (`thumbs/model.test.ts`) | 5 | ✅ |
 | Frontend engine unit (`ops.test.ts`) | 20 | ✅ |
 | Frontend engine fuzz (`fuzz.test.ts`) | 10 × 1,500 random edits by default; also run at **1,000 × 1,500 (1.5 M edits)** | ✅ |
 | Engine → backend cross-check (`scripts/crosscheck.py`) | 1,000 random timelines / 79,920 clips accepted | ✅ |
 | Renderer stress (`scripts/render_stress.py 3`) | 3 fuzz timelines, 112–138 clips, 10–29 min | ✅ all validated |
 | Browser E2E: manual editor | full flow | ✅ no console errors |
 | Browser E2E: AI auto editor | full flow | ✅ no console errors |
+| Browser E2E: thumbnail maker | analyse → concepts → studio → version → export → reopen | ✅ no console errors |
 
 Run everything: `scripts/verify_all.sh`.
 
@@ -42,6 +45,8 @@ Run everything: `scripts/verify_all.sh`.
 | browser E2E | Split ignored the playhead when a newly-added clip was selected |
 | integration | MKV files weren't given a browser preview proxy |
 | screenshots | Ruler label drift, duration rounding mismatch, wrapping badges |
+| test runner | Frontend tests were running stale compiled copies after adding a second test folder |
+| screenshots | Footage-built thumbnails were wrongly labelled as AI artwork |
 
 ## What's covered
 

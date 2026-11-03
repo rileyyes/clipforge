@@ -15,6 +15,11 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Send to Manual Editor** turns the edit into normal linked clips. The previous timeline is backed up, and the source file is never touched.
 - Optional transcription: `pip install faster-whisper` adds word timestamps (experimental, see ROADMAP).
 
+### Thumbnail Maker (basic, free & local)
+- Pulls representative frames from your **final edit** (trims, order, overlays applied), proposes 3 distinct concepts with headline ideas, and builds an editable layered design.
+- Studio: text, shapes, image adjustments, layers, undo/redo, small-size previews, plain-language refinements, saved versions.
+- Exports a validated 1280×720 JPEG/PNG (≤ 2 MB). Optional free AI artwork with local Stable Diffusion. See [docs/THUMBNAILS.md](docs/THUMBNAILS.md).
+
 ### Manual editor & export
 
 - **Import** video/audio (MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A, FLAC, OGG) with streaming upload and real progress. Files are validated with FFprobe, checksummed, de-duplicated and stored read-only.
@@ -67,11 +72,12 @@ Tests (see [TESTING.md](TESTING.md)):
 
 ```bash
 scripts/verify_all.sh                   # everything below, in one go
-cd backend && python -m pytest          # 76 backend tests (unit, integration, auto-edit)
+cd backend && python -m pytest          # 112 backend tests (unit, integration, auto-edit, thumbnails)
 cd frontend && npm test                 # timeline engine: 20 unit tests + randomized fuzz
 cd frontend && npm run typecheck        # strict TS check of the editing engine
 python scripts/e2e_browser.py           # browser E2E: manual editor (needs Playwright)
 python scripts/e2e_autoedit.py          # browser E2E: AI auto editor
+python scripts/e2e_thumbnails.py        # browser E2E: thumbnail maker
 ```
 
 ## Configuration
@@ -89,6 +95,7 @@ CLIPFORGE_FFMPEG=/opt/ffmpeg/bin/ffmpeg     # optional custom binaries
 CLIPFORGE_FFPROBE=/opt/ffmpeg/bin/ffprobe
 CLIPFORGE_TRANSCRIBER=auto                 # 'off' to skip transcription even if installed
 CLIPFORGE_WHISPER_MODEL=small              # faster-whisper model size
+CLIPFORGE_SDWEBUI_URL=http://127.0.0.1:7860 # optional free local AI thumbnail art
 ```
 
 ## Keyboard shortcuts (editor)
@@ -122,5 +129,6 @@ Drag media from the library onto a track, or double-click it to append.
 - [ROADMAP.md](ROADMAP.md) – phases and the **feature status checklist**
 - [SECURITY.md](SECURITY.md) – threat model and controls
 - [TESTING.md](TESTING.md) – test strategy, fixtures, how to run
+- [docs/THUMBNAILS.md](docs/THUMBNAILS.md) – Thumbnail Maker, free local AI setup
 - [docs/API.md](docs/API.md) – REST API reference
 - [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) – dependency, license and cost inventory

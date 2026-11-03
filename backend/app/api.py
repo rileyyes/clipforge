@@ -83,6 +83,8 @@ class Services:
         self.jobs.register("derive_media", self._derive_media)
         self.jobs.register("render", self._render)
         self.jobs.register("analyze", self._analyze)
+        from .thumb_api import register_thumb_jobs
+        register_thumb_jobs(self)
 
     # -- job handlers -----------------------------------------------------
     def _derive_media(self, ctx: JobContext) -> dict:
@@ -550,8 +552,11 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, str(exc))
         return JSONResponse(j.model_dump(), status_code=202)
 
+    from .thumb_api import build_thumb_routes
+    thumb_routes = build_thumb_routes(svc, load, pid_of, body_model, err)
+
     P = "/api/projects/{pid}"
-    return [
+    return thumb_routes + [
         Route("/api/health", health),
         Route("/api/system", system),
         Route("/api/maintenance/cleanup", cleanup, methods=["POST"]),

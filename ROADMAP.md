@@ -58,6 +58,15 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Intensity presets: minimal / balanced (default) / highly edited
 - ⬜ Licensed/traceable visual inserts only
 
+## Phase 4b — Thumbnail Maker 🟡 basic version (back burner)
+
+- ✅ Timeline-aware frames from the final edit (cached), honest analysis summary with unknowns
+- ✅ Built-in creative director: 3 distinct concepts, grounded headline ideas, workflow recommendation, asks for context when needed
+- ✅ Layered studio (text, shapes, image adjustments, layers, undo/redo, small previews), rule-based refinements, versions, staleness warning
+- ✅ Validated 1280×720 JPEG/PNG export (YouTube rules), saved to project
+- 🟡 Free local Stable Diffusion + optional OpenAI Images + Ollama/OpenAI text model: integrated, contract-tested against fake servers, **not run against real services**
+- ⬜ Design scoring/review, text-model refinement in UI, image upload UI, crop handles, version compare, subject cut-outs
+
 ## Phase 5 — AI + manual integration 🟡
 
 - ✅ Open AI rough cut in the timeline, edit, re-render (tested in browser E2E)

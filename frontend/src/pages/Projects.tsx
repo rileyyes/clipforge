@@ -3,7 +3,7 @@ import { api, fmtTime, thumbUrl, type ProjectSummary } from "../api";
 import { Icon, PromptModal, useToast } from "../components/ui";
 import { go } from "../router";
 
-export default function Projects({ pickFor }: { pickFor?: "editor" | "export" }) {
+export default function Projects({ pickFor }: { pickFor?: "editor" | "export" | "thumbs" }) {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [renaming, setRenaming] = useState<ProjectSummary | null>(null);
   const [creating, setCreating] = useState(false);
@@ -20,7 +20,7 @@ export default function Projects({ pickFor }: { pickFor?: "editor" | "export" })
     <div className="page">
       <div className="row" style={{ marginBottom: 18 }}>
         <div className="grow">
-          <h1>{pickFor === "editor" ? "Open in Manual Editor" : pickFor === "export" ? "Choose a project to export" : "Projects"}</h1>
+          <h1>{pickFor === "editor" ? "Open in Manual Editor" : pickFor === "export" ? "Choose a project to export" : pickFor === "thumbs" ? "Choose a project for its thumbnail" : "Projects"}</h1>
           <div className="muted">Projects are saved automatically as you edit.</div>
         </div>
         <button className="btn primary" onClick={() => setCreating(true)}><Icon name="plus" />New project</button>

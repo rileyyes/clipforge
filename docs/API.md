@@ -48,6 +48,22 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 
 `settings`: `target_mode` (`original`/`duration`/`percent`), `target_seconds`, `target_percent`, `style` (`balanced`/`excitement`/`information`/`reactions`/`action`/`humor`/`story`), `silence` (`off`/`conservative`/`balanced`/`aggressive`), `keep_opening`, `context`, `include[]`, `exclude[]` (beat ids).
 
+## Thumbnail Maker (`/api/projects/{pid}/thumbnails`)
+| Method | Path | Description |
+|---|---|---|
+| GET | `` | providers (no keys), context, cached analysis for the current edit, saved designs |
+| POST | `/analyze` | job: frames + summary of the final edit |
+| POST | `/concepts` | `{context, seed}` → 3 concepts + headlines, or `{needs_context}` |
+| POST | `/generate` | `{concept, use_references, consent_external}` → artwork job. 409 no provider, 428 consent needed |
+| POST | `/designs` | `{concept, workflow, art_asset?}` → new design |
+| GET/PUT/DELETE | `/designs/{did}` | draft (+ staleness) / autosave draft / delete |
+| POST | `/designs/{did}/versions`, `/versions/{vid}/restore`; PUT `/versions/{vid}` | immutable versions, restore into draft, rename |
+| POST | `/designs/{did}/duplicate` | copy |
+| POST | `/designs/{did}/export?format=jpg\|png[&version=]` | raw image body → validated + saved (422 with report if invalid) |
+| POST | `/refine` | `{design, instruction}` → updated design, notes, optional regeneration prompt |
+| POST | `/frame?t=` · `/assets` | frame at a timeline time · upload an image |
+| GET | `/assets/{aid}` · `/exports` · `/exports/{name}` | files |
+
 ## Jobs
 | Method | Path | Description |
 |---|---|---|

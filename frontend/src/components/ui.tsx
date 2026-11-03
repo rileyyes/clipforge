@@ -37,6 +37,7 @@ const P: Record<string, string> = {
   check: "M5 12l5 5L20 7",
   warn: "M12 3 2 20h20zM12 10v4M12 17v.5",
   music: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+  image: "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9a1.5 1.5 0 1 0 0-.01",
   fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
 };
 
@@ -120,7 +121,7 @@ export function useJobs(projectId?: string, enabled = true) {
   return { jobs, refresh };
 }
 
-const KIND_LABEL: Record<string, string> = { derive_media: "Prepare media", render: "Export", analyze: "Analyse recording" };
+const KIND_LABEL: Record<string, string> = { derive_media: "Prepare media", render: "Export", analyze: "Analyse recording", thumb_analyze: "Analyse edit for thumbnail", thumb_generate: "Generate artwork" };
 
 export function statusChip(s: Job["status"]) {
   const cls = s === "succeeded" ? "ok" : s === "running" || s === "queued" ? "run" : s === "cancelled" ? "" : "err";
