@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -69,20 +69,66 @@ class Transform(Strict):
     x: float = Field(default=0, ge=-10000, le=10000)  # px offset from centre
     y: float = Field(default=0, ge=-10000, le=10000)
     scale: float = Field(default=1, gt=0.01, le=10)
-    rotation: float = 0
+    rotation: float = Field(default=0, ge=-3600, le=3600)  # degrees, clockwise
+    opacity: float = Field(default=1, ge=0, le=1)
 
-    @field_validator("rotation")
-    @classmethod
-    def _rotation_unsupported(cls, v: float) -> float:
-        if abs(v) > EPS:
-            raise ValueError("rotation is not supported yet")
-        return 0.0
+
+class Crop(Strict):
+    """Hide the picture's edges (fractions of its width/height). The rest stays put."""
+    left: float = Field(default=0, ge=0, le=0.9)
+    right: float = Field(default=0, ge=0, le=0.9)
+    top: float = Field(default=0, ge=0, le=0.9)
+    bottom: float = Field(default=0, ge=0, le=0.9)
+
+    @model_validator(mode="after")
+    def _keep_something(self) -> "Crop":
+        if self.left + self.right > 0.9 + EPS or self.top + self.bottom > 0.9 + EPS:
+            raise ValueError("crop must leave at least 10% of the picture")
+        return self
+
+    @property
+    def active(self) -> bool:
+        return max(self.left, self.right, self.top, self.bottom) > 1e-4
+
+
+LOOKS = ("none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir")
+
+
+class ColorAdjust(Strict):
+    brightness: float = Field(default=0, ge=-1, le=1)
+    contrast: float = Field(default=1, ge=0, le=3)
+    saturation: float = Field(default=1, ge=0, le=3)
+    gamma: float = Field(default=1, ge=0.1, le=4)
+    temperature: float = Field(default=0, ge=-1, le=1)  # -1 cool … +1 warm
+    look: Literal["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir"] = "none"
+
+    @property
+    def active(self) -> bool:
+        return self != ColorAdjust()
+
+
+KF_LIMITS = {"scale": (0.02, 10), "x": (-10000, 10000), "y": (-10000, 10000),
+             "rotation": (-3600, 3600), "opacity": (0, 1), "volume": (0, 4)}
+VIDEO_KF = ("scale", "x", "y", "rotation", "opacity")
+MAX_KEYFRAMES = 64
+
+
+class Keyframe(Strict):
+    """A value at a moment of the SOURCE media (seconds), so trims, splits and speed
+    changes keep animations attached to the same picture/sound. ``ease`` shapes the
+    move to the next keyframe."""
+    t: float = Field(ge=0, le=86400)
+    v: float
+    ease: Literal["linear", "ease", "hold"] = "linear"
 
 
 class Transition(Strict):
     """Transition INTO a clip from the clip right before it on the same track.
     If nothing is directly before it, it renders as a fade up from black."""
-    kind: Literal["crossfade", "dip_black"] = "crossfade"
+    kind: Literal["crossfade", "dip_black", "dip_white", "wipe_left", "wipe_right", "wipe_up", "wipe_down",
+                  "slide_left", "slide_right", "slide_up", "slide_down", "smooth_left", "smooth_right",
+                  "circle_open", "circle_close", "radial", "zoom_in", "pixelize", "blur",
+                  "cover_left", "reveal_right"] = "crossfade"
     duration: float = Field(default=0.5, ge=0.1, le=3.0)
 
 
@@ -95,6 +141,9 @@ class Clip(Strict):
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     volume: float = Field(default=1.0, ge=0.0, le=4.0)
     transform: Transform = Field(default_factory=Transform)
+    crop: Crop = Field(default_factory=Crop)
+    color: ColorAdjust = Field(default_factory=ColorAdjust)
+    keyframes: dict[str, list[Keyframe]] = Field(default_factory=dict)
     link_id: Optional[str] = None
     label: Optional[str] = Field(default=None, max_length=200)
     transition_in: Optional[Transition] = None
@@ -105,6 +154,27 @@ class Clip(Strict):
     @classmethod
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
+
+    @field_validator("keyframes")
+    @classmethod
+    def _v_keyframes(cls, v: dict) -> dict:
+        out = {}
+        for prop, kfs in v.items():
+            if prop not in KF_LIMITS:
+                raise ValueError(f"'{prop}' can't be keyframed")
+            if not kfs:
+                continue
+            if len(kfs) > MAX_KEYFRAMES:
+                raise ValueError(f"at most {MAX_KEYFRAMES} keyframes per property")
+            lo, hi = KF_LIMITS[prop]
+            for a, b in zip(kfs, kfs[1:]):
+                if b.t - a.t < 0.001:
+                    raise ValueError("keyframes must be in time order, at least 1 ms apart")
+            for k in kfs:
+                if not lo <= k.v <= hi:
+                    raise ValueError(f"{prop} keyframe value {k.v} is outside {lo}…{hi}")
+            out[prop] = kfs
+        return out
 
     @model_validator(mode="after")
     def _range(self) -> "Clip":
@@ -306,6 +376,11 @@ def validate_timeline(project: Project) -> None:
                 raise ValueError("media without audio cannot be placed on an audio track")
             if clip.start < prev_end - EPS:
                 raise ValueError(f"clips overlap on track {track.name}")
+            if clip.keyframes:
+                allowed = VIDEO_KF if track.kind == "video" else ("volume",)
+                bad = set(clip.keyframes) - set(allowed)
+                if bad:
+                    raise ValueError(f"{', '.join(sorted(bad))} can't be keyframed on {track.kind} clips")
             if clip.transition_in is not None:
                 if track.kind != "video":
                     raise ValueError("transitions go on video clips (linked audio follows)")
@@ -345,4 +420,6 @@ def migrate(data: dict) -> dict:
     if v < 3:  # v2 -> v3: audio settings, track roles, transitions/fades (all defaulted)
         # existing projects keep their sound exactly: no automatic normalisation or ducking
         data = {**data, "audio": {"normalize": False, "ducking": "off"}, "schema_version": 3}
+    if data.get("schema_version", 3) < 4:  # v3 -> v4: crop, colour, rotation, opacity, keyframes (defaulted)
+        data = {**data, "schema_version": 4}
     return data

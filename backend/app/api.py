@@ -27,6 +27,7 @@ from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_
 from .render import render_project, validate_export
 from .transcription import available_transcriber
 from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline
+from . import rcache
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
@@ -105,7 +106,7 @@ class Services:
         pdir = self.store.dir(pid)
         src = pdir / "media" / "original" / asset.stored_name
         updates: dict[str, Any] = {}
-        want_proxy = media_svc.needs_proxy(asset)
+        want_proxy = media_svc.needs_proxy(asset) or bool(ctx.job.params.get("proxy"))
         count = 2 + int(want_proxy)
         if asset.has_video:
             ctx.stage(1, count, "Generating thumbnail")
@@ -198,6 +199,8 @@ def build_routes(svc: Services) -> list[Route]:
             "workspace_quota_bytes": S.max_workspace_bytes,
             "disk_free_bytes": du.free,
             "disk_total_bytes": du.total,
+            "render_cache_bytes": rcache.size_of(S.cache_dir),
+            "render_cache_limit_bytes": S.render_cache_bytes,
             "max_upload_bytes": S.max_upload_bytes,
             "cpu_count": os.cpu_count(),
             "allowed_extensions": sorted(media_svc.SAFE_INPUT_FORMATS.split(",")),
@@ -220,6 +223,8 @@ def build_routes(svc: Services) -> list[Route]:
         for t in S.tmp_dir.iterdir():
             freed += t.stat().st_size if t.is_file() else dir_size(t)
             shutil.rmtree(t, ignore_errors=True) if t.is_dir() else t.unlink(missing_ok=True)
+        if not any(svc.jobs.active_for_project(p["id"]) for p in store.list() if not p.get("error")):
+            freed += rcache.clear(S.cache_dir)  # never pull files from under a running export
         return JSONResponse({"freed_bytes": freed})
 
     # -- projects ---------------------------------------------------------
@@ -353,6 +358,9 @@ def build_routes(svc: Services) -> list[Route]:
         return JSONResponse({"media": asset.model_dump(mode="json"), "job_id": job.id,
                              "duplicate": False}, status_code=201)
 
+    class PreviewBody(BaseModel):
+        proxy: bool = False
+
     def media_asset(request: Request):
         pid = pid_of(request)
         try:
@@ -368,11 +376,24 @@ def build_routes(svc: Services) -> list[Route]:
     async def media_stream(request: Request):
         pid, asset = media_asset(request)
         d = store.dir(pid) / "media"
-        path = (d / "proxy" / asset.proxy) if asset.proxy else (d / "original" / asset.stored_name)
+        # the proxy is used when the browser can't play the original, or when the
+        # editor asks for lightweight previews (?proxy=1)
+        use_proxy = bool(asset.proxy) and (media_svc.needs_proxy(asset) or request.query_params.get("proxy") == "1")
+        path = (d / "proxy" / asset.proxy) if use_proxy else (d / "original" / asset.stored_name)
         if not path.exists():
             return err(404, "media file is missing on disk")
-        mt = "video/mp4" if asset.proxy else None
-        return FileResponse(path, media_type=mt)
+        return FileResponse(path, media_type="video/mp4" if use_proxy else None)
+
+    async def media_previews(request: Request):
+        """(Re)build previews: thumbnail, detailed waveform and, if asked, a light proxy."""
+        pid, asset = media_asset(request)
+        body = await body_model(request, PreviewBody)
+        active = [j for j in svc.jobs.active_for_project(pid)
+                  if j.kind == "derive_media" and j.params.get("media_id") == asset.id]
+        if active:
+            return JSONResponse(active[0].model_dump(), status_code=202)
+        job = svc.jobs.submit("derive_media", pid, {"media_id": asset.id, "proxy": body.proxy and asset.has_video})
+        return JSONResponse(job.model_dump(), status_code=202)
 
     async def media_thumb(request: Request):
         pid, asset = media_asset(request)
@@ -891,6 +912,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/media", upload_media, methods=["POST"]),
         Route(P + "/media/{mid}", delete_media, methods=["DELETE"]),
         Route(P + "/media/{mid}/stream", media_stream),
+        Route(P + "/media/{mid}/previews", media_previews, methods=["POST"]),
         Route(P + "/media/{mid}/thumbnail", media_thumb),
         Route(P + "/media/{mid}/waveform", media_waveform),
         Route(P + "/exports", list_exports),

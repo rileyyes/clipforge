@@ -10,5 +10,5 @@
     "jsx": "react-jsx",
     "skipLibCheck": true
   },
-  "include": ["src/timeline/ops.ts", "src/timeline/history.ts", "src/timeline/types.ts", "src/thumbs/model.ts"]
+  "include": ["src/timeline/ops.ts", "src/timeline/keyframes.ts", "src/timeline/history.ts", "src/timeline/types.ts", "src/thumbs/model.ts"]
 }

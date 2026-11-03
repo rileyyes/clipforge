@@ -24,9 +24,11 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 | Method | Path | Description |
 |---|---|---|
 | POST | `/api/projects/{pid}/media?filename=x.mp4` | raw file body (streamed). → `201 {media, job_id}` or `200 {media, duplicate: true}`. 413 too large, 415 unsupported or unreadable. |
-| GET | `/api/projects/{pid}/media/{mid}/stream` | proxy if present else original. Supports HTTP Range. |
+| GET | `/api/projects/{pid}/media/{mid}/stream` | the original, or its proxy when the browser can't play the original. Supports HTTP Range. |
+| POST | `/api/projects/{pid}/media/{mid}/previews` | `{proxy}`: rebuilds the thumbnail and detailed waveform, plus a 540p proxy if asked → job (202) |
+| GET | `/api/projects/{pid}/media/{mid}/stream?proxy=1` | streams the proxy instead of the original when one exists |
 | GET | `/api/projects/{pid}/media/{mid}/thumbnail` | JPEG |
-| GET | `/api/projects/{pid}/media/{mid}/waveform` | `{peaks_per_second: 20, peaks: [0..255]}` |
+| GET | `/api/projects/{pid}/media/{mid}/waveform` | `{peaks_per_second: 100, peaks: [0..255]}` (20 for media imported before Phase 6) |
 | DELETE | `/api/projects/{pid}/media/{mid}` | 409 if used on the timeline |
 
 ## Exports

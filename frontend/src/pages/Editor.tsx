@@ -26,6 +26,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [effects, setEffects] = useState<Effect[]>([]);
   const [captions, setCaptions] = useState<CaptionSettings | null>(null);
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
+  const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
   const [rightTab, setRightTab] = useState<"clip" | "fx" | "history">("clip");
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
@@ -108,11 +109,14 @@ export default function Editor({ projectId }: { projectId: string }) {
     return { timeline: l.timeline!, effects: l.effects, captions: l.captions!, audio: l.audio! };
   }
 
-  const commit = useCallback((r: OpResult, label: string) => {
+  /** ``coalesce``: slider drags with the same label within 0.8 s become one undo step. */
+  const commit = useCallback((r: OpResult, label: string, coalesce = false) => {
     if (r.error !== undefined) { toast(r.error, true); return false; }
     const cur = latest.current.timeline!;
     if (r.timeline === cur) return true;
-    history.current.push(snapshot(), label);
+    const now = Date.now();
+    if (!(coalesce && lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
+    lastLabel.current = { label, at: now };
     dirty.current = true;
     setTimeline(sanitize(r.timeline));
     if (r.created?.length && label !== "Split") setSelection([r.created[0]]);
@@ -129,6 +133,15 @@ export default function Editor({ projectId }: { projectId: string }) {
     const e = history.current.redo(snapshot());
     if (!e) return;
     restore(e.state); toast(`Redo: ${e.label}`);
+  };
+  /** Light preview: play 540p copies. Makes any that are missing (in the background). */
+  const toggleLightPreview = async (on: boolean) => {
+    setLightPreview(on);
+    try { localStorage.setItem("cf:lightPreview", on ? "1" : "0"); } catch { /* storage unavailable */ }
+    if (!on || !project) return;
+    const need = project.media.filter((m) => m.has_video && !m.proxy);
+    for (const m of need) { try { await api.rebuildPreviews(projectId, m.id, true); } catch (e: any) { toast(e.message, true); } }
+    if (need.length) { toast(`Making light previews for ${need.length} file${need.length === 1 ? "" : "s"} — full quality plays until they're ready`); refreshJobs(); }
   };
   /** Save pending edits now (used before snapshots and restores). */
   const flushNow = async () => {
@@ -282,6 +295,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
         <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects}
+          lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
           <div className="pane-head" style={{ gap: 4 }}>
@@ -292,8 +306,8 @@ export default function Editor({ projectId }: { projectId: string }) {
           {rightTab === "history" ? (
             <HistoryPanel projectId={projectId} beforeChange={flushNow} onRestored={onRestored} revision={editRev.current} />
           ) : rightTab === "clip" ? (
-            <Inspector timeline={timeline} media={media} selection={selection}
-              onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label)}
+            <Inspector timeline={timeline} media={media} selection={selection} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+              onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label, true)}
               onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}
               onMove={(id, s) => commit(moveClip(timeline, id, s), "Move clip")}
               onTransition={(id, tr) => commit(setTransition(timeline, id, tr), tr ? "Set transition" : "Remove transition")}

@@ -81,12 +81,21 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
   - compare any two versions: footage cut or added per source, clip, effect and transition counts, and changed settings
 - ✅ Older "history/timeline-*.json" AI backups are imported as versions automatically
 
-## Phase 6 — Advanced editor ⬜
+## Phase 6 — Advanced editor ✅
 
-- ⬜ Keyframes (transform, volume), rotation, crop
-- ⬜ Advanced transitions & effects, color correction
-- ⬜ Proxy editing toggle, background render cache
-- ⬜ Waveform zoom detail, audio meters
+- ✅ Keyframes for scale, position, rotation, opacity and volume
+  - easing: linear, ease in/out, or hold
+  - anchored to the footage, so trims, splits and speed changes keep them in place
+  - ◆ marks on the timeline; the preview animates too
+- ✅ Rotation, opacity and crop, all previewed live in the monitor, which now shows every video layer
+- ✅ 21 transitions: crossfade, dip to black/white, wipes, slides, smooth, cover/reveal, circle, radial, zoom, pixelize, blur
+- ✅ Colour correction:
+  - brightness, contrast, saturation, gamma, temperature
+  - 8 looks: warm, cool, black & white, vintage, vivid, faded, cinematic, noir
+- ✅ Light preview toggle: plays 540p proxy copies and makes any that are missing
+- ✅ Render cache: re-exports reuse every unchanged segment. It's keyed on the exact FFmpeg arguments and source files, so it's never stale. 4 GB limit, oldest files evicted first
+- ✅ Detailed waveforms when zoomed in (100 peaks/s, interpolated past that); "Rebuild previews" upgrades older media
+- ✅ Stereo peak audio meters with peak hold and a clip light; preview volume above 100% now works (Web Audio)
 
 ## Phase 7 — Production readiness ⬜
 
@@ -102,8 +111,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 
-- Preview shows only the top-most visible video track and doesn't show scale/position. Export is correct.
-- Browser preview volume can't exceed 100%. Export applies up to 400%.
-- Rotation is in the schema but rejected until it's implemented.
+- Preview colour is a CSS approximation, and transitions preview as cuts. Export is exact.
+- Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).
 - Upload copies the file into the workspace (2× disk use for huge recordings). "Import by reference" is planned with a safe folder allow-list.
 - Single-user, single-machine. Two tabs editing the same project get a conflict prompt instead of a merge.

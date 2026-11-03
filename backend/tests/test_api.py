@@ -51,7 +51,7 @@ def test_import_probe_and_derived_assets(server, media_dir):
     assert job["status"] == "succeeded", job
     assert job["result"]["thumbnail"] and job["result"]["waveform"]
     st, wf, _ = server.req("GET", f"/api/projects/{p['id']}/media/{m['id']}/waveform")
-    assert st == 200 and len(wf["peaks"]) == pytest.approx(80, abs=3)
+    assert st == 200 and wf["peaks_per_second"] == 100 and len(wf["peaks"]) == pytest.approx(400, abs=5)  # 4 s
     # original stored read-only
     pdir = server.settings.projects_dir / p["id"] / "media" / "original"
     f = next(pdir.iterdir())

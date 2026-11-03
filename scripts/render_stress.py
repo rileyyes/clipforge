@@ -61,8 +61,9 @@ def main(count: int):
     def score(t):  # prefer timelines rich in transitions/fades but not hours long
         clips = [c for x in t["tracks"] for c in x["clips"]]
         dur = max([c["start"] + (c["source_out"] - c["source_in"]) / c["speed"] for c in clips] or [0])
-        fx = sum(1 for c in clips if c.get("transition_in") or c.get("fade_in") or c.get("fade_out"))
-        return (-(fx * 3 + len(clips)) if dur < 400 else 1e9)
+        fx = sum(1 for c in clips if c.get("transition_in") or c.get("fade_in") or c.get("fade_out")
+                 or c.get("keyframes") or c["transform"].get("rotation"))
+        return (-(fx * 3 + len(clips)) if dur < 240 else 1e9)
     tls = sorted(data["timelines"], key=score)[:count]
     failures = 0
     for i, tl in enumerate(tls):

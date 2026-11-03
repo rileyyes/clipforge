@@ -1,7 +1,73 @@
 import React, { useEffect, useState } from "react";
 import { fmtTime } from "../api";
 import { clipDuration, clipEnd, findClip, type ClipPatch } from "../timeline/ops";
-import type { MediaMap, Timeline, Transition } from "../timeline/types";
+import { keyframeNear, NO_COLOR, NO_CROP, propAt, removeKeyframe, setKeyframe, sourceAt, staticValue } from "../timeline/keyframes";
+import { LOOKS, TRANSITIONS, type Clip, type ColorAdjust, type KfProp, type Keyframe, type MediaMap, type Timeline, type Transition } from "../timeline/types";
+import { Icon } from "./ui";
+
+type Patch = (p: ClipPatch, label: string) => void;
+
+/** A property that can be keyframed: slider + value, ◆ to add/remove a keyframe at the playhead,
+ *  ‹ › to jump between keyframes. With keyframes, changing the value sets one at the playhead. */
+function KfControl({ clip, prop, label, min, max, step, fmt, playhead, seek, patch }: {
+  clip: Clip; prop: KfProp; label: string; min: number; max: number; step: number; fmt: (v: number) => string;
+  playhead: number; seek: (t: number) => void; patch: Patch;
+}) {
+  const kfs = clip.keyframes?.[prop] ?? [];
+  const inside = playhead >= clip.start - 1e-6 && playhead <= clipEnd(clip) + 1e-6;
+  const st = sourceAt(clip, playhead);
+  const value = inside ? propAt(clip, prop, playhead) : kfs.length ? kfs[0].v : staticValue(clip, prop);
+  const here = inside ? keyframeNear(kfs, st) : undefined;
+  const animated = kfs.length > 0;
+  const setStatic = (v: number) => patch(prop === "volume" ? { volume: v } : { transform: { [prop]: v } }, `Change ${label.toLowerCase()}`);
+  const setKf = (list: Keyframe[], lbl: string) => patch({ keyframes: { [prop]: list } }, lbl);
+  const change = (v: number) => (animated ? (inside && setKf(setKeyframe(kfs, prop, st, v), `Keyframe ${label.toLowerCase()}`)) : setStatic(v));
+  const tl = (k: Keyframe) => clip.start + (k.t - clip.source_in) / clip.speed;
+  const visible = kfs.filter((k) => k.t >= clip.source_in - 1e-6 && k.t <= clip.source_out + 1e-6);
+  const prev = [...visible].reverse().find((k) => tl(k) < playhead - 1e-3);
+  const next = visible.find((k) => tl(k) > playhead + 1e-3);
+  return (
+    <div className="kf-row" data-testid={`kf-${prop}`}>
+      <div className="row" style={{ gap: 4 }}>
+        <span style={{ fontSize: 12 }}>{label}</span>
+        <span className="mono" style={{ fontSize: 12, color: "var(--text)" }}>{fmt(value)}</span>
+        <span className="spacer" />
+        {animated && <button className="btn icon ghost xs" title="Previous keyframe" disabled={!prev} onClick={() => prev && seek(tl(prev))}><Icon name="prev" size={12} /></button>}
+        <button className={"btn icon xs kf-btn" + (here ? " on" : animated ? " some" : " ghost")} disabled={!inside}
+          title={!inside ? "Move the playhead over this clip to add keyframes" : here ? "Remove the keyframe here" : "Add a keyframe here"}
+          onClick={() => (here ? setKf(removeKeyframe(kfs, here.t), `Remove ${label.toLowerCase()} keyframe`)
+            : setKf(setKeyframe(kfs, prop, st, value), `Add ${label.toLowerCase()} keyframe`))}>◆</button>
+        {animated && <button className="btn icon ghost xs" title="Next keyframe" disabled={!next} onClick={() => next && seek(tl(next))}><Icon name="next" size={12} /></button>}
+      </div>
+      <input type="range" min={min} max={max} step={step} value={Math.max(min, Math.min(max, value))} disabled={animated && !inside}
+        aria-label={label} onChange={(e) => change(+e.target.value)} />
+      {here && kfs.indexOf(here) < kfs.length - 1 && (
+        <div className="row" style={{ gap: 4, fontSize: 11 }}>
+          <span className="dim">To next keyframe</span>
+          <select value={here.ease ?? "linear"} onChange={(e) => setKf(kfs.map((k) => (k === here ? { ...k, ease: e.target.value as Keyframe["ease"] } : k)), "Keyframe easing")}>
+            <option value="linear">Linear</option><option value="ease">Ease in/out</option><option value="hold">Hold</option>
+          </select>
+        </div>
+      )}
+      {animated && (
+        <div className="row dim" style={{ fontSize: 11, gap: 4 }}>
+          {kfs.length} keyframe{kfs.length === 1 ? "" : "s"}<span className="spacer" />
+          <button className="btn xs ghost" onClick={() => setKf([], `Clear ${label.toLowerCase()} keyframes`)}>Clear</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Slider({ label, value, min, max, step, fmt, onChange }: { label: string; value: number; min: number; max: number; step: number; fmt: (v: number) => string; onChange: (v: number) => void }) {
+  return (
+    <label className="field" style={{ gap: 2 }}><span className="row" style={{ gap: 4 }}>{label}<span className="spacer" /><span className="mono" style={{ color: "var(--text)" }}>{fmt(value)}</span></span>
+      <input type="range" min={min} max={max} step={step} value={value} aria-label={label} onChange={(e) => onChange(+e.target.value)} />
+    </label>
+  );
+}
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+const signed = (v: number) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}`;
 
 /** Number field that commits on Enter/blur (so typing "1." doesn't fight the state). */
 function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
@@ -21,8 +87,8 @@ function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
   );
 }
 
-export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades }: {
-  timeline: Timeline; media: MediaMap; selection: string[];
+export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades, playhead, seek }: {
+  timeline: Timeline; media: MediaMap; selection: string[]; playhead: number; seek: (t: number) => void;
   onPatch: (id: string, p: ClipPatch, label: string) => void;
   onTrim: (id: string, edge: "start" | "end", t: number) => void;
   onMove: (id: string, start: number) => void;
@@ -49,6 +115,11 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
   }
   const { clip, track } = ref;
   const m = media[clip.media_id];
+  const patch: Patch = (p, label) => onPatch(clip.id, p, label);
+  const kfp = { clip, playhead, seek, patch };
+  const crop = clip.crop ?? NO_CROP;
+  const color = clip.color ?? NO_COLOR;
+  const setColor = (c: Partial<ColorAdjust>, label: string) => patch({ color: { ...color, ...c } }, label);
   return (
     <div style={{ display: "contents" }}>
       <div className="pane-body">
@@ -85,7 +156,8 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
                 <label className="field">Transition in
                   <select value={clip.transition_in?.kind ?? "none"} onChange={(e) => onTransition(clip.id, e.target.value === "none" ? null
                     : { kind: e.target.value as Transition["kind"], duration: clip.transition_in?.duration ?? 0.5 })}>
-                    <option value="none">None (cut)</option><option value="crossfade">Crossfade</option><option value="dip_black">Dip to black</option>
+                    <option value="none">None (cut)</option>
+                    {TRANSITIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </label>
                 {clip.transition_in && <Num label="Length" suffix="s" step={0.1} min={0.1} max={3} value={clip.transition_in.duration}
@@ -107,28 +179,54 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
         {track.kind === "audio" && (
           <div className="insp-section">
             <h3 style={{ margin: 0 }}>Audio</h3>
-            <label className="field">Volume <span className="mono" style={{ color: "var(--text)" }}>{Math.round(clip.volume * 100)}%</span>
-              <input type="range" min={0} max={2} step={0.01} value={clip.volume}
-                onChange={(e) => onPatch(clip.id, { volume: +e.target.value }, "Change volume")} />
-            </label>
-            <div className="dim" style={{ fontSize: 11 }}>Above 100% is applied on export; the preview caps at 100%.</div>
+            <KfControl {...kfp} prop="volume" label="Volume" min={0} max={2} step={0.01} fmt={pct} />
+            <div className="dim" style={{ fontSize: 11 }}>Use ◆ keyframes to raise or lower the volume over time (e.g. music under talking).</div>
           </div>
         )}
 
         {track.kind === "video" && (
-          <div className="insp-section">
-            <h3 style={{ margin: 0 }}>Transform</h3>
-            <label className="field">Scale <span className="mono" style={{ color: "var(--text)" }}>{Math.round(clip.transform.scale * 100)}%</span>
-              <input type="range" min={0.1} max={3} step={0.01} value={clip.transform.scale}
-                onChange={(e) => onPatch(clip.id, { transform: { scale: +e.target.value } }, "Scale")} />
-            </label>
-            <div className="insp-grid">
-              <Num label="Position X" suffix="px" step={1} value={clip.transform.x} onCommit={(v) => onPatch(clip.id, { transform: { x: v } }, "Move picture")} />
-              <Num label="Position Y" suffix="px" step={1} value={clip.transform.y} onCommit={(v) => onPatch(clip.id, { transform: { y: v } }, "Move picture")} />
+          <>
+            <div className="insp-section" data-testid="transform">
+              <div className="row"><h3 style={{ margin: 0 }}>Transform</h3><span className="spacer" />
+                <button className="btn xs ghost" onClick={() => patch({ transform: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 },
+                  keyframes: { x: [], y: [], scale: [], rotation: [], opacity: [] } }, "Reset transform")}>Reset</button></div>
+              <KfControl {...kfp} prop="scale" label="Scale" min={0.1} max={3} step={0.01} fmt={pct} />
+              <KfControl {...kfp} prop="x" label="Position X" min={-2000} max={2000} step={1} fmt={(v) => `${Math.round(v)} px`} />
+              <KfControl {...kfp} prop="y" label="Position Y" min={-2000} max={2000} step={1} fmt={(v) => `${Math.round(v)} px`} />
+              <KfControl {...kfp} prop="rotation" label="Rotation" min={-180} max={180} step={1} fmt={(v) => `${Math.round(v)}°`} />
+              <KfControl {...kfp} prop="opacity" label="Opacity" min={0} max={1} step={0.01} fmt={pct} />
+              <div className="dim" style={{ fontSize: 11 }}>◆ adds a keyframe at the playhead; add two with different values to animate (e.g. a slow zoom). Keyframes stick to the footage, so trimming keeps them in place.</div>
             </div>
-            <button className="btn sm" onClick={() => onPatch(clip.id, { transform: { x: 0, y: 0, scale: 1 } }, "Reset transform")}>Reset</button>
-            <div className="dim" style={{ fontSize: 11 }}>Scale/position render on export (e.g. picture-in-picture on V2). The preview shows the clip unscaled.</div>
-          </div>
+
+            <div className="insp-section" data-testid="crop">
+              <div className="row"><h3 style={{ margin: 0 }}>Crop</h3><span className="spacer" />
+                <button className="btn xs ghost" onClick={() => patch({ crop: NO_CROP }, "Reset crop")}>Reset</button></div>
+              <div className="insp-grid">
+                {(["left", "right", "top", "bottom"] as const).map((side) => {
+                  const other = side === "left" ? "right" : side === "right" ? "left" : side === "top" ? "bottom" : "top";
+                  return <Slider key={side} label={side[0].toUpperCase() + side.slice(1)} value={crop[side]} min={0} max={0.9 - crop[other]} step={0.005} fmt={pct}
+                    onChange={(v) => patch({ crop: { ...crop, [side]: Math.min(v, 0.9 - crop[other]) } }, "Crop")} />;
+                })}
+              </div>
+            </div>
+
+            <div className="insp-section" data-testid="color">
+              <div className="row"><h3 style={{ margin: 0 }}>Colour</h3><span className="spacer" />
+                <button className="btn xs ghost" onClick={() => patch({ color: NO_COLOR }, "Reset colour")}>Reset</button></div>
+              <label className="field">Look
+                <select value={color.look} aria-label="Look" onChange={(e) => setColor({ look: e.target.value as ColorAdjust["look"] }, "Look")}>
+                  {LOOKS.map((l) => <option key={l} value={l}>{{ none: "None", warm: "Warm", cool: "Cool", bw: "Black & white", vintage: "Vintage", vivid: "Vivid",
+                    faded: "Faded", cinematic: "Cinematic (teal & orange)", noir: "Noir" }[l]}</option>)}
+                </select>
+              </label>
+              <Slider label="Brightness" value={color.brightness} min={-0.5} max={0.5} step={0.01} fmt={signed} onChange={(v) => setColor({ brightness: v }, "Brightness")} />
+              <Slider label="Contrast" value={color.contrast} min={0.3} max={2} step={0.01} fmt={pct} onChange={(v) => setColor({ contrast: v }, "Contrast")} />
+              <Slider label="Saturation" value={color.saturation} min={0} max={2.5} step={0.01} fmt={pct} onChange={(v) => setColor({ saturation: v }, "Saturation")} />
+              <Slider label="Gamma (midtones)" value={color.gamma} min={0.4} max={2.5} step={0.01} fmt={(v) => v.toFixed(2)} onChange={(v) => setColor({ gamma: v }, "Gamma")} />
+              <Slider label="Temperature" value={color.temperature} min={-1} max={1} step={0.01} fmt={(v) => (v > 0 ? `warm ${signed(v)}` : v < 0 ? `cool ${signed(v)}` : "neutral")} onChange={(v) => setColor({ temperature: v }, "Temperature")} />
+              <div className="dim" style={{ fontSize: 11 }}>The preview approximates colour; the export applies it exactly.</div>
+            </div>
+          </>
         )}
       </div>
     </div>

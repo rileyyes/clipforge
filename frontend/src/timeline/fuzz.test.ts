@@ -9,7 +9,8 @@ import {
   MIN_CLIP, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
   sanitize, setFades, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
-import type { MediaAsset, MediaMap, Timeline } from "./types";
+import { setKeyframe } from "./keyframes";
+import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
 
 function rng(seed: number) {
   return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
@@ -87,7 +88,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 15);
+      const op = Math.floor(r() * 18);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -101,8 +102,21 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 8: res = toggleTrack(tl, pick(tl.tracks).id, pick(["muted", "hidden", "locked"] as const)); break;
         case 9: res = addTrack(tl, r() < 0.5 ? "video" : "audio"); break;
         case 10: res = removeTrack(tl, pick(tl.tracks).id); break;
-        case 12: res = c ? setTransition(tl, c.id, r() < 0.2 ? null : { kind: r() < 0.5 ? "crossfade" : "dip_black", duration: 0.1 + r() * 2.9 }) : { error: "none" }; break;
+        case 12: res = c ? setTransition(tl, c.id, r() < 0.2 ? null : { kind: pick(TRANSITIONS.map((x) => x[0])), duration: 0.1 + r() * 2.9 }) : { error: "none" }; break;
         case 13: res = c ? setFades(tl, c.id, r() * 4, r() * 4) : { error: "none" }; break;
+        case 15: { // keyframes, mostly the way the inspector makes them, sometimes raw/hostile
+          if (!c) { res = { error: "none" }; break; }
+          const prop = pick(["scale", "x", "y", "rotation", "opacity", "volume"] as KfProp[]);
+          const at = c.source_in + r() * (c.source_out - c.source_in);
+          const cur = c.keyframes?.[prop];
+          const list = r() < 0.85 ? setKeyframe(cur, prop, at, (r() - 0.3) * 4, pick(["linear", "ease", "hold", undefined]))
+            : r() < 0.5 ? [{ t: at, v: 1 }, { t: at, v: 2 }] : [{ t: at + 1, v: 0.5 }, { t: at, v: 0.5 }, { t: at, v: 99999 }];
+          res = updateClip(tl, c.id, { keyframes: { [prop]: r() < 0.1 ? [] : list } });
+          break;
+        }
+        case 16: res = c ? updateClip(tl, c.id, { crop: { left: r() * 0.6, right: r() * 0.6, top: r() * 0.5, bottom: r() * 0.5 },
+          color: { brightness: r() - 0.5, contrast: r() * 2, saturation: r() * 3, gamma: 0.2 + r() * 3, temperature: r() * 2 - 1, look: pick([...LOOKS]) } }) : { error: "none" }; break;
+        case 17: res = c ? updateClip(tl, c.id, { transform: { rotation: (r() - 0.5) * 8000, opacity: r() * 1.3 - 0.1 } }) : { error: "none" }; break;
         case 14: res = setTrackRole(tl, pick(tl.tracks).id, r() < 0.5 ? "music" : "dialogue"); break;
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }

@@ -3,7 +3,8 @@ import { fmtTime, thumbUrl, waveformUrl } from "../api";
 import {
   clipDuration, clipEnd, findClip, linkedGroup, moveClip, snap, snapPoints, timelineDuration, trimEdge, type OpResult,
 } from "../timeline/ops";
-import type { Clip, MediaMap, Timeline, Track } from "../timeline/types";
+import { keyframeTimes } from "../timeline/keyframes";
+import { TRANSITIONS, type Clip, type MediaMap, type Timeline, type Track } from "../timeline/types";
 import { Icon } from "./ui";
 
 const ROW_H: Record<Track["kind"], number> = { video: 58, audio: 50 };
@@ -26,7 +27,8 @@ const Waveform = memo(function Waveform({ pid, clip, width, ready }: { pid: stri
     getWaveform(pid, clip.media_id).then((wf) => {
       const cv = ref.current;
       if (!alive || !cv || !wf) return;
-      const w = Math.max(1, Math.min(4000, Math.round(width)));
+      // canvases top out around 32k px; past that the strip is stretched (still exact per peak)
+      const w = Math.max(1, Math.min(16000, Math.round(width)));
       const h = cv.clientHeight || 36;
       cv.width = w; cv.height = h;
       const ctx = cv.getContext("2d")!;
@@ -37,7 +39,11 @@ const Waveform = memo(function Waveform({ pid, clip, width, ready }: { pid: stri
       for (let x = 0; x < w; x++) {
         const i0 = Math.floor(a + ((b - a) * x) / w), i1 = Math.max(i0 + 1, Math.floor(a + ((b - a) * (x + 1)) / w));
         let p = 0;
-        for (let i = i0; i < i1 && i < wf.peaks.length; i++) p = Math.max(p, wf.peaks[i]);
+        if (i1 - i0 <= 1 && (b - a) / w < 1) {
+          // zoomed in past the data: interpolate between neighbouring peaks
+          const f = a + ((b - a) * (x + 0.5)) / w, j = Math.floor(f), q = f - j;
+          p = (wf.peaks[j] ?? 0) * (1 - q) + (wf.peaks[j + 1] ?? wf.peaks[j] ?? 0) * q;
+        } else for (let i = i0; i < i1 && i < wf.peaks.length; i++) p = Math.max(p, wf.peaks[i]);
         const ph = Math.min(h, (p / 255) * h * gain);
         ctx.fillRect(x, (h - ph) / 2, 1, Math.max(1, ph));
       }
@@ -312,12 +318,15 @@ export default function TimelineView(p: TimelineProps) {
                         <div className="thumbs" style={{ backgroundImage: `url(${thumbUrl(p.projectId, m.id)})` }} />
                       )}
                       {t.kind === "audio" && w > 4 && <Waveform pid={p.projectId} clip={c} width={w} ready={!!m?.waveform} />}
-                      {c.transition_in && <div title={c.transition_in.kind === "crossfade" ? "Crossfade in" : "Dip to black"} style={{ position: "absolute", left: 0, top: 0, bottom: 0,
+                      {c.transition_in && <div title={`${TRANSITIONS.find((x) => x[0] === c.transition_in!.kind)?.[1] ?? "Transition"} in`} style={{ position: "absolute", left: 0, top: 0, bottom: 0,
                         width: Math.min(w / 2, c.transition_in.duration * pps), background: "linear-gradient(90deg, rgba(0,0,0,.55), transparent)", pointerEvents: "none", zIndex: 1 }} />}
                       {!!c.fade_in && <div style={{ position: "absolute", left: 0, top: 0, width: Math.min(w / 2, c.fade_in * pps), height: "100%",
                         background: "linear-gradient(to top right, rgba(0,0,0,.45) 50%, transparent 50%)", pointerEvents: "none", zIndex: 1 }} />}
                       {!!c.fade_out && <div style={{ position: "absolute", right: 0, top: 0, width: Math.min(w / 2, c.fade_out * pps), height: "100%",
                         background: "linear-gradient(to top left, rgba(0,0,0,.45) 50%, transparent 50%)", pointerEvents: "none", zIndex: 1 }} />}
+                      {w > 20 && keyframeTimes(c).map((kt) => (
+                        <div key={kt} className="kf-mark" style={{ left: (kt - c.start) * pps }} title={`Keyframe at ${fmtTime(kt)}`} />
+                      ))}
                       {w > 30 && <div className="label">{c.label || m?.original_name || "missing media"}
                         {c.speed !== 1 && <span className="speed">{c.speed}×</span>}</div>}
                       {!t.locked && w > 14 && <>

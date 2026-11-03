@@ -31,6 +31,7 @@ class Settings:
     ffprobe_timeout_s: int = 60
     render_timeout_s: int = 6 * 3600
     job_workers: int = 1
+    render_cache_bytes: int = 4 * 1024**3  # reuse unchanged segments between exports; 0 = off
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"
     allowed_origins: tuple[str, ...] = field(default_factory=tuple)
@@ -42,6 +43,10 @@ class Settings:
     @property
     def jobs_dir(self) -> Path:
         return self.workspace / "jobs"
+
+    @property
+    def cache_dir(self) -> Path:
+        return self.workspace / "cache" / "render"
 
     @property
     def tmp_dir(self) -> Path:
@@ -90,6 +95,7 @@ def load_settings() -> Settings:
         max_workspace_bytes=_env_int("CLIPFORGE_MAX_WORKSPACE_GB", 200) * 1024**3,
         render_timeout_s=_env_int("CLIPFORGE_RENDER_TIMEOUT_S", 6 * 3600),
         job_workers=max(1, _env_int("CLIPFORGE_JOB_WORKERS", 1)),
+        render_cache_bytes=max(0, _env_int("CLIPFORGE_RENDER_CACHE_MB", 4096)) * 1024**2,
         ffmpeg_bin=os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
         ffprobe_bin=os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"),
         allowed_origins=origins,

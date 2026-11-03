@@ -6,8 +6,16 @@ export interface Transform {
   x: number;
   y: number;
   scale: number;
-  rotation: number;
+  rotation: number;   // degrees, clockwise
+  opacity?: number;   // 0..1
 }
+export interface Crop { left: number; right: number; top: number; bottom: number }
+export const LOOKS = ["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir"] as const;
+export type Look = (typeof LOOKS)[number];
+export interface ColorAdjust { brightness: number; contrast: number; saturation: number; gamma: number; temperature: number; look: Look }
+export type KfProp = "scale" | "x" | "y" | "rotation" | "opacity" | "volume";
+/** Value at a moment of the SOURCE media (seconds); ease shapes the move to the next keyframe. */
+export interface Keyframe { t: number; v: number; ease?: "linear" | "ease" | "hold" }
 
 export interface Clip {
   id: string;
@@ -18,6 +26,9 @@ export interface Clip {
   speed: number;
   volume: number;
   transform: Transform;
+  crop?: Crop;
+  color?: ColorAdjust;
+  keyframes?: Partial<Record<KfProp, Keyframe[]>>;
   link_id: string | null;
   label?: string | null;
   transition_in?: Transition | null; // video clips: into this clip from the one before it
@@ -25,7 +36,16 @@ export interface Clip {
   fade_out?: number;
 }
 
-export interface Transition { kind: "crossfade" | "dip_black"; duration: number }
+export const TRANSITIONS = [
+  ["crossfade", "Crossfade"], ["dip_black", "Dip to black"], ["dip_white", "Dip to white (flash)"],
+  ["wipe_left", "Wipe left"], ["wipe_right", "Wipe right"], ["wipe_up", "Wipe up"], ["wipe_down", "Wipe down"],
+  ["slide_left", "Slide left"], ["slide_right", "Slide right"], ["slide_up", "Slide up"], ["slide_down", "Slide down"],
+  ["smooth_left", "Smooth left"], ["smooth_right", "Smooth right"], ["cover_left", "Cover left"], ["reveal_right", "Reveal right"],
+  ["circle_open", "Circle open"], ["circle_close", "Circle close"], ["radial", "Radial sweep"], ["zoom_in", "Zoom in"],
+  ["pixelize", "Pixelize"], ["blur", "Blur"],
+] as const;
+export type TransitionKind = (typeof TRANSITIONS)[number][0];
+export interface Transition { kind: TransitionKind; duration: number }
 
 export interface Track {
   id: string;

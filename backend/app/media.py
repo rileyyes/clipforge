@@ -23,7 +23,7 @@ from .storage import SAFE_INPUT_FORMATS, safe_join
 
 # Codec/container combos every mainstream browser can play directly.
 
-WAVEFORM_PEAKS_PER_SECOND = 20
+WAVEFORM_PEAKS_PER_SECOND = 100  # detail for zoomed-in timelines (older media: 20)
 
 
 def media_dir(project_dir: Path, sub: str) -> Path:
@@ -95,7 +95,7 @@ def make_thumbnail(settings: Settings, asset: MediaAsset, src: Path, out: Path) 
 
 def make_waveform(settings: Settings, asset: MediaAsset, src: Path, out: Path,
                   cancel: Optional[threading.Event] = None) -> None:
-    """Stream decoded mono audio and keep the peak of each 1/20 s bucket."""
+    """Stream decoded mono audio and keep the peak of each 1/100 s bucket."""
     rate = 8000
     bucket = rate // WAVEFORM_PEAKS_PER_SECOND
     cmd = [settings.ffmpeg_bin, "-hide_banner", "-nostdin", "-v", "error",

@@ -93,9 +93,10 @@ def test_audio_only_media_on_video_track_rejected():
         project_with([dict(start=0, source_in=0, source_out=1)], media=asset(video=False))
 
 
-def test_rotation_not_yet_supported():
+def test_rotation_range_enforced():
+    project_with([dict(start=0, source_in=0, source_out=1, transform={"rotation": 90})])
     with pytest.raises(ValidationError, match="rotation"):
-        project_with([dict(start=0, source_in=0, source_out=1, transform={"rotation": 90})])
+        project_with([dict(start=0, source_in=0, source_out=1, transform={"rotation": 99999})])
 
 
 def test_odd_output_dimensions_rejected():

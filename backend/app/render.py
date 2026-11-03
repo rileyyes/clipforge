@@ -32,6 +32,18 @@ from .jobs import JobContext
 from .schema import Clip, MediaAsset, OutputSettings, Project, Track
 from . import effects as fx
 from .effects import mutes_for_clip
+from . import look
+from .rcache import RenderCache
+
+# transition kind -> FFmpeg xfade transition (dips are done with fades instead)
+XFADE = {"crossfade": "fade", "wipe_left": "wipeleft", "wipe_right": "wiperight", "wipe_up": "wipeup",
+         "wipe_down": "wipedown", "slide_left": "slideleft", "slide_right": "slideright",
+         "slide_up": "slideup", "slide_down": "slidedown", "smooth_left": "smoothleft",
+         "smooth_right": "smoothright", "circle_open": "circleopen", "circle_close": "circleclose",
+         "radial": "radial", "zoom_in": "zoomin", "pixelize": "pixelize", "blur": "hblur",
+         "cover_left": "coverleft", "reveal_right": "revealright"}
+DIPS = {"dip_black": "black", "dip_white": "white"}
+WARP_MARGIN = 4
 
 AUDIO_RATE = 48000
 QUALITY_CRF = {"draft": 28, "standard": 21, "high": 17}
@@ -49,6 +61,8 @@ class Seg:
     prev: Optional[Clip] = None   # transition: outgoing clip
     trans: Optional[str] = None   # transition kind
     half: float = 0.0             # transition half-length in seconds
+    fade_in_color: str = "black"
+    fade_out_color: str = "black"
 
 
 @dataclass
@@ -110,10 +124,11 @@ def apply_transitions(segs: list[Seg], rate, lookup) -> list[Seg]:
                 prev = out[-1] if out and out[-1].kind == "clip" and \
                     out[-1].start_frame + out[-1].count == sg.start_frame else None
                 h = int(round(tr.duration / 2 * rate))
-                if tr.kind == "dip_black" and prev is not None:
-                    # fade the outgoing clip down to black/silence, then the next one up
+                if tr.kind in DIPS and prev is not None:
+                    # fade the outgoing clip down to black/white (silence), then the next one up
                     prev.fade_out = max(prev.fade_out, tr.duration / 2)
                     sg.fade_in = max(sg.fade_in, tr.duration / 2)
+                    prev.fade_out_color = sg.fade_in_color = DIPS[tr.kind]
                 elif prev is not None and 0 < h < prev.count and h < sg.count:
                     prev.count -= h
                     prev.fade_out = 0.0
@@ -125,6 +140,7 @@ def apply_transitions(segs: list[Seg], rate, lookup) -> list[Seg]:
                     sg.fade_in = 0.0
                 else:
                     sg.fade_in = max(sg.fade_in, tr.duration)
+                    sg.fade_in_color = DIPS.get(tr.kind, "black")
             dur = float(sg.count / rate)
             if sg.fade_in + sg.fade_out > dur:  # keep fades inside what's left of the clip
                 k = dur / (sg.fade_in + sg.fade_out)
@@ -191,31 +207,59 @@ def _fit_chain(out: OutputSettings, scale: float) -> str:
 
 
 def video_segment_args(src: Path, seg: Seg, out: OutputSettings, fps: Fraction,
-                       on_canvas: bool, dest: Path) -> list[str]:
+                       on_canvas: bool, dest: Path, alpha: bool = False) -> list[str]:
+    """One clip segment.
+
+    * base track (``on_canvas``): composed on a black W×H canvas.
+    * upper tracks: the fitted picture only (placed during the final encode), or, when
+      ``alpha``, a full transparent canvas with rotation/scale/opacity animation baked in.
+    """
     c = seg.clip
     assert c is not None
+    W, H = out.width, out.height
     seek = c.source_in + seg.head * c.speed
     span = c.source_out - seek
+    warp = look.needs_warp(c)
+    src_t = f"({seek:.6f}+t*{c.speed:.6f})"
     head = (f"[0:v]setpts=(PTS-STARTPTS)/{c.speed:.6f},fps={fps},"
-            f"{_fit_chain(out, c.transform.scale)}")
+            f"{_fit_chain(out, 1.0 if warp else look.static_value(c, 'scale'))}")
+    colour = look.color_filters(c.color)
+    if colour:
+        head += "," + ",".join(colour)
     fades = ""
     if on_canvas and seg.fade_in > 0:
-        fades += f",fade=t=in:st=0:d={seg.fade_in:.3f}"
+        fades += f",fade=t=in:st=0:d={seg.fade_in:.3f}:color={seg.fade_in_color}"
     if on_canvas and seg.fade_out > 0:
-        fades += f",fade=t=out:st={max(0.0, float(seg.count / fps) - seg.fade_out):.3f}:d={seg.fade_out:.3f}"
-    tail = (f"tpad=stop_mode=clone:stop_duration=10,trim=end_frame={seg.count},"
-            f"setpts=PTS-STARTPTS{fades},format=yuv420p[v]")
-    if on_canvas:
-        graph = (f"{head}[fg];color=c=black:s={out.width}x{out.height}:r={fps}[bg];"
-                 f"[bg][fg]overlay=x=(W-w)/2+({c.transform.x:.1f}):"
-                 f"y=(H-h)/2+({c.transform.y:.1f}):shortest=1,{tail}")
+        fades += (f",fade=t=out:st={max(0.0, float(seg.count / fps) - seg.fade_out):.3f}"
+                  f":d={seg.fade_out:.3f}:color={seg.fade_out_color}")
+    trim = f"tpad=stop_mode=clone:stop_duration=10,trim=end_frame={seg.count},setpts=PTS-STARTPTS"
+    tail = f"{trim}{fades},format=yuv420p[v]"
+    if warp:
+        m = WARP_MARGIN
+        chain = ",".join([head, "format=yuva444p", *look.crop_filters(c, keep_size=True),
+                          f"pad=w={W + 2 * m}:h={H + 2 * m}:x=(ow-iw)/2:y=(oh-ih)/2:color=black@0",
+                          look.perspective_filter(c, W, H, m, f"{seek:.6f}", float(fps)),
+                          f"crop={W}:{H}:{m}:{m}",
+                          *look.opacity_filters(c, seek, float(seg.count / fps), float(fps))])
+        if on_canvas:
+            graph = (f"{chain}[fg];color=c=black:s={W}x{H}:r={fps}[bg];"
+                     f"[bg][fg]overlay=x=0:y=0:shortest=1,{tail}")
+        else:
+            graph = f"{chain},{trim},format=yuva420p[v]"
+    elif on_canvas:
+        chain = ",".join([head, *look.crop_filters(c, keep_size=False)])
+        x, y = look.prop_expr(c, "x", src_t), look.prop_expr(c, "y", src_t)
+        ev = "frame" if look.animated(c, "x") or look.animated(c, "y") else "init"
+        graph = (f"{chain}[fg];color=c=black:s={W}x{H}:r={fps}[bg];"
+                 f"[bg][fg]overlay=x='(W-w)/2+({x})+{look.crop_shift(c, 'x')}':"
+                 f"y='(H-h)/2+({y})+{look.crop_shift(c, 'y')}':eval={ev}:shortest=1,{tail}")
     else:
-        graph = f"{head},{tail}"
+        graph = ",".join([head, *look.crop_filters(c, keep_size=False), tail])
+    enc = (["-c:v", "ffv1", "-level", "3", "-pix_fmt", "yuva420p"] if alpha and warp else
+           ["-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-video_track_timescale", "90000"])
     return (ff.untrusted_input_args(src, seek=seek, duration=max(span, 0.05) + 0.5)
             + ["-filter_complex", graph, "-map", "[v]", "-an",
-               "-frames:v", str(seg.count), "-r", str(fps),
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "14",
-               "-video_track_timescale", "90000", str(dest)])
+               "-frames:v", str(seg.count), "-r", str(fps), *enc, str(dest)])
 
 
 def gap_video_args(seg: Seg, out: OutputSettings, fps: Fraction, dest: Path) -> list[str]:
@@ -247,7 +291,8 @@ def audio_segment_args(src: Path, seg: Seg, dest: Path,
     chain = mute + atempo_chain(c.speed) + [
         f"aresample={AUDIO_RATE}",
         "aformat=sample_fmts=s16:channel_layouts=stereo",
-        f"volume={c.volume:.4f}",
+        (f"volume=volume='{look.kf_expr(c.keyframes['volume'], f'({seek:.6f}+t*{c.speed:.6f})', c.volume)}'"
+         ":eval=frame" if look.animated(c, "volume") else f"volume={look.static_value(c, 'volume'):.4f}"),
         "apad", f"atrim=end_sample={seg.count}", "asetpts=PTS-STARTPTS", *fades,
     ]
     return (ff.untrusted_input_args(src, seek=seek, duration=max(span, 0.05) + 0.5)
@@ -267,7 +312,7 @@ def _handles(seg: Seg) -> tuple[Seg, Seg]:
 
 
 def video_transition_args(part_a: Path, part_b: Path, seg: Seg, fps: Fraction, dest: Path) -> list[str]:
-    kind = "fadeblack" if seg.trans == "dip_black" else "fade"
+    kind = XFADE.get(seg.trans or "crossfade", "fade")
     d = float(seg.count / fps)
     return ["-i", str(part_a), "-i", str(part_b), "-filter_complex",
             f"[0:v][1:v]xfade=transition={kind}:duration={d:.4f}:offset=0,"
@@ -277,7 +322,7 @@ def video_transition_args(part_a: Path, part_b: Path, seg: Seg, fps: Fraction, d
 
 
 def audio_transition_args(part_a: Path, part_b: Path, seg: Seg, dest: Path) -> list[str]:
-    curve = "exp" if seg.trans == "dip_black" else "tri"
+    curve = "exp" if seg.trans in DIPS else "tri"
     d = seg.count / AUDIO_RATE
     return ["-i", str(part_a), "-i", str(part_b), "-filter_complex",
             f"[0:a][1:a]acrossfade=d={d:.5f}:c1={curve}:c2={curve},apad,atrim=end_sample={seg.count}[a]",
@@ -359,9 +404,10 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
             jobs.append((args, secs, name))
         overlay_names = []
         for i, s in enumerate(plan.overlays):
-            name = f"o{i:05d}.mp4"
+            warp = look.needs_warp(s.clip)
+            name = f"o{i:05d}.{'mkv' if warp else 'mp4'}"
             overlay_names.append(name)
-            jobs.append((video_segment_args(src_of(s.clip), s, out, plan.fps, False, work / name),
+            jobs.append((video_segment_args(src_of(s.clip), s, out, plan.fps, False, work / name, alpha=warp),
                          float(s.count / plan.fps), name))
         audio_lists = []
         for ti, segs in enumerate(plan.audio_tracks):
@@ -423,19 +469,28 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
             audio_lists.append(names)
             audio_roles.append("fx")
 
+        cache = RenderCache(settings.cache_dir, settings.render_cache_bytes, settings.ffmpeg_bin)
         total_work = sum(j[1] for j in jobs) or 1.0
         seg_weight, mix_weight, final_weight = 0.5, 0.1, 0.4
         done = 0.0
         stages = 3
         ctx.stage(1, stages, f"Rendering {len(jobs)} segments")
-        for args, secs, _name in jobs:
+        for args, secs, name in jobs:
             ctx.check_cancel()
             base_done = done
+            key = cache.key(args, work, name)
+            if cache.fetch(key, work / name):
+                done += secs
+                cache.reused_seconds += secs
+                ctx.progress(seg_weight * done / total_work)
+                continue
             ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=max(secs, 0.001),
                           cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s,
                           on_progress=lambda f, b=base_done, s=secs: ctx.progress(
                               seg_weight * (b + f * s) / total_work))
+            cache.store(key, work / name)
             done += secs
+        cache.evict()
 
         # ---- stage 2: mix audio (cleanup, ducking, loudness) -----------------
         ctx.stage(2, stages, "Mixing audio")
@@ -455,8 +510,15 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         for i, s in enumerate(plan.overlays, start=1):
             c = s.clip
             g.append(f"[{i}:v]setpts=PTS-STARTPTS+{s.start_frame}/({plan.fps})/TB[o{i}]")
-            g.append(f"[{last}][o{i}]overlay=x=(W-w)/2+({c.transform.x:.1f}):"
-                     f"y=(H-h)/2+({c.transform.y:.1f}):eof_action=pass[v{i}]")
+            if look.needs_warp(c):  # full transparent canvas, already positioned
+                g.append(f"[{last}][o{i}]overlay=x=0:y=0:eof_action=pass[v{i}]")
+            else:
+                t0 = float(s.start_frame / plan.fps)
+                src_t = f"({c.source_in:.6f}+(t-{t0:.6f})*{c.speed:.6f})"
+                x, y = look.prop_expr(c, "x", src_t), look.prop_expr(c, "y", src_t)
+                ev = "frame" if look.animated(c, "x") or look.animated(c, "y") else "init"
+                g.append(f"[{last}][o{i}]overlay=x='(W-w)/2+({x})+{look.crop_shift(c, 'x')}':"
+                         f"y='(H-h)/2+({y})+{look.crop_shift(c, 'y')}':eval={ev}:eof_action=pass[v{i}]")
             last = f"v{i}"
         audio_idx = 1 + len(overlay_names)
         n_inputs = audio_idx + 1
@@ -480,7 +542,8 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         ctx.stage(3, stages, "Validating export")
         report = validate_export(settings, dest, out, plan.duration,
                                  target_lufs=project.audio.target_lufs if loud.get("normalized") else None)
-        report.update(encoder=encoder, quality=quality, project_revision=project.revision, loudness=loud)
+        report.update(encoder=encoder, quality=quality, project_revision=project.revision, loudness=loud,
+                      cache={"enabled": cache.enabled, "reused": cache.hits, "rendered": cache.misses})
         (exports / (dest.stem + ".report.json")).write_text(json.dumps(report, indent=2))
         return {"file": dest.name, "validation": report}
     except BaseException:
@@ -655,7 +718,28 @@ def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path
                   expected_duration=plan.duration, cancel_event=ctx.cancel_event,
                   timeout=settings.render_timeout_s, on_progress=lambda f: on_progress(0.5 + f * 0.5))
     info.update(normalized=True, target_lufs=a.target_lufs, measured_lufs=float(m["input_i"]))
-    return final, info
+    # loudnorm's linear mode can't raise quiet-but-peaky audio (e.g. soft speech with sharp
+    # transients, or deep volume-keyframe dips) without breaking the peak ceiling; it then
+    # undershoots by several dB. Close the gap with gain into a peak limiter, re-measuring.
+    got = measure_lufs(settings, final)
+    gain, fixed = 0.0, final
+    for i in range(3):
+        if got is None or abs(got - a.target_lufs) <= 0.5:
+            break
+        ctx.check_cancel()
+        gain = round(gain + (a.target_lufs - got), 2)
+        fixed = work / f"mix_norm_fix{i}.wav"
+        ff.run_ffmpeg(settings.ffmpeg_bin, ["-i", str(final), "-af",
+                                            f"volume={gain}dB,alimiter=limit={10 ** (-1.5 / 20):.4f}:level=false:"
+                                            f"attack=2:release=60,aresample={AUDIO_RATE},apad,"
+                                            f"atrim=end_sample={plan.total_samples}",
+                                            "-c:a", "pcm_s16le", "-ar", str(AUDIO_RATE), str(fixed)],
+                      expected_duration=plan.duration, cancel_event=ctx.cancel_event,
+                      timeout=settings.render_timeout_s)
+        got = measure_lufs(settings, fixed)
+    if fixed is not final:
+        info.update(limiter_gain_db=gain)
+    return fixed, info
 
 
 def measure_lufs(settings: Settings, path: Path) -> Optional[float]:

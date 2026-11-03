@@ -2,7 +2,8 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
-import type { Clip, MediaAsset, MediaMap, Timeline, Track, TrackKind } from "./types";
+import type { Clip, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Track, TrackKind } from "./types";
+import { KF_LIMITS } from "./keyframes";
 
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
 const EPS = 1e-6;
@@ -308,7 +309,27 @@ export function duplicateClip(tl: Timeline, id: string): OpResult {
 
 // ---------------------------------------------------------------- properties
 
-export interface ClipPatch { volume?: number; speed?: number; label?: string | null; transform?: Partial<Clip["transform"]> }
+export interface ClipPatch {
+  volume?: number; speed?: number; label?: string | null; transform?: Partial<Clip["transform"]>;
+  crop?: Clip["crop"]; color?: Clip["color"]; keyframes?: Clip["keyframes"];
+}
+
+/** Same rules as the server: known properties, time order ≥ 1 ms apart, values in range, ≤ 64 each. */
+export function keyframeProblem(kf: NonNullable<ClipPatch["keyframes"]>): string | null {
+  for (const [prop, list] of Object.entries(kf) as [KfProp, Keyframe[] | undefined][]) {
+    const lim = KF_LIMITS[prop];
+    if (!lim) return `'${prop}' can't be keyframed`;
+    if (!list?.length) continue;
+    if (list.length > 64) return "At most 64 keyframes per property";
+    for (let i = 0; i < list.length; i++) {
+      const k = list[i];
+      if (!Number.isFinite(k.t) || !Number.isFinite(k.v) || k.t < 0) return "Invalid keyframe";
+      if (k.v < lim[0] || k.v > lim[1]) return `${prop} keyframe is out of range`;
+      if (i && k.t - list[i - 1].t < 0.001) return "Keyframes must be in time order";
+    }
+  }
+  return null;
+}
 
 export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult {
   const ref = findClip(tl, id);
@@ -320,6 +341,20 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
   if (patch.speed !== undefined && (patch.speed < 0.25 || patch.speed > 4)) return { error: "Speed must be between 0.25x and 4x" };
   if (patch.volume !== undefined && (patch.volume < 0 || patch.volume > 4)) return { error: "Volume must be between 0 and 400%" };
   if (patch.transform?.scale !== undefined && (patch.transform.scale <= 0.01 || patch.transform.scale > 10)) return { error: "Scale must be between 1% and 1000%" };
+  if (patch.transform?.rotation !== undefined && Math.abs(patch.transform.rotation) > 3600) return { error: "Rotation must be within ±3600°" };
+  if (patch.transform?.opacity !== undefined && (patch.transform.opacity < 0 || patch.transform.opacity > 1)) return { error: "Opacity must be between 0 and 100%" };
+  if (patch.crop && (patch.crop.left + patch.crop.right > 0.9 + EPS || patch.crop.top + patch.crop.bottom > 0.9 + EPS)) return { error: "Crop must leave at least 10% of the picture" };
+  if (patch.keyframes) {
+    const bad = keyframeProblem(patch.keyframes);
+    if (bad) return { error: bad };
+  }
+  if (patch.color) {
+    const c = patch.color;
+    if (Math.abs(c.brightness) > 1 || c.contrast < 0 || c.contrast > 3 || c.saturation < 0 || c.saturation > 3
+      || c.gamma < 0.1 || c.gamma > 4 || Math.abs(c.temperature) > 1) return { error: "Colour value out of range" };
+  }
+  if (patch.crop && Object.values(patch.crop).some((v) => !(v >= 0 && v <= 0.9))) return { error: "Crop must be between 0 and 90%" };
+  if (patch.keyframes && Object.keys(patch.keyframes).some((k) => (ref.track.kind === "video") === (k === "volume"))) return { error: ref.track.kind === "video" ? "Volume keyframes go on the audio clip" : "Only volume can be keyframed on audio" };
   if (patch.speed !== undefined && targets.some((r) => (r.clip.source_out - r.clip.source_in) / patch.speed! < MIN_CLIP - EPS))
     return { error: "Clip would be too short at that speed" };
   const ids = new Set(targets.map((r) => r.clip.id));
@@ -333,6 +368,13 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
         if (patch.volume !== undefined) u.volume = patch.volume;
         if (patch.label !== undefined) u.label = patch.label;
         if (patch.transform) u.transform = { ...c.transform, ...patch.transform };
+        if (patch.crop) u.crop = patch.crop;
+        if (patch.color) u.color = patch.color;
+        if (patch.keyframes) {
+          const kf = { ...(c.keyframes ?? {}), ...patch.keyframes };
+          for (const k of Object.keys(kf) as (keyof typeof kf)[]) if (!kf[k]?.length) delete kf[k];
+          u.keyframes = kf;
+        }
       }
       return u;
     }),

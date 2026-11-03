@@ -41,7 +41,7 @@ export interface ExportItem { file: string; size: number; modified: number; vali
 export interface SystemInfo {
   ffmpeg: string; h264_encoder: string; workspace: string; workspace_bytes: number;
   workspace_quota_bytes: number; disk_free_bytes: number; disk_total_bytes: number;
-  max_upload_bytes: number; cpu_count: number;
+  max_upload_bytes: number; cpu_count: number; render_cache_bytes?: number; render_cache_limit_bytes?: number;
 }
 
 export const api = {
@@ -56,6 +56,8 @@ export const api = {
   duplicate: (id: string) => call<Project>("POST", `/api/projects/${id}/duplicate`),
   deleteProject: (id: string) => call<void>("DELETE", `/api/projects/${id}`),
   deleteMedia: (pid: string, mid: string) => call<void>("DELETE", `/api/projects/${pid}/media/${mid}`),
+  /** Rebuild thumbnail + detailed waveform; with ``proxy`` also make a light 540p preview copy. */
+  rebuildPreviews: (pid: string, mid: string, proxy = false) => call<Job>("POST", `/api/projects/${pid}/media/${mid}/previews`, { proxy }),
   exports: (pid: string) => call<{ exports: ExportItem[] }>("GET", `/api/projects/${pid}/exports`).then((r) => r.exports),
   startExport: (pid: string, body: { filename: string; quality: string; output: OutputSettings }) =>
     call<Job>("POST", `/api/projects/${pid}/exports`, body),

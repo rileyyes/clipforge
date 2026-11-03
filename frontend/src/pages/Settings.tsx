@@ -33,12 +33,13 @@ export default function SettingsPage() {
               <dt>Upload limit</dt><dd>{fmtBytes(sys.max_upload_bytes)}</dd>
               <dt>Workspace use</dt><dd>{fmtBytes(sys.workspace_bytes)} / {fmtBytes(sys.workspace_quota_bytes)}</dd>
               <dt>Disk free</dt><dd>{fmtBytes(sys.disk_free_bytes)}</dd>
+              <dt>Render cache</dt><dd>{sys.render_cache_limit_bytes ? `${fmtBytes(sys.render_cache_bytes ?? 0)} / ${fmtBytes(sys.render_cache_limit_bytes)}` : "off"}<span className="muted"> — re-exports reuse unchanged parts</span></dd>
             </dl>
           ) : <span className="muted">Loading…</span>}
         </div>
         <div className="card">
           <h3>Maintenance</h3>
-          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Removes leftover temporary render files and interrupted partial files. Projects, media and finished exports are never touched.</p>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Removes leftover temporary render files, interrupted partial files and the render cache (re-exports are slower until it refills). Projects, media and finished exports are never touched.</p>
           <button className="btn" disabled={busy} onClick={async () => {
             setBusy(true);
             try { const r = await api.cleanup(); toast(`Freed ${fmtBytes(r.freed_bytes)}`); api.system().then(setSys); }

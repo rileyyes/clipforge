@@ -82,6 +82,9 @@ export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged 
                   {m.variable_frame_rate && <span className="chip warn" title="Variable frame rate is converted to constant on export">VFR</span>}
                   {usedIds.has(m.id) && <span className="chip">in use</span>}
                   <span className="spacer" />
+                  <button className="btn sm ghost" title="Rebuild thumbnail and detailed waveform" disabled={!!prep} onClick={async () => {
+                    try { await api.rebuildPreviews(project.id, m.id); onChanged(); } catch (e: any) { toast(e.message, true); }
+                  }}><Icon name="retry" size={14} /></button>
                   <button className="btn sm ghost" title="Add to end of timeline" onClick={() => onAdd(m)}><Icon name="plus" size={14} /></button>
                   {!usedIds.has(m.id) && (
                     <button className="btn sm ghost danger" title="Remove from project" onClick={async () => {

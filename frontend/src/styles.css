@@ -214,3 +214,24 @@ a.btn.primary { color: #fff; }
 .version-row { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .version-row .row > strong { min-width: 0; flex: 1 1 auto; }
 .version-row .chip { flex: none; }
+
+/* phase 6: keyframes, meters */
+.btn.xs { height: 20px; padding: 0 6px; font-size: 11px; }
+.btn.icon.xs { width: 20px; height: 20px; padding: 0; }
+.kf-row { display: grid; gap: 2px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.kf-row input[type=range] { width: 100%; }
+.kf-btn { font-size: 11px; line-height: 1; color: var(--muted); }
+.kf-btn.some { color: var(--accent-2, #f2b84b); border-color: transparent; background: transparent; }
+.kf-btn.on { color: #111; background: var(--accent-2, #f2b84b); border-color: var(--accent-2, #f2b84b); }
+.kf-mark { position: absolute; bottom: 3px; width: 7px; height: 7px; margin-left: -3.5px; transform: rotate(45deg);
+  background: var(--accent-2, #f2b84b); border: 1px solid rgba(0,0,0,.6); z-index: 2; pointer-events: none; }
+.screen-wrap { position: relative; padding-right: 28px; }
+.meters { position: absolute; right: 6px; top: 6px; bottom: 6px; display: flex; gap: 3px; z-index: 5; pointer-events: auto; }
+.meter { display: grid; grid-template-rows: 6px 1fr 12px; gap: 2px; width: 8px; }
+.meter-track { position: relative; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+.meter-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--ok); }
+.meter-hold { position: absolute; left: 0; right: 0; height: 2px; bottom: var(--hold, 0%); background: rgba(255,255,255,.7); }
+.meter-clip { border-radius: 2px; background: rgba(255,255,255,.12); cursor: pointer; }
+.meter-clip.on { background: var(--err); }
+.meter-lbl { font-size: 9px; color: var(--muted); text-align: center; line-height: 12px; }
+.stage video { position: absolute; }

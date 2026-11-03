@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–5 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–6 working and tested.** Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -21,7 +21,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Comedy edits** auto-placed on reactions (zooms, shakes, pop-up text, sound effects) or added at the playhead, plus your own images.
 - **Animated captions** (bold pop / word highlight / clean) burned in, plus `.srt` export. Censored words are masked.
 - **Audio polish**: loudness normalised to YouTube's −14 LUFS (verified in the export report), background-noise removal, voice enhancement, music that ducks under your voice.
-- **Transitions & fades**: crossfade / dip to black between clips (audio follows), fades from/to black, volume fades for music.
+- **Transitions & fades**: 21 transitions between clips (crossfade, dips, wipes, slides, circle, zoom, pixelize, blur…; audio follows), fades from/to black, volume fades for music.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
 
 ### Thumbnail Maker (basic, free & local)
@@ -34,8 +34,11 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Import** video/audio (MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A, FLAC, OGG) with streaming upload and real progress. Files are validated with FFprobe, checksummed, de-duplicated and stored read-only.
 - **Background preparation**: thumbnails, audio waveforms, and browser-playable preview proxies for formats like MKV.
 - **Multitrack timeline**: video and audio tracks, linked picture + sound, move (including across tracks), trim both edges, split, delete, ripple delete, duplicate, snapping, zoom and scroll, track mute/hide/lock, add/remove tracks, undo/redo.
-- **Clip properties**: speed (0.25–4×, audio pitch preserved), volume, scale and position (e.g. picture-in-picture on V2).
-- **Program monitor** that plays the *timeline* (switching clips and mixing audio tracks), with frame stepping.
+- **Clip properties**: speed (0.25–4×, audio pitch preserved), volume, scale, position, rotation, opacity, crop (e.g. picture-in-picture on V2).
+- **Keyframes** (◆) for scale, position, rotation, opacity and volume, with linear / ease / hold. Slow zooms, moving picture-in-picture, music that dips under talking.
+- **Colour**: brightness, contrast, saturation, gamma, temperature, plus looks (warm, cool, B&W, vintage, vivid, faded, cinematic, noir).
+- **Program monitor** that plays the *timeline* with every video layer, transforms, crop, colour and keyframes, stereo audio meters, and a **Light preview** mode (540p copies) for slower computers.
+- **Render cache**: exporting again after a small change only re-renders the parts that changed.
 - **Autosave** with crash-safe atomic writes, a backup copy, and conflict detection across windows.
 - **Version history** (Editor → History): save named versions, automatic checkpoints, one-click restore (undoable), and a side-by-side compare showing which footage was cut or added and what changed.
 - **Export**: 1080p, 720p, 4K, 9:16 vertical, 1:1 square or custom; 24–60 fps; letterbox or crop (never stretched); H.264 + AAC MP4. Hardware encoders are used when one actually works, with libx264 as the fallback.

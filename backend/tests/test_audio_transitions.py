@@ -55,6 +55,8 @@ def _project(tmp_path, specs, audio=None, effects=()):
             # dialogue: tone only during 0-2 s and 4-6 s
             "voice": ("gray", "aevalsrc='0.3*sin(2*PI*440*t)*(lt(t,2)+gte(t,4))':s=48000"),
             "music": ("black", "aevalsrc='0.2*sin(2*PI*220*t)':s=48000"),
+            # soft speech with sharp clicks: loudnorm alone undershoots by ~5 dB
+            "peaky": ("gray", "aevalsrc='0.02*sin(2*PI*300*t)+0.95*lt(mod(t,0.5),0.002)*sin(2*PI*3000*t)':s=48000"),
             "noisy": ("gray", "aevalsrc='0.3*sin(2*PI*440*t)*lt(t,3)+0.02*(random(0)*2-1)':s=48000")}
     media = {}
     for key in {k for k, _, _ in specs}:
@@ -215,6 +217,18 @@ def test_loudness_normalised_and_validated(tmp_path, target):
     assert chk["ok"] and r["validation"]["loudness"]["normalized"] if "loudness" in r["validation"] else chk["ok"]
 
 
+def test_peaky_quiet_audio_still_reaches_target(tmp_path):
+    """Found by render stress test: soft audio with sharp peaks ended 2–5 dB short."""
+    s, p, pdir, _ = _project(tmp_path, [("peaky", 0, dict(start=0, source_in=0, source_out=6)),
+                                        ("peaky", 2, dict(start=0, source_in=0, source_out=6))],
+                             audio={"normalize": True, "target_lufs": -14})
+    out, r = _render(s, p, pdir)
+    assert abs(measure_lufs(s, out) - (-14)) <= 0.6
+    assert r["validation"]["ok"] and r["validation"]["loudness"].get("limiter_gain_db", 0) > 2
+    x = _pcm(out)
+    assert np.abs(x).max() <= 10 ** (-1.0 / 20)  # peaks stay under the ceiling
+
+
 def test_silent_project_skips_normalisation(tmp_path):
     s, p, pdir, _ = _project(tmp_path, [("red", 0, dict(start=0, source_in=0, source_out=2))],
                              audio={"normalize": True})
@@ -224,4 +238,4 @@ def test_silent_project_skips_normalisation(tmp_path):
 
 def test_old_projects_keep_their_sound():
     d = migrate({"schema_version": 2, "effects": [], "captions": {}})
-    assert d["audio"] == {"normalize": False, "ducking": "off"} and d["schema_version"] == 3
+    assert d["audio"] == {"normalize": False, "ducking": "off"} and d["schema_version"] == 4

@@ -32,6 +32,14 @@
 - **Crash-safe**: write to temp → fsync → keep previous as `.bak` → atomic rename. A corrupt main file falls back to `.bak`.
 - **Two revisions**: `revision` bumps on any write (including background jobs adding thumbnails). `edit_revision` bumps only on user timeline saves and is the conflict check. That way a background job never makes the user's autosave fail.
 
+### Clip look & animation (Phase 6, `look.py`, `rcache.py`)
+
+- **Keyframes** are stored per property (`scale, x, y, rotation, opacity, volume`) at *source* time, like effects. The renderer turns them into FFmpeg expressions (nested `if()` pieces, linear/smoothstep/hold), so no frame is baked by Python. The editor preview uses the same maths (`timeline/keyframes.ts`), and tests check both against shared vectors.
+- **Rotation / animated scale / opacity** go through a transparent canvas warped with `perspective` (corners mapped from scale, rotation and position). Upper tracks are rendered with alpha (FFV1) and laid over the base track. Plain clips keep the fast path (scale + overlay).
+- **Crop** removes the edges and, on the warp path, pads back with transparency, so the visible part never moves. **Colour** is `eq` + `colortemperature` + a per-look filter chain.
+- **Render cache**: each segment's key is a hash of its exact FFmpeg arguments, its source files (path, size, mtime), the keys of any intermediate inputs, and the FFmpeg version. A hit is hard-linked into the work folder. The final mix and encode always run, and the cache is LRU-evicted at 4 GB (`CLIPFORGE_RENDER_CACHE_MB`, 0 = off).
+- **Loudness**: two-pass `loudnorm`, then, if it lands more than 0.5 LU off target (soft but peaky audio), gain into an `alimiter` at −1.5 dBFS, re-measured up to 3 times.
+
 ### Version history
 
 `<project>/history/snapshots/<id>.json` holds a copy of the editable document (timeline, effects, captions, audio, output) plus a small summary used for the list. It never holds media. Origins:
