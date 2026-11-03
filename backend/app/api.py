@@ -534,7 +534,8 @@ def build_routes(svc: Services) -> list[Route]:
         for m in p.media:
             a = analysis_svc.load_analysis(store.dir(pid), m.id)
             items.append({"media_id": m.id, "analyzed": a is not None,
-                          "has_transcript": bool(a and a.get("words"))})
+                          "has_transcript": bool(a and a.get("words")),
+                          "transcript_error": (a or {}).get("transcript_error")})
         t = available_transcriber()
         return JSONResponse({"media": items, "transcriber": t.name if t else None})
 

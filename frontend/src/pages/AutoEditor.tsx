@@ -100,7 +100,7 @@ function Strip({ plan, active, onPick }: { plan: Plan; active: number | null; on
 function Workspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [mediaId, setMediaId] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean }[]; transcriber: string | null } | null>(null);
+  const [status, setStatus] = useState<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean; transcript_error?: string | null }[]; transcriber: string | null } | null>(null);
   const [settings, setSettings] = useState<AutoEditSettings>(DEFAULTS);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -135,6 +135,7 @@ function Workspace({ projectId }: { projectId: string }) {
   const media: MediaAsset | undefined = project?.media.find((m) => m.id === mediaId);
   const analyzed = !!status?.media.find((m) => m.media_id === mediaId)?.analyzed;
   const hasTranscript = !!status?.media.find((m) => m.media_id === mediaId)?.has_transcript;
+  const transcriptError = status?.media.find((m) => m.media_id === mediaId)?.transcript_error;
   const job = jobs.find((j) => j.kind === "analyze" && j.params.media_id === mediaId);
   const jobActive = job && (job.status === "queued" || job.status === "running");
   useEffect(() => { if (job?.status === "succeeded") loadStatus(); }, [job?.status]);
@@ -272,6 +273,13 @@ function Workspace({ projectId }: { projectId: string }) {
           ) : (
             <div className="card grid" style={{ gap: 12 }}>
               <h3 style={{ margin: 0 }}>2 · Settings</h3>
+              {transcriptError && (
+                <div className="banner" style={{ borderRadius: 8, fontSize: 12 }} data-testid="transcript-error">
+                  <Icon name="warn" size={13} />
+                  <span>Speech transcription didn't work, so this edit uses sound and picture only (bleeps/captions need it).
+                    Reason: <span className="mono">{transcriptError}</span> — press Re-analyse to try again.</span>
+                </div>
+              )}
               <label className="field">Target length
                 <select value={settings.target_mode} onChange={(e) => set({ target_mode: e.target.value as any })}>
                   <option value="duration">Custom duration</option>

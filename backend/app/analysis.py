@@ -159,10 +159,20 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
             result["motion"], result["cuts"] = video_motion(settings, src, asset.duration, prog,
                                                            ctx.cancel_event)
         else:
-            _prepare(ctx, transcriber, i, len(steps))
-            ctx.stage(i, len(steps), f"Transcribing speech ({transcriber.name})")
-            result["words"] = transcriber.transcribe(src, prog, ctx.cancel_event)
-            result["transcriber"] = transcriber.name
+            # optional: if speech-to-text fails (e.g. the one-time model download), keep the
+            # sound/picture analysis — the Auto Editor works without words
+            try:
+                _prepare(ctx, transcriber, i, len(steps))
+                ctx.stage(i, len(steps), f"Transcribing speech ({transcriber.name})")
+                result["words"] = transcriber.transcribe(src, prog, ctx.cancel_event)
+                result["transcriber"] = transcriber.name
+            except ff.Cancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                if ctx.cancel_event.is_set():
+                    raise
+                result["words"] = None
+                result["transcript_error"] = str(exc)[:500]
         done += w
         ctx.check_cancel()
     out = analysis_path(project_dir, asset.id)
@@ -170,7 +180,9 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
     tmp.write_text(json.dumps(result))
     os.replace(tmp, out)
     return {"media_id": asset.id, "values": len(result["rms_db"]), "cuts": len(result["cuts"]),
-            "words": len(result["words"]) if result["words"] is not None else None}
+            "words": len(result["words"]) if result["words"] is not None else None,
+            **({"warning": "Speech transcription failed, so this analysis uses sound and picture only: "
+                           + result["transcript_error"]} if result.get("transcript_error") else {})}
 
 
 def _prepare(ctx, transcriber, i: int, n: int) -> None:
@@ -187,12 +199,17 @@ def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAss
     first if it doesn't exist yet)."""
     existing = load_analysis(project_dir, asset.id)
     if existing is None:
-        return analyze_media(ctx, settings, project_dir, asset, transcriber)
+        res = analyze_media(ctx, settings, project_dir, asset, transcriber)
+        err = (load_analysis(project_dir, asset.id) or {}).get("transcript_error")
+        if err:  # transcription was the point of this job: report it as failed
+            raise RuntimeError(err)
+        return res
     src = project_dir / "media" / "original" / asset.stored_name
     _prepare(ctx, transcriber, 1, 1)
     ctx.stage(1, 1, f"Transcribing speech ({transcriber.name})")
     existing["words"] = transcriber.transcribe(src, ctx.progress, ctx.cancel_event)
     existing["transcriber"] = transcriber.name
+    existing.pop("transcript_error", None)
     out = analysis_path(project_dir, asset.id)
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing))

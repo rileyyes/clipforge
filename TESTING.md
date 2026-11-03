@@ -72,6 +72,7 @@ Run everything: `scripts/verify_all.sh`.
 | browser E2E | Monitor layers lost their position (`inset` overrode `left/top`) |
 | user report | "Find & bleep swears" was greyed out with no reason (no transcript yet), and stayed greyed out after adding clips because the transcript status went stale. It now explains what's needed, has a **Transcribe now** button, and refreshes |
 | user report | A failed transcription (e.g. the one-time speech-model download failing) was hidden: the panel just went back to "Transcribe speech". Failures now show with the reason, Details and Retry, and model loading is its own labelled step instead of looking stuck at 0% |
+| user report | After installing speech-to-text, "Analyse recording" failed when the transcriber couldn't load (e.g. model download). Transcription is now optional inside analysis: the AI edit still works from sound + picture and shows the reason |
 
 ## What's covered
 

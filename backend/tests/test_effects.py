@@ -408,3 +408,34 @@ def make_media_file(path):
                     "-f", "lavfi", "-i", "sine=f=440:d=3", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", str(path)], check=True)
     return path
+
+
+def test_analysis_survives_a_failing_transcriber(server, tmp_path, monkeypatch):
+    """User report: after installing speech-to-text, 'Analyse recording' broke when the
+    model couldn't load. Analysis must still work (sound + picture), with a warning."""
+    c = server
+    vid = make_media_file(tmp_path / "a.mp4")
+    _, p, _ = c.req("POST", "/api/projects", {"name": "an"})
+    pid = p["id"]
+    _, up, _ = c.upload(pid, vid)
+    mid = up["media"]["id"]
+    monkeypatch.setattr("app.api.available_transcriber", lambda: SlowLoadingTranscriber(fail=True))
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/autoedit/analyze", {"media_id": mid})
+    j = c.wait_job(job["id"])
+    assert j["status"] == "succeeded" and "sound and picture only" in j["result"]["warning"], j
+    _, st, _ = c.req("GET", f"/api/projects/{pid}/autoedit")
+    m = st["media"][0]
+    assert m["analyzed"] and not m["has_transcript"] and "download the speech model" in m["transcript_error"]
+    st_, plan, _ = c.req("POST", f"/api/projects/{pid}/autoedit/plan", {"media_id": mid})
+    assert st_ == 200  # the AI edit still works
+    # a later successful transcription clears the warning
+    monkeypatch.setattr("app.api.available_transcriber", lambda: SlowLoadingTranscriber(fail=False))
+    p = c.req("GET", f"/api/projects/{pid}")[1]
+    link = new_id()
+    p["timeline"]["tracks"][0]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 3, "link_id": link}]
+    p["timeline"]["tracks"][2]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 3, "link_id": link}]
+    c.req("PUT", f"/api/projects/{pid}/timeline", {"base_edit_revision": p["edit_revision"], "timeline": p["timeline"], "output": p["output"]})
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/transcribe", {})
+    assert c.wait_job(job["id"])["status"] == "succeeded"
+    m = c.req("GET", f"/api/projects/{pid}/autoedit")[1]["media"][0]
+    assert m["has_transcript"] and m["transcript_error"] is None

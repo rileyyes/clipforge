@@ -86,7 +86,7 @@ export interface Plan {
 
 export const autoedit = {
   status: (pid: string) =>
-    call<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean }[]; transcriber: string | null }>("GET", `/api/projects/${pid}/autoedit`),
+    call<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean; transcript_error?: string | null }[]; transcriber: string | null }>("GET", `/api/projects/${pid}/autoedit`),
   analyze: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/autoedit/analyze`, { media_id }),
   plan: (pid: string, media_id: string, settings: AutoEditSettings) =>
     call<Plan>("POST", `/api/projects/${pid}/autoedit/plan`, { media_id, settings }),
