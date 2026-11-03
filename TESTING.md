@@ -19,6 +19,7 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Backend integration (`tests/test_api.py`) | 17 | ✅ |
 | Auto Editor (`tests/test_autoedit.py`) | 30 (incl. 400 random recordings) | ✅ |
 | Effects (`tests/test_effects.py`) | 49 (incl. audio-level censor verification by FFT, frame diffs for every visual effect, fake-transcriber API flow) | ✅ |
+| Audio & transitions (`tests/test_audio_transitions.py`) | 12 (pixel-measured crossfade/dip/fades, ducking measured in the 220 Hz band, noise floor, −14/−16 LUFS) | ✅ |
 | Thumbnail Maker (`tests/test_thumbnails.py`) | 36 (incl. provider contract tests vs fake servers) | ✅ |
 | Frontend thumbnail model (`thumbs/model.test.ts`) | 5 | ✅ |
 | Frontend engine unit (`ops.test.ts`) | 20 | ✅ |
@@ -28,6 +29,7 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Browser E2E: manual editor | full flow | ✅ no console errors |
 | Browser E2E: AI auto editor | full flow | ✅ no console errors |
 | Browser E2E: effects | transcript → bleeps → auto comedy edits → pop-up → captions → undo/redo → export → reopen | ✅ no console errors |
+| Browser E2E: audio | crossfade + fades + music role + noise/enhance/ducking → export with loudness check → reopen | ✅ no console errors |
 | Browser E2E: thumbnail maker | analyse → concepts → studio → version → export → reopen | ✅ no console errors |
 
 Run everything: `scripts/verify_all.sh`.
@@ -53,6 +55,9 @@ Run everything: `scripts/verify_all.sh`.
 | browser E2E | Transcript status hidden when transcripts existed but the transcriber wasn't installed |
 | screenshots | New pop-ups could stack on top of a showing one; effects panel controls clipped |
 | user report | requirements.txt missed OpenCV; missing FFmpeg gave a vague "Upload failed" |
+| transition tests | FFmpeg's "fadeblack" never reaches black — dip to black rebuilt as fade-out/fade-in |
+| noise tests | `afftdn` barely reduced broadband hiss — switched to `anlmdn` (−85–95% hiss, voice level unchanged) |
+| fuzz cross-check | Editor rounded a max transition length up by 1 µs, which the server rejected |
 
 ## What's covered
 

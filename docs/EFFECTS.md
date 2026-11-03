@@ -1,4 +1,4 @@
-# Effects: bleeps, comedy edits & captions (Phase 4)
+# Effects, audio & transitions (Phase 4)
 
 Everything here is free and runs on your PC. Open a project in the **Manual Editor** and click the **Effects** tab, next to *Clip*.
 
@@ -34,6 +34,23 @@ Every effect is pinned to a moment in the original footage, so it moves with the
 ## 4 · Captions
 
 Tick **Burn animated captions into the export**, then choose a style: **Bold pop** (pop-in animation), **Word highlight** (karaoke-style), or **Clean box**. You can also set the position, words per line and size. **Download .srt** gives YouTube a separate caption file.
+
+## 5 · Audio (Effects tab → Audio)
+
+- **Normalise loudness** (on for new projects). Two-pass loudness normalisation to **−14 LUFS**, the level YouTube plays at, with peaks kept below −1.5 dBTP. The export report measures the result and fails the check if it's off by more than 1.5 LU.
+- **Background noise removal** (light / medium / strong) on dialogue tracks. It uses a non-local-means denoiser and roughly doubles audio processing time.
+- **Enhance voice**: cuts rumble below 80 Hz, adds a presence lift around 3 kHz, and gently compresses.
+- **Duck music under voice** (light / medium / strong). Tracks marked as **music** (the ♪/🎤 button on each audio track; A2 is music in new projects) automatically get quieter while someone is talking, then come back up in the pauses.
+
+Projects made before this update keep their exact sound: normalisation and ducking start **off** for them.
+
+## 6 · Transitions & fades (Clip tab)
+
+Select a clip on the main video track (V1):
+- **Transition in**: *Crossfade* or *Dip to black*, 0.1–3 s. A crossfade blends the end of the previous clip into this one, using the footage just past each cut point (or holding the last frame if there isn't any). The linked audio crossfades too. Dip to black fades the previous clip out to black and this one in. With no clip directly before, it fades up from black.
+- **Fade from / to black** on any V1 clip, and **volume fades** on any audio clip (great for music).
+
+Transitions and fades appear on the clip in the timeline and are rendered in the export. The live preview shows a plain cut.
 
 ## Fonts
 

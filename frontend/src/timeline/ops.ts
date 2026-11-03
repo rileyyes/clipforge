@@ -124,9 +124,11 @@ export function splitAt(tl: Timeline, ids: string[], t: number): OpResult {
         if (!newLinks.has(c.link_id)) newLinks.set(c.link_id, newId());
         link = newLinks.get(c.link_id)!;
       }
-      const right: Clip = { ...c, id: newId(), start: round6(t), source_in: cut, link_id: link };
+      // the left part keeps the start (fade in / transition), the right part keeps the end (fade out)
+      const right: Clip = { ...c, id: newId(), start: round6(t), source_in: cut, link_id: link,
+        transition_in: null, fade_in: 0, fade_out: c.fade_out ?? 0 };
       created.push(right.id);
-      clips.push({ ...c, source_out: cut }, right);
+      clips.push({ ...c, source_out: cut, fade_out: 0 }, right);
     }
     return { ...track, clips: sortClips(clips) };
   });
@@ -404,4 +406,57 @@ export function clipAt(track: Track, t: number): Clip | null {
 
 export function sourceTimeAt(c: Clip, t: number): number {
   return c.source_in + (t - c.start) * c.speed;
+}
+
+// ---------------------------------------------------------------- transitions & fades
+
+/** Keep fades and transitions valid after any edit (the server enforces the same rules):
+ *  fade in + fade out <= clip length; transitions only on video clips and at most 90% of
+ *  the clip (and of the clip directly before it); too-short transitions are removed. */
+export function sanitize(tl: Timeline): Timeline {
+  let changed = false;
+  const tracks = tl.tracks.map((t) => {
+    const sorted = [...t.clips].sort((a, b) => a.start - b.start);
+    const clips = t.clips.map((c) => {
+      const d = clipDuration(c);
+      let u: Clip = c;
+      const fi = c.fade_in ?? 0, fo = c.fade_out ?? 0;
+      if (fi + fo > d + 1e-6) { const k = d / (fi + fo); u = { ...u, fade_in: round6(fi * k * 0.999), fade_out: round6(fo * k * 0.999) }; }
+      if (u.transition_in) {
+        if (t.kind !== "video") u = { ...u, transition_in: null };
+        else {
+          const prev = sorted.find((p) => p.id !== c.id && Math.abs(clipEnd(p) - c.start) < 0.02);
+          const max = Math.min(d * 0.9, prev ? clipDuration(prev) * 0.9 : Infinity, 3);
+          if (max < 0.1) u = { ...u, transition_in: null };
+          else if (u.transition_in.duration > max) u = { ...u, transition_in: { ...u.transition_in, duration: Math.floor(max * 1e6) / 1e6 } };
+        }
+      }
+      if (u !== c) changed = true;
+      return u;
+    });
+    return changed ? { ...t, clips } : t;
+  });
+  return changed ? { ...tl, tracks } : tl;
+}
+
+export function setTransition(tl: Timeline, id: string, tr: Clip["transition_in"]): OpResult {
+  const ref = findClip(tl, id);
+  if (!ref) return { error: "Clip not found" };
+  if (ref.track.locked) return { error: `Track ${ref.track.name} is locked` };
+  if (tr && ref.track.kind !== "video") return { error: "Transitions go on video clips (the linked audio follows)" };
+  const timeline = withTracks(tl, (t) => ({ ...t, clips: t.clips.map((c) => (c.id === id ? { ...c, transition_in: tr } : c)) }));
+  return { timeline: sanitize(timeline) };
+}
+
+export function setFades(tl: Timeline, id: string, fade_in: number, fade_out: number): OpResult {
+  const ref = findClip(tl, id);
+  if (!ref) return { error: "Clip not found" };
+  if (ref.track.locked) return { error: `Track ${ref.track.name} is locked` };
+  const fi = Math.max(0, Math.min(10, fade_in)), fo = Math.max(0, Math.min(10, fade_out));
+  const timeline = withTracks(tl, (t) => ({ ...t, clips: t.clips.map((c) => (c.id === id ? { ...c, fade_in: round6(fi), fade_out: round6(fo) } : c)) }));
+  return { timeline: sanitize(timeline) };
+}
+
+export function setTrackRole(tl: Timeline, id: string, role: "dialogue" | "music"): OpResult {
+  return { timeline: withTracks(tl, (t) => (t.id === id && t.kind === "audio" ? { ...t, role } : t)) };
 }

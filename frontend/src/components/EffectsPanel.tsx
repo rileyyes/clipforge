@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, fmtTime, type Job } from "../api";
 import { activeEffects, effectTime, newEffectAt } from "../timeline/effects";
-import type { CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
+import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
 
 const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
@@ -23,10 +23,11 @@ function playSound(s: Sound | null) {
   new Audio(`/api/sounds/${s}.wav`).play().catch(() => {});
 }
 
-export default function EffectsPanel({ projectId, timeline, effects, captions, playhead, jobs, onJobs, setFx, seek }: {
+export default function EffectsPanel({ projectId, timeline, effects, captions, playhead, jobs, onJobs, setFx, seek, audio, setAudio }: {
   projectId: string; timeline: Timeline; effects: Effect[]; captions: CaptionSettings; playhead: number;
   jobs: Job[]; onJobs: () => void; seek: (t: number) => void;
   setFx: (effects: Effect[], captions: CaptionSettings, label: string) => void;
+  audio: AudioSettings; setAudio: (a: AudioSettings, label: string) => void;
 }) {
   const [status, setStatus] = useState<any>(null);
   const [sound, setSound] = useState<Sound>("beep");
@@ -151,6 +152,28 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           <label className="field">Size<input type="range" min={0.04} max={0.15} step={0.005} value={captions.size} onChange={(e) => cap({ size: +e.target.value })} /></label>
         </div>
         <a className="btn sm" href={`/api/projects/${projectId}/captions.srt`} download>Download .srt (for YouTube)</a>
+      </div>
+
+      {/* ---------------- audio */}
+      <div className="insp-section">
+        <h3 style={{ margin: 0 }}>5 · Audio</h3>
+        <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={audio.normalize} onChange={(e) => setAudio({ ...audio, normalize: e.target.checked }, "Loudness")} />
+          Normalise loudness to {audio.target_lufs} LUFS {audio.target_lufs === -14 ? "(YouTube's level)" : ""}</label>
+        {audio.normalize && <label className="field">Target <span className="mono" style={{ color: "var(--text)" }}>{audio.target_lufs} LUFS</span>
+          <input type="range" min={-20} max={-10} step={1} value={audio.target_lufs} onChange={(e) => setAudio({ ...audio, target_lufs: +e.target.value }, "Loudness target")} /></label>}
+        <div className="insp-grid">
+          <label className="field">Background noise removal
+            <select value={audio.noise_reduction} onChange={(e) => setAudio({ ...audio, noise_reduction: e.target.value as any }, "Noise reduction")}>
+              <option value="off">Off</option><option value="light">Light</option><option value="medium">Medium</option><option value="strong">Strong</option>
+            </select></label>
+          <label className="field">Duck music under voice
+            <select value={audio.ducking} onChange={(e) => setAudio({ ...audio, ducking: e.target.value as any }, "Ducking")}>
+              <option value="off">Off</option><option value="light">Light</option><option value="medium">Medium</option><option value="strong">Strong</option>
+            </select></label>
+        </div>
+        <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={audio.enhance_voice} onChange={(e) => setAudio({ ...audio, enhance_voice: e.target.checked }, "Enhance voice")} />
+          Enhance voice (cut rumble, add clarity, even out levels)</label>
+        <div className="dim" style={{ fontSize: 11 }}>Noise removal and voice enhancement apply to dialogue tracks. Ducking lowers tracks marked as music (♪ button on the track) while someone talks. Noise removal makes exports slower. All applied in the export.</div>
       </div>
 
       {/* ---------------- list */}

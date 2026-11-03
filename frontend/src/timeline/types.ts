@@ -20,7 +20,12 @@ export interface Clip {
   transform: Transform;
   link_id: string | null;
   label?: string | null;
+  transition_in?: Transition | null; // video clips: into this clip from the one before it
+  fade_in?: number;                  // seconds (video: from black, audio: volume)
+  fade_out?: number;
 }
+
+export interface Transition { kind: "crossfade" | "dip_black"; duration: number }
 
 export interface Track {
   id: string;
@@ -29,6 +34,7 @@ export interface Track {
   muted: boolean;
   hidden: boolean;
   locked: boolean;
+  role?: "dialogue" | "music";
   clips: Clip[];
 }
 
@@ -83,6 +89,11 @@ export interface CaptionSettings {
   size: number; color: string; highlight: string; max_words: number; uppercase: boolean;
 }
 
+export interface AudioSettings {
+  normalize: boolean; target_lufs: number; noise_reduction: "off" | "light" | "medium" | "strong";
+  enhance_voice: boolean; ducking: "off" | "light" | "medium" | "strong";
+}
+
 export interface Project {
   schema_version: number;
   id: string;
@@ -96,6 +107,7 @@ export interface Project {
   output: OutputSettings;
   effects: Effect[];
   captions: CaptionSettings;
+  audio: AudioSettings;
   missing_media?: string[];
 }
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { fmtTime } from "../api";
 import { clipDuration, clipEnd, findClip, type ClipPatch } from "../timeline/ops";
-import type { MediaMap, Timeline } from "../timeline/types";
+import type { MediaMap, Timeline, Transition } from "../timeline/types";
 
 /** Number field that commits on Enter/blur (so typing "1." doesn't fight the state). */
 function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
@@ -21,11 +21,13 @@ function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
   );
 }
 
-export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove }: {
+export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades }: {
   timeline: Timeline; media: MediaMap; selection: string[];
   onPatch: (id: string, p: ClipPatch, label: string) => void;
   onTrim: (id: string, edge: "start" | "end", t: number) => void;
   onMove: (id: string, start: number) => void;
+  onTransition: (id: string, tr: Transition | null) => void;
+  onFades: (id: string, fadeIn: number, fadeOut: number) => void;
 }) {
   const ref = selection.length === 1 ? findClip(timeline, selection[0]) : null;
   if (!ref) {
@@ -74,6 +76,33 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
               onCommit={(v) => onTrim(clip.id, "end", clipEnd(clip) + (v - clip.source_out) / clip.speed)} />
           </div>
         </div>
+
+        {(track.kind === "audio" || timeline.tracks.find((t) => t.kind === "video" && !t.hidden)?.id === track.id) && (
+          <div className="insp-section">
+            <h3 style={{ margin: 0 }}>{track.kind === "video" ? "Transition & fades" : "Fades"}</h3>
+            {track.kind === "video" && (
+              <div className="insp-grid">
+                <label className="field">Transition in
+                  <select value={clip.transition_in?.kind ?? "none"} onChange={(e) => onTransition(clip.id, e.target.value === "none" ? null
+                    : { kind: e.target.value as Transition["kind"], duration: clip.transition_in?.duration ?? 0.5 })}>
+                    <option value="none">None (cut)</option><option value="crossfade">Crossfade</option><option value="dip_black">Dip to black</option>
+                  </select>
+                </label>
+                {clip.transition_in && <Num label="Length" suffix="s" step={0.1} min={0.1} max={3} value={clip.transition_in.duration}
+                  onCommit={(v) => onTransition(clip.id, { ...clip.transition_in!, duration: Math.max(0.1, Math.min(3, v)) })} />}
+              </div>
+            )}
+            <div className="insp-grid">
+              <Num label={track.kind === "video" ? "Fade from black" : "Fade in"} suffix="s" step={0.1} min={0} max={10} value={clip.fade_in ?? 0}
+                onCommit={(v) => onFades(clip.id, v, clip.fade_out ?? 0)} />
+              <Num label={track.kind === "video" ? "Fade to black" : "Fade out"} suffix="s" step={0.1} min={0} max={10} value={clip.fade_out ?? 0}
+                onCommit={(v) => onFades(clip.id, clip.fade_in ?? 0, v)} />
+            </div>
+            <div className="dim" style={{ fontSize: 11 }}>{track.kind === "video"
+              ? "A transition blends from the clip right before this one; with no clip right before, it fades up from black. Shown in the export (the preview shows a cut). Linked audio crossfades too."
+              : "Volume fades — great for background music. Applied in the export."}</div>
+          </div>
+        )}
 
         {track.kind === "audio" && (
           <div className="insp-section">

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   MIN_CLIP, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
-  splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
+  sanitize, setFades, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import type { MediaAsset, MediaMap, Timeline } from "./types";
 
@@ -53,6 +53,13 @@ export function checkInvariants(tl: Timeline, where: string) {
       assert.ok(c.speed >= 0.25 && c.speed <= 4, `${where}: speed`);
       assert.ok(c.start >= prevEnd - 1e-4, `${where}: overlap/unsorted on ${t.name} (${c.start} < ${prevEnd})`);
       prevEnd = clipEnd(c);
+      assert.ok((c.fade_in ?? 0) + (c.fade_out ?? 0) <= clipDuration(c) + 1e-4, `${where}: fades longer than clip`);
+      if (c.transition_in) {
+        assert.equal(t.kind, "video", `${where}: transition on audio clip`);
+        assert.ok(c.transition_in.duration <= clipDuration(c) * 0.9 + 1e-4 && c.transition_in.duration >= 0.1 - 1e-9, `${where}: transition too long`);
+        const prev = t.clips.find((x) => x.id !== c.id && Math.abs(clipEnd(x) - c.start) < 0.02);
+        if (prev) assert.ok(c.transition_in.duration <= clipDuration(prev) * 0.9 + 1e-4, `${where}: transition longer than previous clip`);
+      }
       if (c.link_id) {
         const k = links.get(c.link_id);
         const v = { start: c.start, dur: clipDuration(c), speed: c.speed, si: c.source_in };
@@ -80,7 +87,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 12);
+      const op = Math.floor(r() * 15);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -94,11 +101,14 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 8: res = toggleTrack(tl, pick(tl.tracks).id, pick(["muted", "hidden", "locked"] as const)); break;
         case 9: res = addTrack(tl, r() < 0.5 ? "video" : "audio"); break;
         case 10: res = removeTrack(tl, pick(tl.tracks).id); break;
+        case 12: res = c ? setTransition(tl, c.id, r() < 0.2 ? null : { kind: r() < 0.5 ? "crossfade" : "dip_black", duration: 0.1 + r() * 2.9 }) : { error: "none" }; break;
+        case 13: res = c ? setFades(tl, c.id, r() * 4, r() * 4) : { error: "none" }; break;
+        case 14: res = setTrackRole(tl, pick(tl.tracks).id, r() < 0.5 ? "music" : "dialogue"); break;
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }
       applied++;
-      tl = res.timeline;
+      tl = sanitize(res.timeline); // the editor runs this after every edit
       checkInvariants(tl, `seed ${seed} step ${step} op ${op}`);
       if (allClips(tl).length > 150) tl = fresh(); // keep runtime bounded
     }

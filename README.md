@@ -15,10 +15,12 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Send to Manual Editor** turns the edit into normal linked clips. The previous timeline is backed up, and the source file is never touched.
 - Optional transcription: `pip install faster-whisper` adds word timestamps (experimental, see ROADMAP).
 
-### Effects: bleeps, comedy edits & captions (free & local)
+### Effects, audio & transitions (free & local)
 - **Swear bleeps** from the transcript, with beep, boing, scratch, honk, quack or mute. The word is removed from the audio, not just covered. Every bleep can be reviewed.
 - **Comedy edits** auto-placed on reactions (zooms, shakes, pop-up text, sound effects) or added at the playhead, plus your own images.
 - **Animated captions** (bold pop / word highlight / clean) burned in, plus `.srt` export. Censored words are masked.
+- **Audio polish**: loudness normalised to YouTube's −14 LUFS (verified in the export report), background-noise removal, voice enhancement, music that ducks under your voice.
+- **Transitions & fades**: crossfade / dip to black between clips (audio follows), fades from/to black, volume fades for music.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
 
 ### Thumbnail Maker (basic, free & local)
@@ -85,6 +87,7 @@ python scripts/e2e_browser.py           # browser E2E: manual editor (needs Play
 python scripts/e2e_autoedit.py          # browser E2E: AI auto editor
 python scripts/e2e_thumbnails.py        # browser E2E: thumbnail maker
 python scripts/e2e_effects.py           # browser E2E: bleeps, comedy edits, captions
+python scripts/e2e_audio.py             # browser E2E: transitions, fades, ducking, loudness
 ```
 
 ## Configuration

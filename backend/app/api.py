@@ -26,7 +26,7 @@ from . import analysis as analysis_svc
 from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
 from .transcription import available_transcriber
-from .schema import SOUNDS, CaptionSettings, Effect, OutputSettings, Project, Timeline
+from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
 
@@ -68,6 +68,7 @@ class TimelineSave(BaseModel):
     output: OutputSettings
     effects: Optional[list[Effect]] = None
     captions: Optional[CaptionSettings] = None
+    audio: Optional[AudioSettings] = None
 
 
 class ExportRequest(BaseModel):
@@ -247,6 +248,8 @@ def build_routes(svc: Services) -> list[Route]:
                 data["effects"] = [e.model_dump(mode="json") for e in body.effects]
             if body.captions is not None:
                 data["captions"] = body.captions.model_dump(mode="json")
+            if body.audio is not None:
+                data["audio"] = body.audio.model_dump(mode="json")
             data["edit_revision"] = cur.edit_revision + 1
             try:
                 candidate = Project.model_validate(data)
@@ -260,7 +263,7 @@ def build_routes(svc: Services) -> list[Route]:
             latest = store.load(pid)
             d = latest.model_dump(mode="json")
             d.update(timeline=data["timeline"], output=data["output"], effects=data["effects"],
-                     captions=data["captions"], edit_revision=latest.edit_revision + 1)
+                     captions=data["captions"], audio=data["audio"], edit_revision=latest.edit_revision + 1)
             saved = store.save(Project.model_validate(d), expected_revision=latest.revision)
         return JSONResponse(project_payload(saved))
 

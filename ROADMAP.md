@@ -47,16 +47,18 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ Optional LLM reasoning provider (local or API, opt-in)
 - ⬜ Short-form (9:16) auto-reframe
 
-## Phase 4 — YouTube entertainment features ✅ core / 🟡 rest
+## Phase 4 — YouTube entertainment features ✅
 
 - ✅ Transcription job (faster-whisper, free/local, optional install) — 🟡 not yet run on a real machine
 - ✅ Swear censoring at the audio level: strong/mild lists + custom & allow words, padding, review flags, 6 synthesised sounds, masked captions
 - ✅ Comedy edits: zoom punch-ins, shake, flash, pop-up text, 10 synthesised SFX, user images; auto-placement on reactions (minimal/balanced/chaotic)
 - ✅ Effects pinned to source time (follow trims/moves, vanish when cut); timeline markers; monitor preview; undo/redo; autosave
 - ✅ Animated burned-in captions (bold pop / word highlight / clean) + SRT export
-- ⬜ Loudness normalisation (−14 LUFS), noise reduction, music ducking
-- ⬜ Transitions (crossfade / dip to black)
-- ⬜ Background music library, animated GIF pop-ups (first frame only today), drag effects on the timeline
+- ✅ Two-pass loudness normalisation (−14 LUFS default, verified in the export report), noise removal, voice enhancement
+- ✅ Music tracks ducked under dialogue (sidechain), volume fades
+- ✅ Transitions: crossfade (with handles; linked audio crossfades) and dip to black; fades from/to black
+- ⬜ Transition/fade preview in the live monitor (export is exact)
+- ⬜ Built-in music library, animated GIF pop-ups (first frame only today), dragging effects on the timeline
 
 ## Phase 4b — Thumbnail Maker 🟡 basic version (back burner)
 
@@ -72,7 +74,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Open AI rough cut in the timeline, edit, re-render (tested in browser E2E)
 - ⬜ Combined one-click "AI edit + effects + captions" flow
 
-<!-- next milestone: audio polish (loudness, ducking, music) + transitions -->
+
 - ⬜ Project history / versions and comparison
 
 ## Phase 6 — Advanced editor ⬜

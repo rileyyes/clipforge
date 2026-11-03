@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -79,6 +79,13 @@ class Transform(Strict):
         return 0.0
 
 
+class Transition(Strict):
+    """Transition INTO a clip from the clip right before it on the same track.
+    If nothing is directly before it, it renders as a fade up from black."""
+    kind: Literal["crossfade", "dip_black"] = "crossfade"
+    duration: float = Field(default=0.5, ge=0.1, le=3.0)
+
+
 class Clip(Strict):
     id: str
     media_id: str
@@ -90,6 +97,9 @@ class Clip(Strict):
     transform: Transform = Field(default_factory=Transform)
     link_id: Optional[str] = None
     label: Optional[str] = Field(default=None, max_length=200)
+    transition_in: Optional[Transition] = None
+    fade_in: float = Field(default=0, ge=0, le=10)   # video: from black, audio: volume
+    fade_out: float = Field(default=0, ge=0, le=10)  # video: to black, audio: volume
 
     @field_validator("id", "media_id")
     @classmethod
@@ -100,6 +110,9 @@ class Clip(Strict):
     def _range(self) -> "Clip":
         if self.source_out - self.source_in < MIN_CLIP_DURATION * self.speed - EPS:
             raise ValueError("clip is shorter than the minimum duration")
+        dur = (self.source_out - self.source_in) / self.speed
+        if self.fade_in + self.fade_out > dur + EPS:
+            raise ValueError("fade in + fade out can't be longer than the clip")
         return self
 
     @property
@@ -118,6 +131,7 @@ class Track(Strict):
     muted: bool = False
     hidden: bool = False
     locked: bool = False
+    role: Literal["dialogue", "music"] = "dialogue"  # audio tracks: music gets ducked under dialogue
     clips: list[Clip] = Field(default_factory=list)
 
     @field_validator("id")
@@ -216,6 +230,14 @@ class CaptionSettings(Strict):
     uppercase: bool = True
 
 
+class AudioSettings(Strict):
+    normalize: bool = True               # two-pass loudness normalisation
+    target_lufs: float = Field(default=-14, ge=-30, le=-8)  # YouTube plays back at about -14 LUFS
+    noise_reduction: Literal["off", "light", "medium", "strong"] = "off"
+    enhance_voice: bool = False          # rumble cut, presence lift, gentle compression
+    ducking: Literal["off", "light", "medium", "strong"] = "medium"  # music under dialogue
+
+
 class Project(Strict):
     schema_version: int = SCHEMA_VERSION
     id: str
@@ -229,6 +251,7 @@ class Project(Strict):
     output: OutputSettings = Field(default_factory=OutputSettings)
     effects: list[Effect] = Field(default_factory=list, max_length=5000)
     captions: CaptionSettings = Field(default_factory=CaptionSettings)
+    audio: AudioSettings = Field(default_factory=AudioSettings)
 
     @field_validator("id")
     @classmethod
@@ -283,6 +306,14 @@ def validate_timeline(project: Project) -> None:
                 raise ValueError("media without audio cannot be placed on an audio track")
             if clip.start < prev_end - EPS:
                 raise ValueError(f"clips overlap on track {track.name}")
+            if clip.transition_in is not None:
+                if track.kind != "video":
+                    raise ValueError("transitions go on video clips (linked audio follows)")
+                if clip.transition_in.duration > clip.duration * 0.9 + EPS:
+                    raise ValueError("transition is longer than the clip")
+                prev = next((c for c in ordered if abs(c.end - clip.start) < 0.02 and c is not clip), None)
+                if prev is not None and clip.transition_in.duration > prev.duration * 0.9 + EPS:
+                    raise ValueError("transition is longer than the previous clip")
             prev_end = clip.end
 
 
@@ -292,7 +323,7 @@ def default_timeline(new_id) -> Timeline:
             Track(id=new_id(), kind="video", name="V1"),
             Track(id=new_id(), kind="video", name="V2"),
             Track(id=new_id(), kind="audio", name="A1"),
-            Track(id=new_id(), kind="audio", name="A2"),
+            Track(id=new_id(), kind="audio", name="A2", role="music"),
         ]
     )
 
@@ -310,4 +341,8 @@ def migrate(data: dict) -> dict:
         )
     if v < 2:  # v1 -> v2: effects + captions added
         data = {**data, "effects": [], "captions": {}, "schema_version": 2}
+        v = 2
+    if v < 3:  # v2 -> v3: audio settings, track roles, transitions/fades (all defaulted)
+        # existing projects keep their sound exactly: no automatic normalisation or ducking
+        data = {**data, "audio": {"normalize": False, "ducking": "off"}, "schema_version": 3}
     return data

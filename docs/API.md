@@ -60,7 +60,7 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 | GET/POST | `/api/projects/{pid}/fx/images`, GET `/fx/images/{id}` | your pop-up images |
 | GET | `/api/sounds/{name}.wav` | preview a synthesised sound |
 
-Effects and caption settings are saved with `PUT /timeline` (`effects`, `captions`). Project schema v2. v1 projects migrate automatically.
+Effects, caption and audio settings are saved with `PUT /timeline` (`effects`, `captions`, `audio`). Project schema v3 (clips: `transition_in`, `fade_in`, `fade_out`; audio tracks: `role`). Older projects migrate automatically.
 
 ## Thumbnail Maker (`/api/projects/{pid}/thumbnails`)
 | Method | Path | Description |
