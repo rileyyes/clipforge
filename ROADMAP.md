@@ -117,6 +117,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ⬜ FastAPI migration. **Blocked here:** FastAPI can't be installed in this development environment, and a framework swap that can't be run can't be tested. The generated OpenAPI spec already covers its main benefit
 - ⬜ Vite dev server + React types + component tests. **Blocked the same way** (no `vite`, `@types/react` or Testing Library packages available). Typechecking covers the engine; the UI is covered by the 8 browser E2E flows
 - ⬜ Windows installer (embedded Python + FFmpeg, Inno Setup), built and smoke-tested in CI. See PACKAGING.md
+- ⬜ Faster re-exports: the final full-length encode still runs every time (re-export of a 30-min edit with every segment cached took 56% of the first export). Stream-copying unchanged stretches would cut that
 
 ## Known limitations / bugs
 
@@ -124,6 +125,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 
 - Preview colour is a CSS approximation, and transitions preview as cuts. Export is exact.
+- Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.
 - Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).
 - Upload copies the file into the workspace (2× disk use for huge recordings). "Import by reference" is planned with a safe folder allow-list.
 - Single-user, single-machine. Two tabs editing the same project get a conflict prompt instead of a merge.

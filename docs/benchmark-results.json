@@ -1,0 +1,63 @@
+{
+  "source_minutes": 120.0,
+  "target_minutes": 30.0,
+  "export_height": 1080,
+  "machine": {
+    "cpus": 2,
+    "ram_gb": 7.8,
+    "os": "Linux-6.18.44-fc-v230-x86_64-with-glibc2.39",
+    "python": "3.13.18"
+  },
+  "date": "2026-11-03",
+  "steps": {
+    "import (upload + probe)": {
+      "seconds": 8.0,
+      "peak_mb_server": 83,
+      "peak_mb_total": 142
+    },
+    "prepare (thumbs + waveform)": {
+      "seconds": 24.1,
+      "peak_mb_server": 94,
+      "peak_mb_total": 166
+    },
+    "analysis": {
+      "seconds": 180.3,
+      "peak_mb_server": 102,
+      "peak_mb_total": 189
+    },
+    "AI plan": {
+      "seconds": 0.1,
+      "peak_mb_server": 102,
+      "peak_mb_total": 102
+    },
+    "apply to timeline": {
+      "seconds": 0.2,
+      "peak_mb_server": 123,
+      "peak_mb_total": 123
+    },
+    "export": {
+      "seconds": 2526.4,
+      "peak_mb_server": 122,
+      "peak_mb_total": 471
+    },
+    "re-export (render cache)": {
+      "seconds": 1414.9,
+      "peak_mb_server": 104,
+      "peak_mb_total": 462
+    }
+  },
+  "plan": {
+    "segments": 303,
+    "output_seconds": 1835.1
+  },
+  "export_validation_ok": true,
+  "re_export_cache": {
+    "enabled": true,
+    "reused": 606,
+    "rendered": 0
+  },
+  "speed": {
+    "analysis_x_realtime": 39.9,
+    "export_x_realtime": 0.73
+  }
+}

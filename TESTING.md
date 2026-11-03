@@ -11,7 +11,7 @@ cd frontend && npm run typecheck           # strict TypeScript on the engine
 python scripts/e2e_browser.py              # headless Chromium end-to-end (needs Playwright + built frontend)
 ```
 
-## Current results (2026-11-03, after Phase 6) — full suite run 3× in a row, all green
+## Current results (2026-11-03, Phase 7) — full suite run 3× in a row locally and green in CI on Ubuntu + Windows
 
 | Suite | Tests | Result |
 |---|---|---|
@@ -22,6 +22,8 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Audio & transitions (`tests/test_audio_transitions.py`) | 12 (pixel-measured crossfade/dip/fades, ducking measured in the 220 Hz band, noise floor, −14/−16 LUFS) | ✅ |
 | Look & animation (`tests/test_look.py`) | 51 (keyframe maths vs FFmpeg expressions, pixel-measured rotation, crop, opacity, colour/looks, volume keyframes, all 21 transitions) | ✅ |
 | Render cache & previews (`tests/test_perf.py`) | 6 (full reuse, only changed clip re-renders, off switch, eviction, proxy + 100 peaks/s waveform) | ✅ |
+| My library (`tests/test_library.py`) | 14 (mic-style WebM/Ogg/MP3/WAV import, silence trim, −1 dBFS levelling, 30 s cap, bad/silent files, images re-encoded/downscaled, custom bleeps & sound effects verified by FFT, library deletion vs. project copies, duplicate keeps assets, API + path safety) | ✅ |
+| OpenAPI (`tests/test_openapi.py`) | 2 (every route documented, bodies resolved, CSRF header on every write, script-free docs page) | ✅ |
 | Version history & one-click extras (`tests/test_history.py`) | 9 (snapshots, throttled checkpoints, pruning, legacy import, compare maths, restore/undo-restore/conflict, deleted-media guard, one-click extras with and without a transcript, idempotent re-run, render) | ✅ |
 | Thumbnail Maker (`tests/test_thumbnails.py`) | 36 (incl. provider contract tests vs fake servers) | ✅ |
 | Frontend thumbnail model (`thumbs/model.test.ts`) | 5 | ✅ |
@@ -33,6 +35,9 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Browser E2E: manual editor | full flow | ✅ no console errors |
 | Browser E2E: AI auto editor | full flow incl. finishing touches (applied/skipped report) | ✅ no console errors |
 | Browser E2E: advanced editor | rotation + crop + B&W + 2-keyframe zoom (preview checked) + volume keyframes + wipe → meters move → light preview proxy → reopen → export frame is rotated & grey → 2nd export fully cached | ✅ no console errors |
+| Browser E2E: my library | fake mic → record → save → use as bleep → find swears → import image → add both at playhead → export: the swear is replaced by *your* recording (FFT), the image is in the frame → shared with a new project | ✅ no console errors |
+| **CI (GitHub Actions)** | every push: backend on **Ubuntu + Windows**, frontend, cross-check, 8 browser E2E flows, Windows launcher from scratch, pip-audit + npm audit | ✅ all green |
+| Benchmark (`scripts/benchmark.py`) | 2-hour source → 30-min 1080p edit, see docs/BENCHMARKS.md | ✅ validated |
 | Browser E2E: version history | save version → delete clip → compare → restore → undo the restore → reload | ✅ no console errors |
 | Browser E2E: effects | transcript → bleeps → auto comedy edits → pop-up → captions → undo/redo → export → reopen | ✅ no console errors |
 | Browser E2E: audio | crossfade + fades + music role + noise/enhance/ducking → export with loudness check → reopen | ✅ no console errors |
@@ -70,6 +75,11 @@ Run everything: `scripts/verify_all.sh`.
 | fuzz cross-check | The editor accepted unsorted, duplicate or out-of-range keyframes (and out-of-range crop/colour) that the server rejects. The engine now applies the same rules |
 | render stress | Soft audio with sharp peaks finished 2–5 dB under the loudness target (FFmpeg's loudnorm silently gives up). A limiter pass now closes the gap |
 | browser E2E | Monitor layers lost their position (`inset` overrode `left/top`) |
+| Windows CI | JSON written as UTF-8 was read with the Windows code page: names with curly quotes/accents/emoji (e.g. a saved version) silently vanished. All file IO is now UTF-8 |
+| Windows CI | FFmpeg's `anlmdn` denoiser crashed (0xC0000374) at "strong". The mix retries with `afftdn` + gate (same hiss reduction on the test) |
+| Windows CI | Saving `project.json` failed ("Access is denied") while a background job had it open, so an upload errored. Replaces now retry briefly; the backup step no longer leaves a moment with no project file (all OSes) |
+| Windows CI | Launcher: the first run opened an interactive Python prompt (argument splatting in PowerShell 5.1), picked a too-new Python 3.15, and needed a cmdlet that isn't always available. All fixed; CI now runs the `.bat` from scratch |
+| library work | Duplicating a project dropped its pop-up images, sounds and transcripts |
 | user report | "Find & bleep swears" was greyed out with no reason (no transcript yet), and stayed greyed out after adding clips because the transcript status went stale. It now explains what's needed, has a **Transcribe now** button, and refreshes |
 | user report | A failed transcription (e.g. the one-time speech-model download failing) was hidden: the panel just went back to "Transcribe speech". Failures now show with the reason, Details and Retry, and model loading is its own labelled step instead of looking stuck at 0% |
 | user report | After installing speech-to-text, "Analyse recording" failed when the transcriber couldn't load (e.g. model download). Transcription is now optional inside analysis: the AI edit still works from sound + picture and shows the reason |
