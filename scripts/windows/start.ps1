@@ -24,7 +24,12 @@ function Fail($msg) {
   exit 1
 }
 function Have($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
-function FileHash($path) { if (Test-Path $path) { (Get-FileHash $path -Algorithm SHA256).Hash } else { "" } }
+function FileHash($path) {  # plain .NET (works even where the Get-FileHash cmdlet isn't available)
+  if (-not (Test-Path $path)) { return "" }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes((Resolve-Path $path)))) -replace "-", "" }
+  finally { $sha.Dispose() }
+}
 function Stamp($name) { Join-Path $Root ".launcher-$name" }
 function Changed($name, $value) { -not (Test-Path (Stamp $name)) -or (Get-Content (Stamp $name) -Raw).Trim() -ne $value }
 function Mark($name, $value) { Set-Content -Path (Stamp $name) -Value $value -NoNewline }

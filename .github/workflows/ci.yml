@@ -170,10 +170,10 @@ jobs:
         with:
           node-version: "22"
       - name: Start ClipForge with the launcher, like a double-click would
-        shell: pwsh
+        shell: powershell  # Windows PowerShell 5.1, as on a normal PC (not pwsh 7)
         run: |
-          $p = Start-Process powershell -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt `
-                 -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File scripts\windows\start.ps1 -NoBrowser"
+          # exactly what "Start ClipForge.bat" runs
+          $p = Start-Process cmd.exe -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt -ArgumentList '/c "Start ClipForge.bat" -NoBrowser'
           $ok = $false
           for ($i = 0; $i -lt 300; $i++) {
             if ($p.HasExited) { break }  # launcher stopped (error): don't wait for nothing
@@ -189,7 +189,7 @@ jobs:
           $page = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/
           if ($page.Content -notmatch "<div id=`"root`"") { Write-Output "::error title=launcher::UI not served"; exit 1 }
           # running it again must just detect the running app and exit cleanly
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\start.ps1 -NoBrowser
+          cmd.exe /c "Start ClipForge.bat" -NoBrowser
           if ($LASTEXITCODE -ne 0) { Write-Output "::error title=launcher::second start failed"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
