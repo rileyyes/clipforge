@@ -45,6 +45,12 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
   const tJob = jobs.find((j) => j.kind === "transcribe");
   const tActive = tJob && (tJob.status === "queued" || tJob.status === "running");
   useEffect(() => { if (tJob?.status === "succeeded") loadStatus(); }, [tJob?.status]);
+  // re-check when clips with different media are added/removed (the status was going stale)
+  const mediaKey = useMemo(() => [...new Set(timeline.tracks.flatMap((t) => t.clips.map((c) => c.media_id)))].sort().join(","), [timeline]);
+  useEffect(() => {  // after the editor's autosave (~0.7 s) has reached the server
+    const a = setTimeout(loadStatus, 1300), b = setTimeout(loadStatus, 3500);
+    return () => { clearTimeout(a); clearTimeout(b); };
+  }, [mediaKey]);
 
   const rows = useMemo(() => effects.map((e) => ({ e, t: effectTime(timeline, e) }))
     .filter(({ e }) => filter === "all" || (filter === "censor" ? e.kind === "censor" : e.needs_review))
@@ -95,7 +101,20 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           <label className="field">Words<select value={level} onChange={(e) => setLevel(e.target.value as any)}><option value="strong">Strong swears</option><option value="all">+ mild (damn, hell, crap)</option></select></label>
         </div>
         <label className="field">Extra words to bleep (comma separated)<input type="text" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="e.g. a name, a slang word" /></label>
-        <button className="btn sm" disabled={!tr || tr.transcribed === 0} onClick={async () => {
+        {tr && tr.transcribed === 0 && (
+          <div className="banner" style={{ borderRadius: 8, fontSize: 12 }} data-testid="bleep-needs-transcript">
+            <Icon name="warn" size={13} />
+            {tr.media_in_edit === 0 ? "Add a clip with speech to the timeline first."
+              : !status?.transcriber ? "Bleeping needs the speech transcribed first, and the free transcriber isn't installed yet — see step 1 above."
+              : tActive ? "Transcribing… this button turns on when it's done."
+              : <>Bleeping needs the speech transcribed first.
+                <button className="btn sm" onClick={async () => {
+                  try { await call("POST", `/api/projects/${projectId}/transcribe`, {}); onJobs(); } catch (e: any) { toast(e.message, true); }
+                }}>Transcribe now</button></>}
+          </div>
+        )}
+        <button className="btn sm" disabled={!tr || tr.transcribed === 0}
+          title={!tr || tr.transcribed === 0 ? "Transcribe the speech first (step 1)" : undefined} onClick={async () => {
           try {
             const r = await call<any>("POST", `/api/projects/${projectId}/fx/censor/suggest`, { sound, level, custom: custom.split(",").map((x) => x.trim()).filter(Boolean) });
             replaceAuto((k) => k === "censor", r.effects, "Find swears");

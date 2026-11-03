@@ -70,6 +70,7 @@ Run everything: `scripts/verify_all.sh`.
 | fuzz cross-check | The editor accepted unsorted, duplicate or out-of-range keyframes (and out-of-range crop/colour) that the server rejects. The engine now applies the same rules |
 | render stress | Soft audio with sharp peaks finished 2–5 dB under the loudness target (FFmpeg's loudnorm silently gives up). A limiter pass now closes the gap |
 | browser E2E | Monitor layers lost their position (`inset` overrode `left/top`) |
+| user report | "Find & bleep swears" was greyed out with no reason (no transcript yet), and stayed greyed out after adding clips because the transcript status went stale. It now explains what's needed, has a **Transcribe now** button, and refreshes |
 
 ## What's covered
 
