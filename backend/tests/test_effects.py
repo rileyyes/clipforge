@@ -358,3 +358,53 @@ def test_api_phase4_flow(server, tmp_path, monkeypatch):
     _, job, _ = c.req("POST", f"/api/projects/{pid}/exports", {"filename": "p4", "quality": "draft"})
     j = c.wait_job(job["id"])
     assert j["status"] == "succeeded" and j["result"]["validation"]["ok"], j
+
+
+class SlowLoadingTranscriber(FakeTranscriber):
+    def __init__(self, fail: bool):
+        self.fail = fail
+        self.prepared = False
+
+    def prepare(self):
+        if self.fail:
+            raise RuntimeError("Couldn't download the speech model (one-time, ~460 MB). Check your internet "
+                               "connection and try again.")
+        self.prepared = True
+
+
+def test_transcription_failure_is_reported_and_model_load_has_its_own_step(server, tmp_path, monkeypatch):
+    """User report: after 'Transcribe speech' the bleep button stayed off with no explanation."""
+    c = server
+    vid = make_media_file(tmp_path / "t.mp4")
+    _, p, _ = c.req("POST", "/api/projects", {"name": "tr"})
+    pid = p["id"]
+    _, up, _ = c.upload(pid, vid)
+    mid = up["media"]["id"]
+    _, p, _ = c.req("GET", f"/api/projects/{pid}")
+    link = new_id()
+    p["timeline"]["tracks"][0]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 3, "link_id": link}]
+    p["timeline"]["tracks"][2]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 3, "link_id": link}]
+    c.req("PUT", f"/api/projects/{pid}/timeline", {"base_edit_revision": p["edit_revision"], "timeline": p["timeline"], "output": p["output"]})
+    bad = SlowLoadingTranscriber(fail=True)
+    monkeypatch.setattr("app.api.available_transcriber", lambda: bad)
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/transcribe", {})
+    j = c.wait_job(job["id"])
+    assert j["status"] == "failed" and "download the speech model" in j["error"], j
+    _, st, _ = c.req("GET", f"/api/projects/{pid}/fx/status")
+    assert st["transcript"]["transcribed"] == 0
+    good = SlowLoadingTranscriber(fail=False)
+    monkeypatch.setattr("app.api.available_transcriber", lambda: good)
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/transcribe", {})
+    j = c.wait_job(job["id"])
+    assert j["status"] == "succeeded" and good.prepared, j
+    _, st, _ = c.req("GET", f"/api/projects/{pid}/fx/status")
+    assert st["transcript"]["transcribed"] == 1  # -> the bleep button turns on
+    _, cens, _ = c.req("POST", f"/api/projects/{pid}/fx/censor/suggest", {})
+    assert [e["word"] for e in cens["effects"]] == ["shit"]
+
+
+def make_media_file(path):
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=25:d=3",
+                    "-f", "lavfi", "-i", "sine=f=440:d=3", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", str(path)], check=True)
+    return path

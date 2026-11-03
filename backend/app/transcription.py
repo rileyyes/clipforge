@@ -38,9 +38,19 @@ class FasterWhisperTranscriber:
         if self._model is None:
             from faster_whisper import WhisperModel  # type: ignore
             device = os.environ.get("CLIPFORGE_WHISPER_DEVICE", "cpu")
-            self._model = WhisperModel(self.model_size, device=device,
-                                       compute_type="int8" if device == "cpu" else "float16")
+            try:
+                self._model = WhisperModel(self.model_size, device=device,
+                                           compute_type="int8" if device == "cpu" else "float16")
+            except Exception as exc:  # noqa: BLE001 - turn library errors into something actionable
+                msg = str(exc)
+                if any(k in msg.lower() for k in ("connection", "resolve", "timed out", "huggingface", "offline", "ssl")):
+                    raise RuntimeError("Couldn't download the speech model (one-time, ~460 MB). Check your internet "
+                                       f"connection and try again. Details: {msg}") from exc
+                raise RuntimeError(f"The speech model failed to load on {device}: {msg}") from exc
         return self._model
+
+    def prepare(self) -> None:
+        self._load()
 
     def transcribe(self, src, on_progress, cancel):
         from . import ffmpeg as ff

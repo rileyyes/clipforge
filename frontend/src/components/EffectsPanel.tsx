@@ -44,6 +44,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
   useEffect(() => { loadStatus(); loadImages(); }, [projectId]);
   const tJob = jobs.find((j) => j.kind === "transcribe");
   const tActive = tJob && (tJob.status === "queued" || tJob.status === "running");
+  const tFailed = tJob && ["failed", "interrupted"].includes(tJob.status);
   useEffect(() => { if (tJob?.status === "succeeded") loadStatus(); }, [tJob?.status]);
   // re-check when clips with different media are added/removed (the status was going stale)
   const mediaKey = useMemo(() => [...new Set(timeline.tracks.flatMap((t) => t.clips.map((c) => c.media_id)))].sort().join(","), [timeline]);
@@ -84,7 +85,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           {!status.transcriber ? (
             <div className="muted" style={{ fontSize: 12 }}>Speech-to-text isn't installed (needed for bleeps & captions). Free: in the <span className="mono">backend</span> folder run <span className="mono">pip install -r requirements-ai.txt</span> and restart ClipForge.</div>
           ) : (<>
-            {tJob && tActive && <JobRow job={tJob} onChange={onJobs} />}
+            {tJob && (tActive || tFailed) && <JobRow job={tJob} onChange={onJobs} />}
             {!tActive && <button className="btn sm" disabled={tr.media_in_edit === 0} onClick={async () => {
               try { await call("POST", `/api/projects/${projectId}/transcribe`, {}); onJobs(); } catch (e: any) { toast(e.message, true); }
             }}><Icon name="music" size={13} />{tr.missing.length ? "Transcribe speech" : "Re-transcribe"}</button>}
@@ -106,7 +107,8 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
             <Icon name="warn" size={13} />
             {tr.media_in_edit === 0 ? "Add a clip with speech to the timeline first."
               : !status?.transcriber ? "Bleeping needs the speech transcribed first, and the free transcriber isn't installed yet — see step 1 above."
-              : tActive ? "Transcribing… this button turns on when it's done."
+              : tActive ? "Transcribing… this button turns on when it's done (a long video on a laptop can take several minutes)."
+              : tFailed ? "Transcription didn't finish — the reason is shown in step 1 above (click Details). Fix it, then press Transcribe now."
               : <>Bleeping needs the speech transcribed first.
                 <button className="btn sm" onClick={async () => {
                   try { await call("POST", `/api/projects/${projectId}/transcribe`, {}); onJobs(); } catch (e: any) { toast(e.message, true); }

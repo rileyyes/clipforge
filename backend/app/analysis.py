@@ -159,6 +159,7 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
             result["motion"], result["cuts"] = video_motion(settings, src, asset.duration, prog,
                                                            ctx.cancel_event)
         else:
+            _prepare(ctx, transcriber, i, len(steps))
             ctx.stage(i, len(steps), f"Transcribing speech ({transcriber.name})")
             result["words"] = transcriber.transcribe(src, prog, ctx.cancel_event)
             result["transcriber"] = transcriber.name
@@ -172,6 +173,15 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
             "words": len(result["words"]) if result["words"] is not None else None}
 
 
+def _prepare(ctx, transcriber, i: int, n: int) -> None:
+    """Load the speech model first, under its own label: the first run downloads it and
+    would otherwise look stuck at 0%."""
+    prep = getattr(transcriber, "prepare", None)
+    if prep is not None:
+        ctx.stage(i, n, "Loading speech model (the first time this downloads it, ~460 MB — can take a few minutes)")
+        prep()
+
+
 def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset, transcriber) -> dict:
     """Add word timestamps to a media file's analysis (running the signal analysis
     first if it doesn't exist yet)."""
@@ -179,6 +189,7 @@ def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAss
     if existing is None:
         return analyze_media(ctx, settings, project_dir, asset, transcriber)
     src = project_dir / "media" / "original" / asset.stored_name
+    _prepare(ctx, transcriber, 1, 1)
     ctx.stage(1, 1, f"Transcribing speech ({transcriber.name})")
     existing["words"] = transcriber.transcribe(src, ctx.progress, ctx.cancel_event)
     existing["transcriber"] = transcriber.name
