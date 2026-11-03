@@ -357,7 +357,7 @@ def safe_output_name(name: str) -> str:
 
 
 def _write_concat(listfile: Path, names: list[str]) -> None:
-    listfile.write_text("ffconcat version 1.0\n" + "".join(f"file {n}\n" for n in names))
+    listfile.write_text("ffconcat version 1.0\n" + "".join(f"file {n}\n" for n in names), encoding="utf-8")
 
 
 def render_project(ctx: JobContext, settings: Settings, project: Project,
@@ -557,7 +557,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         report.update(encoder=encoder, quality=quality, project_revision=project.revision, loudness=loud,
                       cache={"enabled": cache.enabled, "reused": cache.hits, "rendered": cache.misses},
                       **({"missing_sounds": missing_sounds} if missing_sounds else {}))
-        (exports / (dest.stem + ".report.json")).write_text(json.dumps(report, indent=2))
+        (exports / (dest.stem + ".report.json")).write_text(json.dumps(report, indent=2), encoding="utf-8")
         return {"file": dest.name, "validation": report}
     except BaseException:
         for p in exports.glob("*.partial.mp4"):
@@ -632,6 +632,12 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
 
 
 NR = {"light": 0.3, "medium": 1.0, "strong": 3.0}  # anlmdn strength (non-local means denoiser)
+# used only if anlmdn makes FFmpeg fail; adaptive noise tracking so steady hiss is learned
+# (afftdn alone barely touches broadband hiss; with a gentle gate in pauses it matches
+# anlmdn's result on the test hiss, voice level unchanged)
+NR_FALLBACK = {"light": "afftdn=nr=12:nf=-45:tn=1,agate=threshold=0.015:ratio=3:attack=5:release=150:range=0.5",
+               "medium": "afftdn=nr=24:nf=-40:tn=1,agate=threshold=0.015:ratio=4:attack=5:release=130:range=0.2",
+               "strong": "afftdn=nr=40:nf=-40:tn=1,agate=threshold=0.02:ratio=6:attack=5:release=120:range=0.06"}
 DUCK = {"light": 3, "medium": 6, "strong": 12}  # sidechain compression ratio
 
 
@@ -710,10 +716,26 @@ def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path
     g.append(f"{''.join(finals)}amix=inputs={len(finals)}:duration=longest:normalize=0,"
              f"apad,atrim=end_sample={plan.total_samples},asetpts=PTS-STARTPTS[mix]")
     raw = work / "mix_raw.wav"
-    ff.run_ffmpeg(settings.ffmpeg_bin, inputs + ["-filter_complex", ";".join(g), "-map", "[mix]",
-                                                  "-c:a", "pcm_f32le", "-ar", str(AUDIO_RATE), str(raw)],
-                  expected_duration=plan.duration, cancel_event=ctx.cancel_event,
-                  timeout=settings.render_timeout_s, on_progress=lambda f: on_progress(f * 0.5))
+    graph = ";".join(g)
+
+    def run_mix(fg: str) -> None:
+        ff.run_ffmpeg(settings.ffmpeg_bin, inputs + ["-filter_complex", fg, "-map", "[mix]",
+                                                      "-c:a", "pcm_f32le", "-ar", str(AUDIO_RATE), str(raw)],
+                      expected_duration=plan.duration, cancel_event=ctx.cancel_event,
+                      timeout=settings.render_timeout_s, on_progress=lambda f: on_progress(f * 0.5))
+    try:
+        run_mix(graph)
+    except ff.Cancelled:
+        raise
+    except ff.FFmpegError:
+        # anlmdn has crashed some Windows FFmpeg builds (heap corruption, exit 0xC0000374)
+        # at higher strengths. Retry once with FFmpeg's FFT denoiser instead of failing.
+        nr = f"anlmdn=s={NR.get(a.noise_reduction)}"
+        if a.noise_reduction == "off" or nr not in graph:
+            raise
+        ctx.check_cancel()
+        run_mix(graph.replace(nr, NR_FALLBACK[a.noise_reduction]))
+        info["noise_reduction_fallback"] = "afftdn"
     if not a.normalize:
         return raw, info
     ctx.check_cancel()

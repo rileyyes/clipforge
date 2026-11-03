@@ -468,7 +468,7 @@ def build_routes(svc: Services) -> list[Route]:
             rep = d / (f.stem + ".report.json")
             items.append({"file": f.name, "size": f.stat().st_size,
                           "modified": f.stat().st_mtime,
-                          "validation": __import__("json").loads(rep.read_text())
+                          "validation": __import__("json").loads(rep.read_bytes())
                           if rep.exists() else None})
         return JSONResponse({"exports": items})
 
@@ -493,7 +493,7 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         path = export_path(pid, request.path_params["name"])
         rep_path = path.parent / (path.stem + ".report.json")
-        prev = __import__("json").loads(rep_path.read_text()) if rep_path.exists() else {}
+        prev = __import__("json").loads(rep_path.read_bytes()) if rep_path.exists() else {}
         expected = prev.get("duration") or p.timeline.duration
         return JSONResponse(validate_export(S, path, p.output, expected))
 

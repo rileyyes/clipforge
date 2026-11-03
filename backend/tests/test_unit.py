@@ -160,3 +160,18 @@ def test_ntsc_rates_and_atempo():
     assert atempo_chain(1.0) == []
     assert atempo_chain(4.0) == ["atempo=2.0", "atempo=2.000000"]
     assert atempo_chain(0.25) == ["atempo=0.5", "atempo=0.500000"]
+
+
+def test_text_files_are_always_utf8():
+    """Windows CI: files written as UTF-8 were read back with the Windows default code page,
+    so a version named with curly quotes/emoji silently disappeared. Every read_text/
+    write_text in the app must name its encoding (JSON is read from bytes)."""
+    import re
+    from pathlib import Path
+    bad = []
+    for f in (Path(__file__).parents[1] / "app").glob("*.py"):
+        for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"\.(read_text|write_text)\(", line) and "encoding=" not in line \
+                    and not line.rstrip().endswith(","):
+                bad.append(f"{f.name}:{n}: {line.strip()}")
+    assert not bad, "\n".join(bad)

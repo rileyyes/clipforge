@@ -88,7 +88,7 @@ class Library:
         for kind, key in (("sound", "sounds"), ("image", "images")):
             for meta in self._dir(kind).glob("*.json"):
                 try:
-                    item = LibraryItem.model_validate_json(meta.read_text())
+                    item = LibraryItem.model_validate_json(meta.read_bytes())
                 except ValueError:
                     continue
                 if (self._dir(kind) / (item.id + self._ext(kind))).is_file():
@@ -99,7 +99,7 @@ class Library:
     def get(self, kind: str, item_id: str) -> LibraryItem:
         self.file(kind, item_id)
         meta = safe_join(self._dir(kind), validate_id(item_id) + ".json")
-        return LibraryItem.model_validate_json(meta.read_text())
+        return LibraryItem.model_validate_json(meta.read_bytes())
 
     def _count(self) -> int:
         return sum(1 for k in ("sound", "image") for _ in self._dir(k).glob("*.json"))

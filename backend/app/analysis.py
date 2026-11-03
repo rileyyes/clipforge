@@ -133,7 +133,7 @@ def load_analysis(project_dir: Path, media_id: str) -> Optional[dict]:
     p = analysis_path(project_dir, media_id)
     if not p.exists():
         return None
-    data = json.loads(p.read_text())
+    data = json.loads(p.read_bytes())
     return data if data.get("version") == ANALYSIS_VERSION else None
 
 
@@ -177,7 +177,7 @@ def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
         ctx.check_cancel()
     out = analysis_path(project_dir, asset.id)
     tmp = out.with_suffix(".tmp")
-    tmp.write_text(json.dumps(result))
+    tmp.write_text(json.dumps(result), encoding="utf-8")
     os.replace(tmp, out)
     return {"media_id": asset.id, "values": len(result["rms_db"]), "cuts": len(result["cuts"]),
             "words": len(result["words"]) if result["words"] is not None else None,
@@ -212,6 +212,6 @@ def transcribe_media(ctx, settings: Settings, project_dir: Path, asset: MediaAss
     existing.pop("transcript_error", None)
     out = analysis_path(project_dir, asset.id)
     tmp = out.with_suffix(".tmp")
-    tmp.write_text(json.dumps(existing))
+    tmp.write_text(json.dumps(existing), encoding="utf-8")
     os.replace(tmp, out)
     return {"media_id": asset.id, "words": len(existing["words"])}

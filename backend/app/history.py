@@ -75,7 +75,7 @@ class HistoryStore:
         """Earlier versions saved bare timelines as history/timeline-<ms>.json before AI edits."""
         for f in sorted(root.glob("timeline-*.json")):
             try:
-                tl = json.loads(f.read_text())
+                tl = json.loads(f.read_bytes())
                 ms = int(f.stem.split("-", 1)[1])
             except (ValueError, IndexError):
                 continue
@@ -100,7 +100,7 @@ class HistoryStore:
         out = []
         for p in self.dir.glob("*.json"):
             try:
-                d = json.loads(p.read_text())
+                d = json.loads(p.read_bytes())
             except ValueError:
                 continue
             d.pop("doc", None)
@@ -112,7 +112,7 @@ class HistoryStore:
         p = self._path(sid)
         if not p.exists():
             raise HistoryNotFound(sid)
-        return json.loads(p.read_text())
+        return json.loads(p.read_bytes())
 
     def snapshot(self, project_data: dict, label: str, origin: str = "manual") -> SnapshotMeta:
         doc = doc_of(project_data)

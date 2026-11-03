@@ -16,3 +16,4 @@ frontend/.test-build/
 *.wav
 *.mp3
 ClipForgeWorkspace/
+.launcher-*

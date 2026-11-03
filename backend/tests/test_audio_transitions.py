@@ -239,3 +239,21 @@ def test_silent_project_skips_normalisation(tmp_path):
 def test_old_projects_keep_their_sound():
     d = migrate({"schema_version": 2, "effects": [], "captions": {}})
     assert d["audio"] == {"normalize": False, "ducking": "off"} and d["schema_version"] == 4
+
+
+def test_noise_reduction_survives_a_crashing_denoiser(tmp_path, monkeypatch):
+    """Windows CI: anlmdn at 'strong' crashed FFmpeg (0xC0000374). The mix must fall back
+    to the FFT denoiser, still reduce the hiss, and say so in the report."""
+    import app.render as R
+    monkeypatch.setattr(R, "NR", {**R.NR, "strong": 0})  # anlmdn=s=0 is rejected by FFmpeg -> same path
+    def floor(nr):
+        s, p, pdir, _ = _project(tmp_path / nr, [("noisy", 0, dict(start=0, source_in=0, source_out=6)),
+                                                 ("noisy", 2, dict(start=0, source_in=0, source_out=6))],
+                                 audio={"normalize": False, "noise_reduction": nr})
+        out, r = _render(s, p, pdir)
+        x = _pcm(out)
+        return float(np.sqrt((x[int(4 * 48000):int(5.8 * 48000)] ** 2).mean())), r
+    off, _ = floor("off")
+    strong, r = floor("strong")
+    assert r["validation"]["ok"] and r["validation"]["loudness"]["noise_reduction_fallback"] == "afftdn"
+    assert strong < off * 0.6, (strong, off)

@@ -95,7 +95,7 @@ class ThumbStore:
         p = safe_join(self.root / "assets", asset_id + ".json")
         if not p.exists():
             raise ThumbNotFound(asset_id)
-        return json.loads(p.read_text())
+        return json.loads(p.read_bytes())
 
     def add_asset(self, data: bytes | np.ndarray, kind: str, meta: dict[str, Any]) -> dict:
         """Store an image re-encoded as PNG (strips metadata; validates decoding)."""
@@ -114,7 +114,7 @@ class ThumbStore:
         out = []
         for p in sorted((self.root / "assets").glob("*.json")):
             try:
-                m = json.loads(p.read_text())
+                m = json.loads(p.read_bytes())
             except ValueError:
                 continue
             if kind is None or m.get("kind") == kind:
@@ -142,19 +142,19 @@ class ThumbStore:
 
     def _frames_index(self) -> dict:
         p = self.root / "frames.json"
-        return json.loads(p.read_text()) if p.exists() else {}
+        return json.loads(p.read_bytes()) if p.exists() else {}
 
     # ---------------------------------------------------------------- analysis cache
     def analysis(self, fingerprint: str) -> Optional[dict]:
         p = self.root / "analysis" / f"{_safe_key(fingerprint)}.json"
-        return json.loads(p.read_text()) if p.exists() else None
+        return json.loads(p.read_bytes()) if p.exists() else None
 
     def save_analysis(self, fingerprint: str, data: dict) -> None:
         atomic_write_json(self.root / "analysis" / f"{_safe_key(fingerprint)}.json", data, keep_backup=False)
 
     def latest_analysis(self) -> Optional[dict]:
         files = sorted((self.root / "analysis").glob("*.json"), key=lambda p: p.stat().st_mtime)
-        return json.loads(files[-1].read_text()) if files else None
+        return json.loads(files[-1].read_bytes()) if files else None
 
     # ---------------------------------------------------------------- designs
     def _dpath(self, did: str) -> Path:

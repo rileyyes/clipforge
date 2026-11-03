@@ -88,6 +88,26 @@ def create_app(settings: Optional[Settings] = None) -> Starlette:
                             media_type="text/plain", status_code=503)
         return FileResponse(index, headers={"cache-control": "no-cache"})
 
+    spec_cache: dict = {}
+
+    def spec() -> dict:
+        if not spec_cache:
+            from .openapi import build_spec
+            spec_cache.update(build_spec(routes))
+        return spec_cache
+
+    async def openapi_json(request: Request):
+        """OpenAPI 3.1 description of this API (generated from the routes)"""
+        return JSONResponse(spec())
+
+    async def api_docs(request: Request):
+        """Readable API reference page"""
+        from starlette.responses import HTMLResponse
+        from .openapi import docs_html
+        return HTMLResponse(docs_html(spec()))
+
+    routes.append(Route("/api/openapi.json", openapi_json))
+    routes.append(Route("/api/docs", api_docs))
     if (FRONTEND_DIST / "assets").exists():
         routes.append(Mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets")))
     routes.append(Route("/{path:path}", spa))

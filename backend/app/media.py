@@ -126,7 +126,7 @@ def make_waveform(settings: Settings, asset: MediaAsset, src: Path, out: Path,
         raise ff.FFmpegError("waveform extraction failed")
     tmp = out.with_suffix(".tmp")
     tmp.write_text(json.dumps({"peaks_per_second": WAVEFORM_PEAKS_PER_SECOND,
-                               "peaks": peaks}))
+                               "peaks": peaks}), encoding="utf-8")
     os.replace(tmp, out)
 
 

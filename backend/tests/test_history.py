@@ -140,6 +140,10 @@ def test_api_history_flow(server, tmp_path):
     H_ = f"/api/projects/{pid}/history"
     _, h, _ = c.req("GET", H_)
     assert [v["origin"] for v in h["versions"]] == ["auto"]  # first save checkpoints
+    st, emoji, _ = c.req("POST", H_, {"label": "Final ✅ “best” cut — café"})
+    assert st == 201
+    assert any(v["label"] == "Final ✅ “best” cut — café" for v in c.req("GET", H_)[1]["versions"])
+    assert c.req("DELETE", f"{H_}/{emoji['id']}")[0] == 204
     st, v1, _ = c.req("POST", H_, {"label": "Long version"})
     assert st == 201 and v1["duration"] == 5
     p = _save(c, pid, p, mid, [(0, 1, 3)], captions={"enabled": True})
