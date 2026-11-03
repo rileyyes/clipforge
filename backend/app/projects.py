@@ -123,9 +123,13 @@ class ProjectStore:
         src = self.load(project_id)
         new_pid = new_id()
         dst = self.dir(new_pid)
-        # Copy media + project file; exports/work are not copied.
+        # Copy media, effect assets (images, your sounds), analysis/transcripts and the
+        # project file; exports, work files and version history are not copied.
         shutil.copytree(self.dir(project_id) / "media", dst / "media",
                         copy_function=shutil.copy2)
+        for sub in ("fx", "analysis"):
+            if (self.dir(project_id) / sub).is_dir():
+                shutil.copytree(self.dir(project_id) / sub, dst / sub, copy_function=shutil.copy2)
         (dst / "exports").mkdir()
         (dst / "work").mkdir()
         data = src.model_dump(mode="json")

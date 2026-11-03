@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { fmtTime, mediaUrl } from "../api";
+import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
 import { clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
@@ -193,8 +193,9 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     // trigger bleep / sound-effect previews once when their window starts
     const ids = new Set(active.map(({ e }) => e.id));
     if (playing) for (const { e } of active) {
-      if ((e.kind === "censor" || e.kind === "sfx") && e.sound && e.sound !== "mute" && !played.current.has(e.id)) {
-        const a = new Audio(`/api/sounds/${e.sound}.wav`);
+      const url = (e.kind === "censor" || e.kind === "sfx") ? effectSoundUrl(projectId, e.sound, e.sound_asset) : null;
+      if (url && !played.current.has(e.id)) {
+        const a = new Audio(url);
         setVolume(a, e.volume);
         a.play().catch(() => {});
         sounds.current.set(e.id, a);

@@ -96,10 +96,37 @@ export const autoedit = {
 
 /** Optional finishing touches run right after the AI edit (one-click edit). */
 export interface Extras {
-  censor: boolean; censor_sound: "beep" | "boing" | "scratch" | "honk" | "quack" | "mute";
+  censor: boolean; censor_sound: "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "custom";
+  censor_sound_asset?: string | null;
   fun: "off" | "minimal" | "balanced" | "chaotic"; captions: boolean; audio_polish: boolean;
 }
 export interface ExtraNote { step: string; ok: boolean; detail: string }
+
+// ---------------------------------------------------------------- My library (your own sounds & images)
+export interface LibraryItem {
+  id: string; kind: "sound" | "image"; name: string; source: "recorded" | "imported"; created_at: string;
+  duration?: number | null; width?: number | null; height?: number | null;
+}
+async function upload<T>(path: string, body: Blob): Promise<T> {
+  const res = await fetch(path, { method: "POST", headers: H, body });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(data.error || `Upload failed (${res.status})`, res.status, data);
+  return data as T;
+}
+export const library = {
+  list: () => call<{ sounds: LibraryItem[]; images: LibraryItem[] }>("GET", "/api/library"),
+  addSound: (blob: Blob, name: string, recorded: boolean) =>
+    upload<LibraryItem>(`/api/library/sounds?name=${encodeURIComponent(name)}${recorded ? "&recorded=1" : ""}`, blob),
+  addImage: (blob: Blob, name: string) => upload<LibraryItem>(`/api/library/images?name=${encodeURIComponent(name)}`, blob),
+  rename: (kind: "sound" | "image", id: string, name: string) => call<LibraryItem>("PUT", `/api/library/${kind}s/${id}`, { name }),
+  remove: (kind: "sound" | "image", id: string) => call<void>("DELETE", `/api/library/${kind}s/${id}`),
+  /** Copy into the project so its effects can use it (safe to repeat). */
+  use: (pid: string, kind: "sound" | "image", id: string) => call<LibraryItem>("POST", `/api/projects/${pid}/fx/library`, { kind, id }),
+  url: (kind: "sound" | "image", id: string) => `/api/library/${kind}s/${id}`,
+};
+/** URL a project plays an effect's sound from (built-in or your own). */
+export const effectSoundUrl = (pid: string, sound: string | null | undefined, asset?: string | null) =>
+  !sound || sound === "mute" ? null : sound === "custom" ? (asset ? `/api/projects/${pid}/fx/sounds/${asset}` : null) : `/api/sounds/${sound}.wav`;
 
 // ---------------------------------------------------------------- version history
 export interface VersionMeta {

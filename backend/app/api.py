@@ -28,6 +28,7 @@ from .render import render_project, validate_export
 from .transcription import available_transcriber
 from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline
 from . import rcache
+from .library import Library, LibraryError, project_sound
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
 from .storage import (PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
@@ -507,7 +508,8 @@ def build_routes(svc: Services) -> list[Route]:
 
     class Extras(BaseModel):
         censor: bool = False
-        censor_sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute"] = "beep"
+        censor_sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute", "custom"] = "beep"
+        censor_sound_asset: Optional[str] = None  # library sound id when censor_sound == "custom"
         fun: Literal["off", "minimal", "balanced", "chaotic"] = "off"
         captions: bool = False
         audio_polish: bool = False
@@ -605,7 +607,10 @@ def build_routes(svc: Services) -> list[Route]:
         effects = [e for e in project.effects if not (e.origin == "auto" and e.kind in drop)]
         if ex.censor:
             if has_words:
-                found = fx.suggest_censors(project, pdir, sound=ex.censor_sound)
+                asset = use_library_sound(pdir, ex.censor_sound, ex.censor_sound_asset)
+                found = fx.suggest_censors(project, pdir, sound=ex.censor_sound if asset else
+                                           ("beep" if ex.censor_sound == "custom" else ex.censor_sound),
+                                           sound_asset=asset)
                 effects += found
                 notes.append({"step": "Bleep swears", "ok": True, "detail": f"{len(found)} bleep(s) added"})
             else:
@@ -638,7 +643,8 @@ def build_routes(svc: Services) -> list[Route]:
         media_ids: Optional[list[str]] = None
 
     class CensorBody(BaseModel):
-        sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute"] = "beep"
+        sound: Literal["beep", "boing", "scratch", "honk", "quack", "mute", "custom"] = "beep"
+        sound_asset: Optional[str] = None  # library sound id when sound == "custom"
         level: Literal["strong", "all"] = "strong"
         custom: list[str] = Field(default_factory=list, max_length=200)
         allow: list[str] = Field(default_factory=list, max_length=200)
@@ -683,8 +689,11 @@ def build_routes(svc: Services) -> list[Route]:
         status = fx.transcript_status(p, store.dir(pid))
         if status["transcribed"] == 0:
             return err(409, "Transcribe the video first — swears are found from the transcript.")
+        asset = use_library_sound(store.dir(pid), body.sound, body.sound_asset)
+        if body.sound == "custom" and asset is None:
+            return err(404, "That sound isn't in your library any more.")
         effs = fx.suggest_censors(p, store.dir(pid), sound=body.sound, level=body.level, custom=body.custom,
-                                  allow=body.allow, padding=body.padding)
+                                  allow=body.allow, padding=body.padding, sound_asset=asset)
         return JSONResponse({"effects": [e.model_dump(mode="json") for e in effs],
                              "missing_transcripts": status["missing"]})
 
@@ -745,6 +754,117 @@ def build_routes(svc: Services) -> list[Route]:
         if not path.is_file():
             return err(404, "not found")
         return FileResponse(path, media_type="image/png")
+
+    # -- My library (your own sounds & images, shared by all projects) -----
+    lib = Library(S)
+
+    def use_library_sound(pdir: Path, sound: str, asset: Optional[str]) -> Optional[str]:
+        """Copy a library sound into the project; returns its id (None if not custom/missing)."""
+        if sound != "custom" or not asset:
+            return None
+        try:
+            lib.copy_into_project("sound", asset, pdir)
+        except (KeyError, PathSecurityError):
+            try:  # already copied into this project earlier (library item since deleted)
+                return asset if project_sound(pdir, asset).is_file() else None
+            except PathSecurityError:
+                return None
+        return asset
+
+    def lib_kind(request: Request) -> str:
+        k = request.path_params["kind"]
+        if k not in ("sounds", "images"):
+            raise HTTPException(404, "not found")
+        return k[:-1]
+
+    def lib_id(request: Request) -> str:
+        try:
+            return validate_id(request.path_params["iid"])
+        except PathSecurityError:
+            raise HTTPException(404, "not found")
+
+    async def read_upload(request: Request, limit: int) -> bytes:
+        data = bytearray()
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > limit:
+                raise HTTPException(413, f"file is larger than {limit // (1024 * 1024)} MB")
+        return bytes(data)
+
+    async def library_list(request: Request):
+        return JSONResponse(lib.list())
+
+    async def library_add(request: Request):
+        kind = lib_kind(request)
+        from . import library as L
+        name = request.query_params.get("name", "")
+        data = await read_upload(request, L.MAX_SOUND_UPLOAD if kind == "sound" else L.MAX_IMAGE_UPLOAD)
+        try:
+            if kind == "sound":
+                item = lib.add_sound(data, name, recorded=request.query_params.get("recorded") == "1")
+            else:
+                item = lib.add_image(data, name)
+        except ImportError:
+            return err(503, "Image support needs OpenCV: pip install -r requirements.txt")
+        except ff.FFmpegError as exc:
+            return err(503, str(exc))
+        except LibraryError as exc:
+            return err(415 if "readable" in str(exc) or "image" in str(exc).lower() else 422, str(exc))
+        return JSONResponse(item.model_dump(), status_code=201)
+
+    class LibRename(BaseModel):
+        name: str = Field(min_length=1, max_length=60)
+
+    async def library_rename(request: Request):
+        kind, iid = lib_kind(request), lib_id(request)
+        body = await body_model(request, LibRename)
+        try:
+            return JSONResponse(lib.rename(kind, iid, body.name).model_dump())
+        except KeyError:
+            return err(404, "not found")
+
+    async def library_delete(request: Request):
+        kind, iid = lib_kind(request), lib_id(request)
+        try:
+            lib.delete(kind, iid)
+        except KeyError:
+            return err(404, "not found")
+        return Response(status_code=204)
+
+    async def library_file(request: Request):
+        kind, iid = lib_kind(request), lib_id(request)
+        try:
+            path = lib.file(kind, iid)
+        except KeyError:
+            return err(404, "not found")
+        return FileResponse(path, media_type="audio/wav" if kind == "sound" else "image/png")
+
+    class UseBody(BaseModel):
+        kind: Literal["sound", "image"]
+        id: str
+
+    async def library_use(request: Request):
+        """Copy a library item into this project so effects can use it (idempotent)."""
+        pid = pid_of(request)
+        load(pid)
+        body = await body_model(request, UseBody)
+        try:
+            lib.copy_into_project(body.kind, validate_id(body.id), store.dir(pid))
+            item = lib.get(body.kind, body.id)
+        except (KeyError, PathSecurityError):
+            return err(404, "That item isn't in your library.")
+        return JSONResponse(item.model_dump())
+
+    async def project_sound_file(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        try:
+            path = project_sound(store.dir(pid), request.path_params["sid"])
+        except PathSecurityError:
+            return err(404, "not found")
+        if not path.is_file():
+            return err(404, "not found")
+        return FileResponse(path, media_type="audio/wav")
 
     async def sound_preview(request: Request):
         name = request.path_params["name"]
@@ -925,6 +1045,11 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
+        Route("/api/library", library_list),
+        Route("/api/library/{kind}", library_add, methods=["POST"]),
+        Route("/api/library/{kind}/{iid}", library_file),
+        Route("/api/library/{kind}/{iid}", library_rename, methods=["PUT"]),
+        Route("/api/library/{kind}/{iid}", library_delete, methods=["DELETE"]),
         Route(P + "/history", history_list),
         Route(P + "/history", history_create, methods=["POST"]),
         Route(P + "/history/compare", history_compare),
@@ -937,6 +1062,8 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/fx/censor/suggest", suggest_censor, methods=["POST"]),
         Route(P + "/fx/fun/suggest", suggest_fun, methods=["POST"]),
         Route(P + "/captions.srt", captions_srt),
+        Route(P + "/fx/library", library_use, methods=["POST"]),
+        Route(P + "/fx/sounds/{sid}", project_sound_file),
         Route(P + "/fx/images", list_fx_images),
         Route(P + "/fx/images", upload_fx_image, methods=["POST"]),
         Route(P + "/fx/images/{aid}", fx_image),

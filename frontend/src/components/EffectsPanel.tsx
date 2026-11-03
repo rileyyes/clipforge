@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, fmtTime, type Job } from "../api";
+import { api, ApiError, effectSoundUrl, fmtTime, library, type Job, type LibraryItem } from "../api";
+import LibraryPanel from "./LibraryPanel";
 import { activeEffects, effectTime, newEffectAt } from "../timeline/effects";
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
@@ -18,10 +19,17 @@ const KIND_LABEL: Record<EffectKind, string> = { censor: "Bleep", zoom: "Zoom", 
 const KIND_COLOR: Record<EffectKind, string> = { censor: "#ff5a6a", zoom: "#4cc9f0", shake: "#f2b84b", flash: "#ffffff", text: "#ffde00", sfx: "#2bb38a", image: "#c77dff" };
 export const FX_COLOR = KIND_COLOR;
 
-function playSound(s: Sound | null) {
-  if (!s || s === "mute") return;
-  new Audio(`/api/sounds/${s}.wav`).play().catch(() => {});
+let previewing: HTMLAudioElement | null = null;
+function playUrl(url: string | null) {
+  if (!url) return;
+  previewing?.pause();
+  previewing = new Audio(url);
+  previewing.play().catch(() => {});
 }
+/** Select value for a sound: a built-in name, or "custom:<library id>". */
+const soundKey = (s: Sound | null | undefined, asset?: string | null) => (s === "custom" ? `custom:${asset ?? ""}` : s ?? "");
+const parseSound = (v: string): { sound: Sound; sound_asset: string | null } =>
+  v.startsWith("custom:") ? { sound: "custom", sound_asset: v.slice(7) } : { sound: v as Sound, sound_asset: null };
 
 export default function EffectsPanel({ projectId, timeline, effects, captions, playhead, jobs, onJobs, setFx, seek, audio, setAudio }: {
   projectId: string; timeline: Timeline; effects: Effect[]; captions: CaptionSettings; playhead: number;
@@ -30,7 +38,17 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
   audio: AudioSettings; setAudio: (a: AudioSettings, label: string) => void;
 }) {
   const [status, setStatus] = useState<any>(null);
-  const [sound, setSound] = useState<Sound>("beep");
+  const [soundSel, setSoundSel] = useState<string>("beep");
+  const [mySounds, setMySounds] = useState<LibraryItem[]>([]);
+  const loadMySounds = () => library.list().then((r) => setMySounds(r.sounds)).catch(() => {});
+  const sound = parseSound(soundSel);
+  const soundLabel = (key: string) => key.startsWith("custom:") ? (mySounds.find((x) => `custom:${x.id}` === key)?.name ?? "My sound") : key;
+  /** built-in options + your library sounds (+ the current custom one even if deleted from the library) */
+  const soundOptions = (builtins: Sound[], current?: string) => {
+    const keys = [...builtins.map((b) => b as string), ...mySounds.map((m) => `custom:${m.id}`)];
+    if (current && !keys.includes(current)) keys.push(current);
+    return keys.map((k) => <option key={k} value={k}>{k.startsWith("custom:") ? `★ ${soundLabel(k)}` : k}</option>);
+  };
   const [level, setLevel] = useState<"strong" | "all">("strong");
   const [custom, setCustom] = useState("");
   const [intensity, setIntensity] = useState<"minimal" | "balanced" | "chaotic">("balanced");
@@ -97,8 +115,8 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
       <div className="insp-section">
         <h3 style={{ margin: 0 }}>2 · Bleep swears</h3>
         <div className="insp-grid">
-          <label className="field">Sound<div className="row"><select value={sound} onChange={(e) => setSound(e.target.value as Sound)}>{CENSOR_SOUNDS.map((s) => <option key={s}>{s}</option>)}</select>
-            <button className="btn sm ghost" title="Preview" onClick={() => playSound(sound)}><Icon name="play" size={12} /></button></div></label>
+          <label className="field">Sound<div className="row"><select value={soundSel} aria-label="Bleep sound" onChange={(e) => setSoundSel(e.target.value)}>{soundOptions(CENSOR_SOUNDS, soundSel)}</select>
+            <button className="btn sm ghost" title="Preview" onClick={() => playUrl(sound.sound === "custom" ? library.url("sound", sound.sound_asset!) : effectSoundUrl(projectId, sound.sound))}><Icon name="play" size={12} /></button></div></label>
           <label className="field">Words<select value={level} onChange={(e) => setLevel(e.target.value as any)}><option value="strong">Strong swears</option><option value="all">+ mild (damn, hell, crap)</option></select></label>
         </div>
         <label className="field">Extra words to bleep (comma separated)<input type="text" value={custom} onChange={(e) => setCustom(e.target.value)} placeholder="e.g. a name, a slang word" /></label>
@@ -118,7 +136,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
         <button className="btn sm" disabled={!tr || tr.transcribed === 0}
           title={!tr || tr.transcribed === 0 ? "Transcribe the speech first (step 1)" : undefined} onClick={async () => {
           try {
-            const r = await call<any>("POST", `/api/projects/${projectId}/fx/censor/suggest`, { sound, level, custom: custom.split(",").map((x) => x.trim()).filter(Boolean) });
+            const r = await call<any>("POST", `/api/projects/${projectId}/fx/censor/suggest`, { sound: sound.sound, sound_asset: sound.sound_asset, level, custom: custom.split(",").map((x) => x.trim()).filter(Boolean) });
             replaceAuto((k) => k === "censor", r.effects, "Find swears");
             const rev = r.effects.filter((e: Effect) => e.needs_review).length;
             toast(r.effects.length ? `${r.effects.length} bleep(s) added${rev ? ` — ${rev} need a check` : ""}` : "No swears found");
@@ -161,6 +179,27 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           }} />
         </div>
       </div>
+
+      {/* ---------------- my library */}
+      <LibraryPanel bleepSound={sound.sound === "custom" ? sound.sound_asset : null} onChanged={loadMySounds}
+        onUseSound={async (s) => {
+          try { await library.use(projectId, "sound", s.id); } catch (e: any) { return toast(e.message, true); }
+          setSoundSel(`custom:${s.id}`);
+          const bleeps = effects.filter((e) => e.kind === "censor");
+          if (bleeps.length && confirm(`Use “${s.name}” for your ${bleeps.length} existing bleep(s) too?`)) {
+            setFx(effects.map((e) => (e.kind === "censor" ? { ...e, sound: "custom", sound_asset: s.id } : e)), captions, "Bleep sound");
+          }
+          toast(`Bleeps will use “${s.name}”`);
+        }}
+        onAddSound={async (s) => {
+          try { await library.use(projectId, "sound", s.id); } catch (e: any) { return toast(e.message, true); }
+          add("sfx", { sound: "custom", sound_asset: s.id, duration: Math.max(0.05, Math.min(30, s.duration ?? 1)) });
+        }}
+        onAddImage={async (i) => {
+          try { await library.use(projectId, "image", i.id); } catch (e: any) { return toast(e.message, true); }
+          loadImages();
+          add("image", { asset: i.id });
+        }} />
 
       {/* ---------------- captions */}
       <div className="insp-section">
@@ -219,8 +258,12 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
               {e.context && <div className="dim" style={{ fontSize: 11 }}>…{e.context}…</div>}
             </>)}
             {(e.kind === "censor" || e.kind === "sfx") && (
-              <div className="row"><select value={e.sound ?? ""} onChange={(ev) => patch(e.id, { sound: ev.target.value as Sound })}>{(e.kind === "censor" ? CENSOR_SOUNDS : SFX).map((s) => <option key={s}>{s}</option>)}</select>
-                <button className="btn sm ghost" onClick={() => playSound(e.sound)}><Icon name="play" size={12} /></button>
+              <div className="row"><select value={soundKey(e.sound, e.sound_asset)} onChange={async (ev) => {
+                const v = parseSound(ev.target.value);
+                if (v.sound === "custom") { try { await library.use(projectId, "sound", v.sound_asset!); } catch (err: any) { return toast(err.message, true); } }
+                patch(e.id, v);
+              }}>{soundOptions(e.kind === "censor" ? CENSOR_SOUNDS : SFX, soundKey(e.sound, e.sound_asset))}</select>
+                <button className="btn sm ghost" onClick={() => playUrl(effectSoundUrl(projectId, e.sound, e.sound_asset))}><Icon name="play" size={12} /></button>
                 {e.kind === "censor" && <>
                   <button className="btn sm ghost" title="Start earlier" onClick={() => patch(e.id, { source_time: Math.max(0, e.source_time - 0.05), duration: e.duration + 0.05 })}>◀+</button>
                   <button className="btn sm ghost" title="End later" onClick={() => patch(e.id, { duration: Math.min(30, e.duration + 0.05) })}>+▶</button>

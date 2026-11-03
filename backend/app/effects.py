@@ -160,7 +160,8 @@ def transcript_status(project: Project, project_dir: Path) -> dict:
 
 
 def suggest_censors(project: Project, project_dir: Path, *, sound: str = "beep", level: str = "strong",
-                    custom: Iterable[str] = (), allow: Iterable[str] = (), padding: float = 0.06) -> list[Effect]:
+                    custom: Iterable[str] = (), allow: Iterable[str] = (), padding: float = 0.06,
+                    sound_asset: Optional[str] = None) -> list[Effect]:
     words = []
     for mid in {c.media_id for t in project.timeline.tracks for c in t.clips}:
         a = load_analysis(project_dir, mid)
@@ -180,6 +181,7 @@ def suggest_censors(project: Project, project_dir: Path, *, sound: str = "beep",
         review = p < 0.6 or (w["end"] - w["start"]) < 0.12
         out.append(Effect(id=new_id(), kind="censor", media_id=mid, source_time=round(start, 3),
                           duration=round(min(dur, 30), 3), origin="auto", sound=sound, volume=0.7,
+                          sound_asset=sound_asset if sound == "custom" else None,
                           word=w["text"].strip()[:60], context=ctx[:160], confidence=round(p, 3),
                           needs_review=review))
     return out
@@ -296,8 +298,18 @@ def sound_input_args(sound: str, samples: int, volume: float, rate: int) -> list
             "-ac", "2"]
 
 
-def sound_args(sound: str, samples: int, volume: float, rate: int, dest: Path) -> list[str]:
-    return sound_input_args(sound, samples, volume, rate) + ["-c:a", "pcm_s16le", str(dest)]
+def sound_args(sound: str, samples: int, volume: float, rate: int, dest: Path,
+               file: Optional[Path] = None) -> list[str]:
+    """``file``: a custom sound (WAV made by the library) — played from its start,
+    cut to the window with a short fade so it never clicks."""
+    if file is None:
+        return sound_input_args(sound, samples, volume, rate) + ["-c:a", "pcm_s16le", str(dest)]
+    dur = samples / rate
+    fade = min(0.01, dur / 4)
+    return ["-i", str(file), "-af",
+            f"aresample={rate},aformat=sample_fmts=s16:channel_layouts=stereo,atrim=end_sample={samples},"
+            f"afade=t=out:st={max(0.0, dur - fade):.4f}:d={fade:.4f},volume={volume:.3f},apad,"
+            f"atrim=end_sample={samples}", "-ac", "2", "-c:a", "pcm_s16le", str(dest)]
 
 
 # ---------------------------------------------------------------- graphics

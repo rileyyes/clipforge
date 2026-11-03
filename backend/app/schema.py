@@ -251,7 +251,8 @@ class Effect(Strict):
     enabled: bool = True
     origin: Literal["auto", "user"] = "user"
     sound: Optional[Literal["beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh",
-                            "ding", "pop", "airhorn"]] = None
+                            "ding", "pop", "airhorn", "custom"]] = None
+    sound_asset: Optional[str] = None  # sound == "custom": a sound copied from My library
     volume: float = Field(default=0.8, ge=0, le=2)
     text: Optional[str] = Field(default=None, max_length=40)
     word: Optional[str] = Field(default=None, max_length=60)
@@ -271,7 +272,7 @@ class Effect(Strict):
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
 
-    @field_validator("asset")
+    @field_validator("asset", "sound_asset")
     @classmethod
     def _v_asset(cls, v: Optional[str]) -> Optional[str]:
         return None if v is None else _check_id(v)
@@ -280,6 +281,8 @@ class Effect(Strict):
     def _kind_fields(self) -> "Effect":
         if self.kind in ("censor", "sfx") and self.sound is None:
             raise ValueError(f"{self.kind} effects need a sound")
+        if self.sound == "custom" and not self.sound_asset:
+            raise ValueError("a custom sound needs a sound from your library")
         if self.kind == "sfx" and self.sound == "mute":
             raise ValueError("a sound effect can't be 'mute'")
         if self.kind == "text" and not (self.text or "").strip():

@@ -95,11 +95,13 @@ export interface OutputSettings {
 }
 
 export type EffectKind = "censor" | "zoom" | "shake" | "flash" | "text" | "sfx" | "image";
-export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn";
+export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn" | "custom";
 
 export interface Effect {
   id: string; kind: EffectKind; media_id: string; source_time: number; duration: number;
   enabled: boolean; origin: "auto" | "user"; sound: Sound | null; volume: number;
+  /** sound === "custom": id of a sound from My library (copied into the project) */
+  sound_asset?: string | null;
   text: string | null; word: string | null; context: string | null; confidence: number | null; needs_review: boolean;
   scale: number; intensity: number; x: number; y: number; size: number; color: string; asset: string | null;
 }

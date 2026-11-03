@@ -235,3 +235,18 @@ a.btn.primary { color: #fff; }
 .meter-clip.on { background: var(--err); }
 .meter-lbl { font-size: 9px; color: var(--muted); text-align: center; line-height: 12px; }
 .stage video { position: absolute; }
+
+/* My library */
+.rec-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ff4d5e; margin-right: 2px; }
+.rec-dot.on { animation: recblink 1s infinite; }
+@keyframes recblink { 50% { opacity: .25; } }
+.rec-level { width: 70px; height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+.rec-level > div { height: 100%; background: var(--ok); transition: width .08s; }
+.take { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.lib-head { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 4px; }
+.lib-row { display: grid; gap: 2px; font-size: 12px; min-width: 0; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.lib-line { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.lib-row .grow { flex: 1; min-width: 0; }
+.lib-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
+.lib-image { display: grid; gap: 2px; min-width: 0; }
+.lib-image img { width: 100%; aspect-ratio: 1; object-fit: contain; background: repeating-conic-gradient(#333 0 25%, #2a2a2a 0 50%) 0 0/12px 12px; border-radius: 6px; }

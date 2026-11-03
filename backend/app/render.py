@@ -34,6 +34,8 @@ from . import effects as fx
 from .effects import mutes_for_clip
 from . import look
 from .rcache import RenderCache
+from .library import project_sound
+from .storage import PathSecurityError
 
 # transition kind -> FFmpeg xfade transition (dips are done with fades instead)
 XFADE = {"crossfade": "fade", "wipe_left": "wipeleft", "wipe_right": "wiperight", "wipe_up": "wipeup",
@@ -431,6 +433,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
 
         # sound-effect / bleep lanes (non-overlapping events per lane)
         events = []
+        missing_sounds = 0
         for e in project.effects:
             if not e.enabled or e.kind not in ("censor", "sfx") or e.sound in (None, "mute"):
                 continue
@@ -443,7 +446,16 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                     n = int(e.duration * AUDIO_RATE)
                 n = min(n, plan.total_samples - a)
                 if n > 32:
-                    events.append((a, n, e.sound, e.volume))
+                    path = None
+                    if e.sound == "custom":
+                        try:
+                            path = project_sound(project_dir, e.sound_asset or "")
+                        except PathSecurityError:
+                            path = None
+                        if path is None or not path.is_file():
+                            missing_sounds += 1
+                            continue
+                    events.append((a, n, e.sound, e.volume, path))
         lanes: list[list[tuple]] = []
         for ev in sorted(events):
             lane = next((l for l in lanes if l[-1][0] + l[-1][1] <= ev[0]), None)
@@ -453,13 +465,13 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                 lane.append(ev)
         for li, lane in enumerate(lanes[:8]):
             names, cursor = [], 0
-            for k, (a, n, sound, vol) in enumerate(lane):
+            for k, (a, n, sound, vol, path) in enumerate(lane):
                 if a > cursor:
                     nm = f"fx{li}_{k:05d}g.wav"
                     jobs.append((gap_audio_args(Seg("gap", a - cursor), work / nm), 0.01, nm))
                     names.append(nm)
                 nm = f"fx{li}_{k:05d}.wav"
-                jobs.append((fx.sound_args(sound, n, vol, AUDIO_RATE, work / nm), 0.01, nm))
+                jobs.append((fx.sound_args(sound, n, vol, AUDIO_RATE, work / nm, path), 0.01, nm))
                 names.append(nm)
                 cursor = a + n
             if plan.total_samples > cursor:
@@ -543,7 +555,8 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         report = validate_export(settings, dest, out, plan.duration,
                                  target_lufs=project.audio.target_lufs if loud.get("normalized") else None)
         report.update(encoder=encoder, quality=quality, project_revision=project.revision, loudness=loud,
-                      cache={"enabled": cache.enabled, "reused": cache.hits, "rendered": cache.misses})
+                      cache={"enabled": cache.enabled, "reused": cache.hits, "rendered": cache.misses},
+                      **({"missing_sounds": missing_sounds} if missing_sounds else {}))
         (exports / (dest.stem + ".report.json")).write_text(json.dumps(report, indent=2))
         return {"file": dest.name, "validation": report}
     except BaseException:

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, autoedit, fmtTime, mediaUrl, uploadMedia, type AutoEditSettings, type Extras, type Beat, type Plan, type ProjectSummary,
+  api, autoedit, fmtTime, library, mediaUrl, uploadMedia, type LibraryItem, type AutoEditSettings, type Extras, type Beat, type Plan, type ProjectSummary,
 } from "../api";
 import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import type { MediaAsset, Project } from "../timeline/types";
@@ -117,6 +117,8 @@ function Workspace({ projectId }: { projectId: string }) {
     try { localStorage.setItem("cf:autoExtras", JSON.stringify(n)); } catch { /* storage unavailable */ }
     return n;
   });
+  const [mySounds, setMySounds] = useState<LibraryItem[]>([]);
+  useEffect(() => { library.list().then((r) => setMySounds(r.sounds)).catch(() => {}); }, []);
   const videoRef = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
   const { jobs, refresh } = useJobs(projectId);
@@ -328,8 +330,14 @@ function Workspace({ projectId }: { projectId: string }) {
               <h3 style={{ margin: 0 }}>Finishing touches <span className="muted" style={{ fontWeight: 400, fontSize: 12 }}>— applied with the edit</span></h3>
               <label className="row" style={{ fontSize: 12 }}>
                 <input type="checkbox" checked={extras.censor} onChange={(e) => setExtras({ censor: e.target.checked })} />Bleep swear words with
-                <select value={extras.censor_sound} disabled={!extras.censor} onChange={(e) => setExtras({ censor_sound: e.target.value as Extras["censor_sound"] })}>
+                <select value={extras.censor_sound === "custom" ? `custom:${extras.censor_sound_asset}` : extras.censor_sound} disabled={!extras.censor}
+                  aria-label="Bleep sound" onChange={(e) => {
+                    const v = e.target.value;
+                    setExtras(v.startsWith("custom:") ? { censor_sound: "custom", censor_sound_asset: v.slice(7) } : { censor_sound: v as Extras["censor_sound"], censor_sound_asset: null });
+                  }}>
                   {["beep", "boing", "scratch", "honk", "quack", "mute"].map((v) => <option key={v} value={v}>{v === "mute" ? "silence" : `a ${v}`}</option>)}
+                  {mySounds.map((m) => <option key={m.id} value={`custom:${m.id}`}>★ {m.name}</option>)}
+                  {extras.censor_sound === "custom" && !mySounds.some((m) => m.id === extras.censor_sound_asset) && <option value={`custom:${extras.censor_sound_asset}`}>★ (deleted sound — pick another)</option>}
                 </select>
               </label>
               <label className="row" style={{ fontSize: 12 }}>Comedy edits on reactions
