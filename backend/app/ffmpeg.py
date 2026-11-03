@@ -26,6 +26,16 @@ class FFmpegError(RuntimeError):
         self.stderr = stderr[-4000:]
 
 
+MISSING_FFMPEG = ("FFmpeg isn't installed or isn't on your PATH. On Windows run "
+                  "`winget install Gyan.FFmpeg`, then close and reopen the terminal and restart ClipForge.")
+
+
+def tools_available(ffmpeg_bin: str, ffprobe_bin: str) -> bool:
+    import shutil
+    return bool((shutil.which(ffmpeg_bin) or Path(ffmpeg_bin).is_file())
+                and (shutil.which(ffprobe_bin) or Path(ffprobe_bin).is_file()))
+
+
 class Cancelled(RuntimeError):
     pass
 
@@ -77,6 +87,8 @@ def probe(ffprobe_bin: str, path: Path, timeout: int = 60) -> ProbeResult:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         raise FFmpegError("media probe timed out") from exc
+    except OSError as exc:  # ffprobe missing / not on PATH
+        raise FFmpegError(MISSING_FFMPEG) from exc
     if proc.returncode != 0:
         raise FFmpegError("file is not a readable media file", proc.stderr)
     try:
@@ -151,8 +163,11 @@ def run_ffmpeg(
     """Run ffmpeg with measured progress (fraction of expected output time)."""
     cmd = [ffmpeg_bin, "-hide_banner", "-nostdin", "-y", "-v", "error",
            "-progress", "pipe:1", "-nostats"] + args
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            text=True, bufsize=1)
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, bufsize=1)
+    except OSError as exc:
+        raise FFmpegError(MISSING_FFMPEG) from exc
     stderr_chunks: list[str] = []
 
     def _drain_stderr() -> None:

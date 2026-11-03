@@ -111,7 +111,8 @@ export function uploadMedia(pid: string, file: File, onProgress: (f: number) => 
       let data: any = {};
       try { data = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-      else reject(new ApiError(data.error || `Upload failed (${xhr.status})`, xhr.status));
+      else reject(new ApiError(data.error || (xhr.status === 413 ? "File is too large" :
+        `Upload failed (server error ${xhr.status}) — check the terminal running ClipForge for details`), xhr.status));
     };
     xhr.onerror = () => reject(new ApiError("Network error during upload", 0));
     xhr.send(file);

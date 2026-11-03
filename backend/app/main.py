@@ -132,6 +132,9 @@ def main() -> None:
     settings = load_settings()
     if settings.host not in ("127.0.0.1", "localhost"):
         print(f"WARNING: binding to {settings.host} exposes your media to the network.")
+    from .ffmpeg import MISSING_FFMPEG, tools_available
+    if not tools_available(settings.ffmpeg_bin, settings.ffprobe_bin):
+        print("\n*** WARNING: " + MISSING_FFMPEG + "\n*** Importing and exporting videos won't work until it's fixed.\n")
     print(f"ClipForge workspace: {settings.workspace}")
     print(f"Open http://{settings.host}:{settings.port}")
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port,

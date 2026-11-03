@@ -280,6 +280,8 @@ def build_routes(svc: Services) -> list[Route]:
         if declared and declared.isdigit() and int(declared) > du.free - 2 * 1024**3:
             return err(507, "not enough free disk space for this file")
 
+        if not ff.tools_available(S.ffmpeg_bin, S.ffprobe_bin):
+            return err(503, ff.MISSING_FFMPEG)
         mid = new_id()
         odir = media_svc.media_dir(store.dir(pid), "original")
         partial = odir / f"{mid}{ext}.partial"
@@ -302,6 +304,11 @@ def build_routes(svc: Services) -> list[Route]:
             except ff.FFmpegError as exc:
                 final.unlink(missing_ok=True)
                 return err(415, f"Could not import this file: {exc}")
+            except Exception as exc:  # noqa: BLE001 - always give the UI a readable reason
+                import traceback
+                traceback.print_exc()
+                final.unlink(missing_ok=True)
+                return err(500, f"Import failed: {type(exc).__name__}: {exc}")
         finally:
             partial.unlink(missing_ok=True)
 
