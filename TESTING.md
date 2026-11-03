@@ -73,6 +73,7 @@ Run everything: `scripts/verify_all.sh`.
 | user report | "Find & bleep swears" was greyed out with no reason (no transcript yet), and stayed greyed out after adding clips because the transcript status went stale. It now explains what's needed, has a **Transcribe now** button, and refreshes |
 | user report | A failed transcription (e.g. the one-time speech-model download failing) was hidden: the panel just went back to "Transcribe speech". Failures now show with the reason, Details and Retry, and model loading is its own labelled step instead of looking stuck at 0% |
 | user report | After installing speech-to-text, "Analyse recording" failed when the transcriber couldn't load (e.g. model download). Transcription is now optional inside analysis: the AI edit still works from sound + picture and shows the reason |
+| user report | Every transcription failed with `open() got an unexpected keyword argument 'metadata_errors'`: PyAV 19 (Sept 2026) dropped an argument faster-whisper 1.2.x still passes. ClipForge now decodes the audio with its own FFmpeg and gives Whisper raw samples in 20-minute chunks, with exact time offsets (tested), and `av<19` is pinned |
 
 ## What's covered
 

@@ -190,7 +190,7 @@ def _prepare(ctx, transcriber, i: int, n: int) -> None:
     would otherwise look stuck at 0%."""
     prep = getattr(transcriber, "prepare", None)
     if prep is not None:
-        ctx.stage(i, n, "Loading speech model (the first time this downloads it, ~460 MB — can take a few minutes)")
+        ctx.stage(i, n, "Loading speech model (the first time this downloads it, ~480 MB — can take a few minutes)")
         prep()
 
 

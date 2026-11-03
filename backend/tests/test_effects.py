@@ -439,3 +439,44 @@ def test_analysis_survives_a_failing_transcriber(server, tmp_path, monkeypatch):
     assert c.wait_job(job["id"])["status"] == "succeeded"
     m = c.req("GET", f"/api/projects/{pid}/autoedit")[1]["media"][0]
     assert m["has_transcript"] and m["transcript_error"] is None
+
+
+def test_whisper_gets_ffmpeg_decoded_chunks_with_exact_offsets(tmp_path, monkeypatch):
+    """User report: "open() got an unexpected keyword argument 'metadata_errors'" (PyAV 19 vs
+    faster-whisper 1.2). ClipForge now decodes audio itself; the model only sees samples."""
+    from types import SimpleNamespace
+
+    from app import transcription as T
+    src = tmp_path / "beeps.mp4"
+    # silence with short beeps at 1.0, 3.5 and 5.2 s (chunks of 2 s -> beeps in chunks 0, 1, 2)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=25:d=6",
+                    "-f", "lavfi", "-i", "aevalsrc='0.8*sin(2*PI*1000*t)*(between(t,1,1.2)+between(t,3.5,3.7)+between(t,5.2,5.4))':s=44100:d=6",
+                    "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", str(src)], check=True)
+    seen = []
+
+    class FakeModel:
+        def transcribe(self, audio, word_timestamps, vad_filter):
+            assert isinstance(audio, np.ndarray) and audio.dtype == np.float32  # never a file path
+            seen.append(len(audio))
+            loud = np.flatnonzero(np.abs(audio) > 0.3)
+            if not loud.size:
+                return iter([]), None
+            t = loud[0] / T.SAMPLE_RATE
+            w = SimpleNamespace(start=t, end=t + 0.2, word=" beep", probability=0.9)
+            return iter([SimpleNamespace(end=t + 0.2, words=[w])]), None
+    tr = T.FasterWhisperTranscriber()
+    monkeypatch.setattr(tr, "_load", lambda: FakeModel())
+    monkeypatch.setattr(T, "CHUNK_S", 2)
+    prog = []
+    words = tr.transcribe(src, prog.append, None)
+    assert [round(w["start"], 1) for w in words] == [1.0, 3.5, 5.2]
+    assert len(seen) == 3 and all(n == 2 * T.SAMPLE_RATE for n in seen[:2])
+    assert prog and prog[-1] == pytest.approx(1.0, abs=0.02)
+
+
+def test_whisper_decode_reports_unreadable_audio(tmp_path):
+    from app import transcription as T
+    bad = tmp_path / "bad.mp4"
+    bad.write_bytes(b"\x00" * 1000)
+    with pytest.raises(RuntimeError, match="Couldn't read the audio"):
+        list(T.decode_chunks(bad, 60, None))

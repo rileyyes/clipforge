@@ -6,9 +6,9 @@ decision engine uses them to snap cuts to word boundaries and score talking dens
 
     pip install faster-whisper          # MIT, runs on CPU; GPU optional
 
-Status: the FasterWhisper adapter follows the library's documented API but has
-NOT been run in this repository's automated tests (the package couldn't be
-installed in the build environment). It is reported as "experimental" in the UI.
+Status: decoding/chunking is tested with a stand-in model; faster-whisper itself
+couldn't be installed in the build environment, so the model call is tested by
+users. It is reported as "experimental" in the UI.
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class FasterWhisperTranscriber:
             except Exception as exc:  # noqa: BLE001 - turn library errors into something actionable
                 msg = str(exc)
                 if any(k in msg.lower() for k in ("connection", "resolve", "timed out", "huggingface", "offline", "ssl")):
-                    raise RuntimeError("Couldn't download the speech model (one-time, ~460 MB). Check your internet "
+                    raise RuntimeError("Couldn't download the speech model (one-time, ~480 MB). Check your internet "
                                        f"connection and try again. Details: {msg}") from exc
                 raise RuntimeError(f"The speech model failed to load on {device}: {msg}") from exc
         return self._model
@@ -53,19 +53,88 @@ class FasterWhisperTranscriber:
         self._load()
 
     def transcribe(self, src, on_progress, cancel):
+        """Audio is decoded by ClipForge's own FFmpeg and handed to Whisper as samples,
+        in chunks (bounded memory for long recordings). faster-whisper's built-in decoder
+        (PyAV) is not used: PyAV 19 removed an argument faster-whisper 1.2.x still passes,
+        which broke every transcription with "unexpected keyword argument 'metadata_errors'"."""
         from . import ffmpeg as ff
         model = self._load()
-        segments, info = model.transcribe(str(src), word_timestamps=True, vad_filter=True)
         words: list[dict] = []
-        total = max(float(getattr(info, "duration", 0) or 0), 1e-6)
-        for seg in segments:
+        total = max(media_duration(src), 1e-6)
+        for offset, audio in decode_chunks(src, CHUNK_S, cancel):
+            segments, _info = model.transcribe(audio, word_timestamps=True, vad_filter=True)
+            for seg in segments:
+                if cancel is not None and cancel.is_set():
+                    raise ff.Cancelled("cancelled")
+                for w in seg.words or []:
+                    words.append({"start": round(offset + float(w.start), 3), "end": round(offset + float(w.end), 3),
+                                  "text": str(w.word).strip(), "p": round(float(w.probability), 3)})
+                on_progress(min(1.0, (offset + float(seg.end)) / total))
+            on_progress(min(1.0, (offset + len(audio) / SAMPLE_RATE) / total))
+        return words
+
+
+SAMPLE_RATE = 16000  # what Whisper expects
+CHUNK_S = 20 * 60    # 20 min ≈ 77 MB of float32 samples per chunk
+
+
+def _ffmpeg_bins() -> tuple[str, str]:
+    from .config import find_tool
+    return (os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
+            os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"))
+
+
+def media_duration(src: Path) -> float:
+    import subprocess
+    _ff, probe = _ffmpeg_bins()
+    try:
+        out = subprocess.run([probe, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src)],
+                             capture_output=True, text=True, timeout=60).stdout.strip()
+        return float(out)
+    except (ValueError, OSError, subprocess.SubprocessError):
+        return 0.0
+
+
+def decode_chunks(src: Path, chunk_s: float, cancel: Optional[threading.Event]):
+    """Yield (offset seconds, mono 16 kHz float32 samples) chunk by chunk, streaming
+    from one FFmpeg process (never the whole recording in memory)."""
+    import subprocess
+
+    import numpy as np
+
+    from . import ffmpeg as ff
+    ffmpeg, _probe = _ffmpeg_bins()
+    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-v", "error", *ff.untrusted_input_args(Path(src)),
+           "-vn", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "f32le", "-"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    need = int(chunk_s * SAMPLE_RATE) * 4
+    offset = 0.0
+    try:
+        while True:
             if cancel is not None and cancel.is_set():
                 raise ff.Cancelled("cancelled")
-            for w in seg.words or []:
-                words.append({"start": round(float(w.start), 3), "end": round(float(w.end), 3),
-                              "text": str(w.word).strip(), "p": round(float(w.probability), 3)})
-            on_progress(min(1.0, float(seg.end) / total))
-        return words
+            buf = bytearray()
+            while len(buf) < need:
+                part = proc.stdout.read(min(1 << 20, need - len(buf)))
+                if not part:
+                    break
+                buf += part
+            usable = len(buf) - len(buf) % 4
+            if usable >= 4 * SAMPLE_RATE // 10:  # ignore a trailing sliver < 0.1 s
+                audio = np.frombuffer(bytes(buf[:usable]), dtype=np.float32)
+                yield offset, audio
+                offset += len(audio) / SAMPLE_RATE
+            if len(buf) < need:
+                break
+        proc.wait(timeout=60)
+        if proc.returncode not in (0, None) and offset == 0:
+            err = proc.stderr.read().decode(errors="replace")[-400:]
+            raise RuntimeError(f"Couldn't read the audio for transcription: {err.strip() or 'ffmpeg failed'}")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.stdout.close()
+        proc.stderr.close()
 
 
 def available_transcriber() -> Optional[Transcriber]:
