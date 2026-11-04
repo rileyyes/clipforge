@@ -99,6 +99,8 @@ class Sample:
 
 def _detector():
     import cv2
+    if not hasattr(cv2, "CascadeClassifier"):  # some OpenCV builds leave out the Haar detector
+        return None
     clf = cv2.CascadeClassifier(str(MODEL))
     if clf.empty():
         return None

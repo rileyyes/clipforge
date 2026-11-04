@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–7
+# Hands-on test guide: Phases 4–8
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -73,5 +73,26 @@ Use a 2–10 minute video with talking, a few loud reactions and at least one sw
 | 7.8 | AI Auto Editor → Finishing touches → bleep sound list | Your sounds are listed with ★ |
 | 7.9 | Delete a sound from the library that a project uses, then export that project | The export still has the sound (each project keeps its own copy) |
 | 7.10 | Open http://127.0.0.1:8765/api/docs | A list of every API route |
+
+## Phase 8: Shorts, publishing, YouTube, faster re-exports, portable package
+
+Use a project whose recording has been **analysed** (AI Auto Editor → Analyse), ideally with speech transcribed.
+
+| # | Do this | You should see |
+|---|---|---|
+| 8.1 | **Shorts** (phone icon) → choose the project | *Best moments*: up to a few 15–60 s moments, each with a score and why |
+| 8.2 | Pick one → **Make Short** (captions on) | A new project under *Your Shorts*, 9:16. Open it: the picture follows your face (or the movement) smoothly, captions in the middle |
+| 8.3 | Export that Short | A vertical 1080×1920 MP4 that passes all checks |
+| 8.4 | AI Auto Editor with a transcript → *Humor* or *Story* style | Moments with laughs, punchlines or stories rank higher, and the reasons say so |
+| 8.5 | *(Optional, only if you run Ollama)* Start Ollama with a model, reload the AI Auto Editor | A **Rate moments with local AI (model)** button; afterwards moments it liked show "AI: …" in the list |
+| 8.6 | **Publish** → choose the project | Chapters starting at 0:00, title ideas, a description with the chapters, tags. Problems (e.g. chapters < 10 s apart) are listed in plain words |
+| 8.7 | Edit a chapter title, the title and tags, then reload the page | Your edits are kept |
+| 8.8 | *(Optional)* Publish → follow the steps to connect YouTube (needs your own Google API client, see docs/YOUTUBE.md) | "Connected: *your channel*" |
+| 8.9 | *(Optional)* Choose an export → **Upload to YouTube** (leave it **Private**) | It asks you to confirm, shows progress, then a link. The video is private on YouTube with your title, description, tags and thumbnail |
+| 8.10 | Effects → *My sounds & images* → press **#** on a sound and give it the keyword "laugh" → *Suggestions from your library* → **Suggest** | Suggested spots for it near laughs or loud reactions; **Add all** puts them on the timeline |
+| 8.11 | Thumbnails → add your own image or *From my library* → **Cut out subject** | The person/object is cut out from the background as a new layer |
+| 8.12 | Export a project, then export it again without changes | The second export is much faster; the report says all blocks were reused |
+| 8.13 | Add one flash in the middle, export again | Faster than the first export; the report says most blocks were reused; the flash is in the video |
+| 8.14 | *(Portable package)* GitHub → Actions → latest green **CI** run → *Artifacts* → download **ClipForge-portable-win64**, unzip, double-click `ClipForge.bat` | ClipForge opens without using your installed Python/FFmpeg (Windows may warn first: *More info → Run anyway*). Your projects are there (same workspace) |
 
 **Known preview limits (the export is always exact):** colour is approximate and transitions show as cuts in the preview.

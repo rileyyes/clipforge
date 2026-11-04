@@ -2,7 +2,7 @@ starlette>=0.40
 pydantic>=2.7
 uvicorn[standard]>=0.30
 numpy>=1.26
-opencv-python-headless>=4.9  # thumbnail maker: frames, image checks
+opencv-python-headless>=4.9,<5  # thumbnails, face finding (5.x wheels may lack the Haar face detector)
 Pillow>=10.1                 # pop-up text & images for effects
 
 # dev / test

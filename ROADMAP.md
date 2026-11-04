@@ -116,13 +116,25 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Cloud deployment design and threat model ([docs/CLOUD.md](docs/CLOUD.md)); design only, not built
 - ⬜ FastAPI migration. **Blocked here:** FastAPI can't be installed in this development environment, and a framework swap that can't be run can't be tested. The generated OpenAPI spec already covers its main benefit
 - ⬜ Vite dev server + React types + component tests. **Blocked the same way** (no `vite`, `@types/react` or Testing Library packages available). Typechecking covers the engine; the UI is covered by the 8 browser E2E flows
-- ⬜ Windows installer (embedded Python + FFmpeg, Inno Setup), built and smoke-tested in CI. See PACKAGING.md
-- ⬜ Faster re-exports: the final full-length encode still runs every time (re-export of a 30-min edit with every segment cached took 56% of the first export). Stream-copying unchanged stretches would cut that
+- ✅ Windows portable package and faster re-exports: done in Phase 8 (8.7)
+
+## Phase 8 — Creator tools 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **8.1 Shorts maker** (Shorts page): suggests the best 15–60 s moments, then makes a 9:16 project per Short. The crop follows you (face detection, or movement when no face is found) with a smooth, steady camera; optional captions and title. Each Short is a normal project you can edit
+- ✅ **8.2 Reads what's said**: with a transcript the AI scores laughs, punchlines, questions, exclamations and story beats. Optional **local AI** (Ollama, or any OpenAI-compatible server on your PC) rates moments 0–10 on top; found automatically, off when not running, nothing is sent online
+- ✅ **8.3 Publish page**: chapters (from topic changes, checked against YouTube's rules: first at 0:00, ≥ 3, ≥ 10 s apart), title ideas, a description with chapters, and tags (≤ 15, under YouTube's 500-character limit). The local AI can polish them if you run one
+- ✅ **8.4 Upload to YouTube**: connect your own Google account with your own free API client (step-by-step in [docs/YOUTUBE.md](docs/YOUTUBE.md)); resumable upload with title, description, tags, category, thumbnail. **Private by default** and it asks before every upload. Your login stays on your PC (owner-only file, never sent to the browser). Tested against a fake Google server, **not yet against the real YouTube**
+- ✅ **8.5 Suggestions from your library**: tag your sounds/images ("laugh", "fail", "wow"…) and ClipForge suggests where to drop them, from what's said and the loud reactions
+- ✅ **8.6 Thumbnail Maker**: cut out the subject (no AI download needed), use your own images or library images, real face detection (bundled model), title prefilled from Publish, optional local AI for headline ideas
+- ✅ **8.7 Faster re-exports**: the final video is encoded in 20-second blocks, each cached. After a small change only the blocks that changed are encoded again; the rest are copied. Checked frame by frame against a one-pass render (identical apart from encoder noise, no dropped/doubled frames at block edges)
+- ✅ **8.7 Windows portable package**: a zip with Python, FFmpeg, the UI and speech-to-text inside. Nothing to install: unzip, double-click `ClipForge.bat`. Built on every push by CI, then unzipped on a clean runner with **nothing on PATH** and used to import, export and re-export a video. Unsigned, so Windows SmartScreen will warn the first time ("More info → Run anyway"). See [docs/PACKAGING.md](docs/PACKAGING.md)
+- ⬜ Code-signed installer (needs a signing certificate)
 
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
+- Block rendering (fast re-exports) is used with the software H.264 encoder. With a GPU encoder the final video is still encoded in one pass (fast already, but not cached).
 
 - Preview colour is a CSS approximation, and transitions preview as cuts. Export is exact.
 - Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.

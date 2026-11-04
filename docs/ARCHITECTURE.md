@@ -65,9 +65,13 @@ Pure, immutable functions return `{timeline}` or `{error}` and never partially a
 2. **Segments**: each clip renders independently with input seeking (`-ss` before `-i`), then `fps` → scale (fit/fill) → pad/trim to its exact frame count. Audio uses `atempo` (pitch-preserving speed) → 48 kHz stereo → exact sample count. A 2-hour source is never decoded end-to-end, and no filter graph buffers frames for distant clips. Memory use is bounded.
 3. **Assemble**: the base video track and each audio track are joined with the concat demuxer. Upper video tracks are overlaid at their frame offsets. Audio tracks are mixed (`amix normalize=0`).
 4. **Encode**: H.264 (working GPU encoder if any, else libx264) + AAC 192k, `+faststart`.
+   - **Block rendering** (libx264, on by default; `CLIPFORGE_BLOCK_RENDER=0` turns it off): the final video is encoded in 20-second blocks, each with only the overlays, effects and caption lines visible in it, and cached under a key of exactly those inputs. Blocks are joined with the concat demuxer in copy mode and muxed with the AAC audio (encoded once from the mix).
+   - Timestamps inside a block are **absolute timeline time**, so every time-based filter (`zoompan`'s `it`, `enable=between(t,…)`, pop-up offsets, keyframe expressions, libass) behaves exactly as in a one-pass render. zoompan restarts its output clock, so the block's start is put back after it.
+   - Inputs are seeked coarsely to the keyframe before the block with timestamps kept (`-copyts -noaccurate_seek`) and trimmed to the exact frame in the graph. FFmpeg's accurate seek isn't used here: with several inputs feeding a `concat` filter it kept one frame too many.
+   - Tests compare a block render with a one-pass render frame by frame (`tests/test_blocks.py`).
 5. **Validate**: ffprobe + full decode. The report is saved next to the export.
 
-Progress is real: per-step FFmpeg `out_time` against expected duration, combined with fixed stage weights (segments 55%, final encode 45%). Steps that can't be measured show a stage label and no percentage.
+Progress is real: per-step FFmpeg `out_time` against expected duration, combined with fixed stage weights (segments 50%, audio mix 10%, final encode 40%). Steps that can't be measured show a stage label and no percentage.
 
 ## Jobs (`jobs.py`)
 

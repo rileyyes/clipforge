@@ -1,6 +1,33 @@
 # Packaging & distribution
 
-**Status:** ClipForge runs from source using the one-click launcher (`Start ClipForge.bat`). CI tests the launcher on a clean Windows machine. There is no installer yet. This page records the options and the recommendation.
+**Status:** two ways to run ClipForge on Windows, both tested by CI on a clean Windows machine on every push:
+
+1. **Portable package** (nothing to install), described below. Not code-signed yet.
+2. **From source** with the one-click launcher (`Start ClipForge.bat`).
+
+## Portable package (shipped, Phase 8)
+
+A zip (`ClipForge-portable-win64.zip`, built by `scripts/windows/build_portable.ps1`) containing:
+
+| Folder | What |
+|---|---|
+| `ClipForge.bat` | Double-click to start; opens the browser. Close the window to stop ClipForge |
+| `python\` | The official Windows "embeddable" Python 3.13 from python.org, with ClipForge's packages (and faster-whisper for speech-to-text) installed inside |
+| `backend\app\`, `frontend\dist\` | ClipForge and its built web UI |
+| `ffmpeg\` | `ffmpeg.exe` + `ffprobe.exe` (GPL build by BtbN, with libx264) and its licence |
+| `THIRD-PARTY.txt`, `packages.txt` | Where everything came from (with download checksums), and every bundled package version |
+
+**How to get it:** open the latest green run of the CI workflow on GitHub (Actions tab → *CI* → the run → *Artifacts*) and download **ClipForge-portable-win64**. You need to be signed in to GitHub to download artifacts; they're kept 14 days. Unzip anywhere and double-click `ClipForge.bat`.
+
+**Your projects are not inside the folder.** They stay in `%USERPROFILE%\ClipForgeWorkspace`, shared with the from-source version, so updating means deleting the old folder and unzipping the new one.
+
+**How it's tested:** CI unzips the package into a fresh folder and starts it with PATH set to Windows' own folders only, so no Python, Node or FFmpeg from the build machine can be used. Then `scripts/smoke_export.py` drives the real API: imports a generated clip, exports it, checks the validation report, exports again and checks every block came from the cache.
+
+**Known limits:**
+- Not code-signed, so SmartScreen warns the first time: *More info → Run anyway*. Signing needs a certificate.
+- Size: a few hundred MB, mostly FFmpeg, OpenCV and the speech-to-text engine (`-NoAI` builds a smaller one without speech-to-text). CI prints the exact size on every run.
+- Local AI (Ollama) and Stable Diffusion aren't bundled; they're separate apps you install if you want them.
+- "Update ClipForge.bat" is a from-source feature. The portable package is updated by downloading a new zip.
 
 ## Today: the launcher (shipped)
 
@@ -24,16 +51,7 @@
 | Tauri wrapper | Rust shell with a system WebView, launching the Python server as a "sidecar" | Real desktop window, small shell (~10 MB), auto-update support | Still has to ship Python + FFmpeg as sidecars. Adds a Rust toolchain to the build. WebView2 differences from Chrome (MediaRecorder formats, codecs) need retesting | Later, if a native window matters |
 | Electron | Chromium + Node shell | Same browser engine as tested | +150 MB per install, and still needs Python | No |
 
-**Why not now:** none of these can be built or tested in the current development environment (no Windows packaging tools, no code-signing certificate). An unsigned installer would also trigger SmartScreen warnings. Shipping one untested would break the project's rule against untested features.
-
-**Plan:** build the zip/Inno Setup package in a GitHub Actions Windows job:
-
-1. python-embed and wheels
-2. the `dist/` build
-3. a pinned Gyan FFmpeg essentials build with its licence
-4. a smoke test that starts the installed copy, like the launcher job does today
-
-Code signing comes once there's a certificate.
+**Done:** the first option, as a zip (above), built and smoke-tested in a GitHub Actions Windows job. An Inno Setup installer around the same folder (Start-menu shortcut, uninstaller) is a small step on top; it's worth doing together with code signing, since an unsigned installer gets the same SmartScreen warning.
 
 ## Licences to respect when bundling
 

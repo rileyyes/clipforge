@@ -158,6 +158,20 @@ def main():
         ex2 = step("re-export (render cache)", lambda: wait(api("POST", f"/api/projects/{pid}/exports",
                                                                 {**body, "filename": "bench2"})["id"], poll=3))
         results["re_export_cache"] = ex2["result"]["validation"].get("cache")
+        results["re_export_blocks"] = ex2["result"]["validation"].get("blocks")
+        # a small edit: one flash in the middle, then export again
+        proj = api("GET", f"/api/projects/{pid}")
+        mid_t = plan["output_duration"] / 2
+        first = proj["timeline"]["tracks"][0]["clips"]
+        c = min(first, key=lambda c: abs(c["start"] - mid_t))
+        api("PUT", f"/api/projects/{pid}/timeline", {
+            "base_edit_revision": proj["edit_revision"], "timeline": proj["timeline"], "output": proj["output"],
+            "effects": proj.get("effects", []) + [{"id": "f" * 32, "media_id": mid, "kind": "flash",
+                                                   "source_time": c["source_in"] + 0.1, "duration": 0.15}]})
+        ex3 = step("re-export after a small edit", lambda: wait(api("POST", f"/api/projects/{pid}/exports",
+                                                                    {**body, "filename": "bench3"})["id"], poll=3))
+        results["small_edit_blocks"] = ex3["result"]["validation"].get("blocks")
+        results["small_edit_validation_ok"] = ex3["result"]["validation"]["ok"]
         results["speed"] = {"analysis_x_realtime": round(a.minutes * 60 / results["steps"]["analysis"]["seconds"], 1),
                             "export_x_realtime": round(plan["output_duration"] / results["steps"]["export"]["seconds"], 2)}
     finally:

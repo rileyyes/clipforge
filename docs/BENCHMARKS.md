@@ -19,11 +19,25 @@ Measured with `scripts/benchmark.py` on 2026-11-03. A **120-minute** synthetic 7
 - **Export:** 0.73× real time on 2 cores, with peak memory under 0.5 GB. All validation checks passed: duration, A/V sync, frame count and full decode.
 - **Re-export:** all 606 segments came from the render cache (0 rendered again). That saved about 44%. The rest is the final full-length encode, which always runs.
 
+## Faster re-exports (block rendering, Phase 8)
+
+Measured 2026-11-04 on the same 2-core VM: a 10-minute 720p source cut to a **3-minute** 720p edit (30 cuts), run twice, once with block rendering and once with it turned off (`CLIPFORGE_BLOCK_RENDER=0`, the old one-pass final encode):
+
+| | One-pass final encode (before) | Block rendering (now) |
+|---|---|---|
+| first export | 144.2 s | 141.3 s |
+| re-export, nothing changed | 87.2 s | **42.1 s** (9 of 9 blocks copied) |
+| re-export after adding one flash | (≈ 87 s, the full encode runs again) | **51.1 s** (8 of 9 blocks copied) |
+
+- The first export costs the same. Every re-export skips the final encode for everything that didn't change.
+- What's left in a re-export is the audio mix (noise removal, ducking, two-pass loudness), copying, and the full-decode validation of the result. Those run every time because they're quick to redo and need the whole timeline.
+- The 2-hour table above was measured before block rendering, so its re-export line is the old behaviour.
+
 ## What this means for you
 
 - Memory is not a concern: even the 2-hour run stayed under half a gigabyte.
 - Long exports are CPU-bound. On a 4–8-core PC, expect very roughly 15–25 minutes for a 30-minute 1080p video. A working GPU encoder (NVENC, Quick Sync, AMF; detected automatically) is much faster for the final encode.
-- Small changes re-export faster, but not instantly: the final encode is the floor. Speeding that up, for example by stream-copying unchanged runs, is a possible future optimisation and is listed in the roadmap.
+- Small changes re-export fast: only the clips and 20-second stretches you touched are encoded again (see *Faster re-exports* above). With a GPU encoder the final encode is still one pass, without that cache.
 
 ## Transcription (not in the table)
 

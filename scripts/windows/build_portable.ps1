@@ -1,0 +1,164 @@
+<#
+  Builds the Windows portable package: a folder (and zip) that runs ClipForge with
+  nothing installed — no Python, Node, Git or FFmpeg needed on the PC.
+
+    powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 [-NoAI] [-Out portable]
+
+  Needs (on the build machine only): Python 3.13 with pip (its version must match
+  -PythonVersion's minor version, so the wheels fit), Node (to build the UI) and internet.
+  CI builds it on a clean Windows runner and smoke-tests the result (see ci.yml).
+
+  Contents:
+    ClipForge.bat           double-click to start
+    python\                 the official Windows "embeddable" Python, with the packages
+    backend\app\            ClipForge itself
+    frontend\dist\          the built web UI
+    ffmpeg\                 ffmpeg.exe + ffprobe.exe (GPL build by BtbN) + their licence
+    THIRD-PARTY.txt         where everything came from + licences
+#>
+param(
+  [string]$Out = "portable",
+  [string]$PythonVersion = "3.13.1",
+  [string]$FfmpegZip = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip",
+  [switch]$NoAI
+)
+$ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"  # Invoke-WebRequest is 10x slower with the progress bar
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$Pkg = Join-Path $Root "$Out\ClipForge"
+$Tmp = Join-Path $Root "$Out\_download"
+
+function Say($m) { Write-Host "[portable] $m" }
+function Sha256($path) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) -replace "-", "" }
+  finally { $sha.Dispose() }
+}
+function Download($url, $dest) {
+  Say "downloading $url"
+  Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $dest
+  $h = Sha256 $dest
+  Say "  sha256 $h"
+  return $h
+}
+
+if (Test-Path (Join-Path $Root $Out)) { Remove-Item -Recurse -Force (Join-Path $Root $Out) }
+New-Item -ItemType Directory -Force $Pkg, $Tmp | Out-Null
+
+# ---- host Python must match the embeddable one (same minor version -> same wheels)
+$hostVer = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
+$want = ($PythonVersion -split "\.")[0..1] -join "."
+if ($hostVer -ne $want) { throw "Build with Python $want (this is $hostVer) so the packages match the bundled Python." }
+
+# ---- 1. embeddable Python
+$pyZip = Join-Path $Tmp "python.zip"
+$pyHash = Download "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip" $pyZip
+$PyDir = Join-Path $Pkg "python"
+Expand-Archive $pyZip $PyDir
+$pth = Get-ChildItem $PyDir -Filter "python*._pth" | Select-Object -First 1
+if (-not $pth) { throw "no ._pth file in the embeddable Python" }
+$zipName = (Get-ChildItem $PyDir -Filter "python*.zip" | Select-Object -First 1).Name
+# search path: the stdlib zip, the folder itself, site-packages, and ClipForge's backend
+Set-Content -Encoding ASCII $pth.FullName "$zipName`r`n.`r`nLib\site-packages`r`n..\backend`r`nimport site`r`n"
+
+# ---- 2. packages (only the runtime ones; tests aren't shipped)
+$req = Join-Path $Tmp "requirements.txt"
+$lines = @()
+foreach ($l in Get-Content (Join-Path $Root "backend\requirements.txt")) {
+  if ($l -match "^# dev") { break }
+  $lines += $l
+}
+if (-not $NoAI) { $lines += Get-Content (Join-Path $Root "backend\requirements-ai.txt") }
+Set-Content -Encoding ASCII $req $lines
+Say "installing packages"
+& python -m pip install --disable-pip-version-check --no-warn-script-location --only-binary=:all: `
+  --target (Join-Path $PyDir "Lib\site-packages") -r $req
+if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
+& python -m pip freeze --path (Join-Path $PyDir "Lib\site-packages") | Set-Content -Encoding UTF8 (Join-Path $Pkg "packages.txt")
+
+# ---- 3. ClipForge + built UI
+Say "building the UI"
+Push-Location (Join-Path $Root "frontend")
+try {
+  if (-not (Test-Path "node_modules")) { npm install --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { throw "npm install failed" } }
+  node build.mjs
+  if ($LASTEXITCODE -ne 0) { throw "UI build failed" }
+} finally { Pop-Location }
+New-Item -ItemType Directory -Force (Join-Path $Pkg "backend"), (Join-Path $Pkg "frontend") | Out-Null
+Copy-Item -Recurse (Join-Path $Root "backend\app") (Join-Path $Pkg "backend\app")
+Get-ChildItem (Join-Path $Pkg "backend\app") -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
+Copy-Item -Recurse (Join-Path $Root "frontend\dist") (Join-Path $Pkg "frontend\dist")
+foreach ($f in "LICENSE", "README.md") { if (Test-Path (Join-Path $Root $f)) { Copy-Item (Join-Path $Root $f) $Pkg } }
+
+# ---- 4. FFmpeg
+$ffZip = Join-Path $Tmp "ffmpeg.zip"
+$ffHash = Download $FfmpegZip $ffZip
+$ffTmp = Join-Path $Tmp "ffmpeg"
+Expand-Archive $ffZip $ffTmp
+$bin = Get-ChildItem $ffTmp -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
+if (-not $bin) { throw "ffmpeg.exe not found in $FfmpegZip" }
+$FfDir = Join-Path $Pkg "ffmpeg"
+New-Item -ItemType Directory -Force $FfDir | Out-Null
+Copy-Item (Join-Path $bin.DirectoryName "ffmpeg.exe"), (Join-Path $bin.DirectoryName "ffprobe.exe") $FfDir
+$lic = Get-ChildItem $ffTmp -Recurse -Filter "LICENSE*" | Select-Object -First 1
+if ($lic) { Copy-Item $lic.FullName (Join-Path $FfDir "LICENSE.txt") }
+$ffVer = (& (Join-Path $FfDir "ffmpeg.exe") -version | Select-Object -First 1)
+Say $ffVer
+$enc = (& (Join-Path $FfDir "ffmpeg.exe") -hide_banner -encoders) -join "`n"
+if ($enc -notmatch "libx264") { throw "this FFmpeg build has no libx264" }
+
+# ---- 5. launcher + notes
+$bat = @'
+@echo off
+rem ClipForge portable: double-click to start. Close this window to stop ClipForge.
+setlocal
+set "HERE=%~dp0"
+set "CLIPFORGE_FFMPEG=%HERE%ffmpeg\ffmpeg.exe"
+set "CLIPFORGE_FFPROBE=%HERE%ffmpeg\ffprobe.exe"
+set "PATH=%HERE%ffmpeg;%PATH%"
+set "PYTHONUTF8=1"
+if "%CLIPFORGE_PORT%"=="" set "CLIPFORGE_PORT=8765"
+set "URL=http://127.0.0.1:%CLIPFORGE_PORT%"
+powershell -NoProfile -Command "try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%URL%/api/health').StatusCode -eq 200) { exit 0 } } catch { }; exit 1" >nul 2>&1
+if not errorlevel 1 (
+  echo ClipForge is already running: %URL%
+  if /i not "%~1"=="-NoBrowser" start "" "%URL%"
+  exit /b 0
+)
+if /i not "%~1"=="-NoBrowser" start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for ($i = 0; $i -lt 90; $i++) { try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%URL%/api/health').StatusCode -eq 200) { Start-Process '%URL%'; break } } catch { }; Start-Sleep 1 }"
+echo.
+echo   ClipForge is starting at %URL%  (close this window to stop it)
+echo.
+cd /d "%HERE%backend"
+"%HERE%python\python.exe" -m app.main
+if errorlevel 1 if not defined CI pause
+'@
+Set-Content -Encoding ASCII (Join-Path $Pkg "ClipForge.bat") $bat
+
+$commit = ""
+try { $commit = (git -C $Root rev-parse --short HEAD).Trim() } catch { }
+$third = @"
+ClipForge portable package (commit $commit, built $(Get-Date -Format yyyy-MM-dd))
+
+Your projects are stored in %USERPROFILE%\ClipForgeWorkspace (set CLIPFORGE_WORKSPACE
+to change it), not in this folder, so you can replace this folder with a newer one.
+
+Bundled software
+- Python $PythonVersion embeddable package, from python.org (PSF License).
+    sha256 of the download: $pyHash
+- Python packages: see packages.txt (each keeps its licence inside python\Lib\site-packages).
+- FFmpeg: $ffVer
+    Build by BtbN: https://github.com/BtbN/FFmpeg-Builds (GPL build; licence in ffmpeg\LICENSE.txt).
+    Source code: https://ffmpeg.org/download.html and the build scripts at the link above.
+    sha256 of the download: $ffHash
+$(if ($NoAI) { "- Speech-to-text is NOT included in this build." } else { "- faster-whisper (MIT). The speech model (~480 MB) downloads the first time you transcribe." })
+"@
+Set-Content -Encoding UTF8 (Join-Path $Pkg "THIRD-PARTY.txt") $third
+
+# ---- 6. zip
+$zip = Join-Path $Root "$Out\ClipForge-portable-win64.zip"
+Say "zipping"
+Compress-Archive -Path $Pkg -DestinationPath $zip -CompressionLevel Optimal
+Remove-Item -Recurse -Force $Tmp
+$mb = [math]::Round((Get-Item $zip).Length / 1MB, 1)
+Say "done: $zip ($mb MB)"

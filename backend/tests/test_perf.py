@@ -44,7 +44,8 @@ def test_changed_clip_rerenders_only_itself(tmp_path):
     d = p.model_dump(mode="json")
     d["timeline"]["tracks"][1]["clips"][0]["color"] = {"look": "bw"}  # the overlay only
     _o, c2 = _render(s, Project.model_validate(d), pdir)
-    assert c2["rendered"] == 1 and c2["reused"] == c1["rendered"] - 1
+    # the overlay segment + the one final-quality block it appears in
+    assert c2["rendered"] == 2 and c2["reused"] == c1["rendered"] - 2
 
 
 def test_cache_can_be_turned_off(tmp_path):

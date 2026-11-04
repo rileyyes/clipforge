@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–6 working and tested; Phase 7 mostly done** (CI on Windows + Linux, launcher, API docs, benchmarks, your own sounds & images). Manual editor, export pipeline and the signal-based AI Auto Editor work end-to-end. Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–6 working and tested; Phase 7 done except two items this dev environment blocks (see ROADMAP); Phase 8 built and tested automatically, waiting for hands-on testing** (Shorts maker, Publish page with chapters/titles/tags, YouTube upload, library suggestions, Thumbnail Maker cut-outs, fast re-exports, Windows portable package). Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -25,6 +25,12 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **My sounds & images**: record your own sounds with the mic (or import MP3/WAV/M4A/OGG, or a video's audio) and your own images. Use them as the bleep sound, as sound effects, or as pop-ups, in every project.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
 
+### Shorts & publishing
+- **Shorts maker**: finds the best 15–60 s moments and turns each into a 9:16 project whose crop follows you (face detection, or movement), with captions.
+- **Publish page**: chapters checked against YouTube's rules, title ideas, a description, and tags, written from what's said. Edit and keep them with the project.
+- **Upload to YouTube** with your own Google account (private by default, asks every time). Setup: [docs/YOUTUBE.md](docs/YOUTUBE.md). Tested against a fake Google server only so far.
+- **Optional local AI** (Ollama or any OpenAI-compatible server on your PC) rates moments and polishes titles. Nothing is sent online; everything works without it.
+
 ### Thumbnail Maker (basic, free & local)
 - Pulls representative frames from your **final edit** (trims, order, overlays applied), proposes 3 distinct concepts with headline ideas, and builds an editable layered design.
 - Studio: text, shapes, image adjustments, layers, undo/redo, small-size previews, plain-language refinements, saved versions.
@@ -39,7 +45,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Keyframes** (◆) for scale, position, rotation, opacity and volume, with linear / ease / hold. Slow zooms, moving picture-in-picture, music that dips under talking.
 - **Colour**: brightness, contrast, saturation, gamma, temperature, plus looks (warm, cool, B&W, vintage, vivid, faded, cinematic, noir).
 - **Program monitor** that plays the *timeline* with every video layer, transforms, crop, colour and keyframes, stereo audio meters, and a **Light preview** mode (540p copies) for slower computers.
-- **Render cache**: exporting again after a small change only re-renders the parts that changed.
+- **Render cache + block rendering**: exporting again after a small change only re-renders the clips and the 20-second stretches of the final video that changed; everything else is copied. An unchanged re-export of a 3-minute edit took 42 s instead of 87 s.
 - **Autosave** with crash-safe atomic writes, a backup copy, and conflict detection across windows.
 - **Version history** (Editor → History): save named versions, automatic checkpoints, one-click restore (undoable), and a side-by-side compare showing which footage was cut or added and what changed.
 - **Export**: 1080p, 720p, 4K, 9:16 vertical, 1:1 square or custom; 24–60 fps; letterbox or crop (never stretched); H.264 + AAC MP4. Hardware encoders are used when one actually works, with libx264 as the fallback.
@@ -48,7 +54,9 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ## Quick start
 
-**Windows, easiest:** install the three tools once:
+**Windows, no installing at all:** download the **portable package** (GitHub → Actions → the latest green *CI* run → *Artifacts* → `ClipForge-portable-win64`), unzip it and double-click **`ClipForge.bat`**. It has Python, FFmpeg and speech-to-text inside. It isn't code-signed yet, so Windows may warn the first time (*More info → Run anyway*). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
+
+**Windows, from source:** install the three tools once:
 
 ```powershell
 winget install Python.Python.3.13

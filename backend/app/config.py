@@ -32,6 +32,7 @@ class Settings:
     render_timeout_s: int = 6 * 3600
     job_workers: int = 1
     render_cache_bytes: int = 4 * 1024**3  # reuse unchanged segments between exports; 0 = off
+    block_render: bool = True  # encode the final video in cached blocks (libx264 only)
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"
     allowed_origins: tuple[str, ...] = field(default_factory=tuple)
@@ -96,6 +97,7 @@ def load_settings() -> Settings:
         render_timeout_s=_env_int("CLIPFORGE_RENDER_TIMEOUT_S", 6 * 3600),
         job_workers=max(1, _env_int("CLIPFORGE_JOB_WORKERS", 1)),
         render_cache_bytes=max(0, _env_int("CLIPFORGE_RENDER_CACHE_MB", 4096)) * 1024**2,
+        block_render=os.environ.get("CLIPFORGE_BLOCK_RENDER", "1").strip().lower() not in ("0", "false", "no", "off"),
         ffmpeg_bin=os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
         ffprobe_bin=os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"),
         allowed_origins=origins,

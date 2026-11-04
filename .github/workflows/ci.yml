@@ -202,3 +202,60 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Write-Output "::error title=launcher::second start failed"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+
+  windows-portable:
+    name: Windows portable package (build + run with nothing installed)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build the portable package
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=portable::build failed"; exit 1 }
+      - name: Run it from a fresh folder with no Python, Node or FFmpeg on PATH
+        shell: powershell
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP "pp"
+          Expand-Archive portable\ClipForge-portable-win64.zip $dest
+          $hostPy = (Get-Command python).Source
+          $env:CLIPFORGE_WORKSPACE = Join-Path $env:RUNNER_TEMP "ws"
+          # only Windows itself on PATH: proves nothing installed on the runner is used
+          $clean = "C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+          $p = Start-Process cmd.exe -PassThru -WorkingDirectory "$dest\ClipForge" -RedirectStandardOutput out.txt -RedirectStandardError err.txt `
+                 -ArgumentList '/c', "set PATH=$clean&& ClipForge.bat -NoBrowser"
+          $ok = $false
+          for ($i = 0; $i -lt 120; $i++) {
+            if ($p.HasExited) { break }
+            try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8765/api/health).StatusCode -eq 200) { $ok = $true; break } } catch { }
+            Start-Sleep -Seconds 2
+          }
+          $log = (Get-Content out.txt, err.txt -ErrorAction SilentlyContinue) -join "`n"
+          Write-Output $log
+          if (-not $ok) {
+            $tail = (($log -split "`n") | Select-Object -Last 40) -join "%0A"
+            Write-Output "::error title=portable::didn't start%0A$tail"; exit 1
+          }
+          & $hostPy scripts\smoke_export.py --base http://127.0.0.1:8765 --ffmpeg "$dest\ClipForge\ffmpeg\ffmpeg.exe" 2>&1 | Tee-Object smoke.txt
+          $code = $LASTEXITCODE
+          $s = ((Get-Content smoke.txt) | Select-Object -Last 30) -join "%0A"
+          if ($code -ne 0) { Write-Output "::error title=portable smoke test::$s"; exit 1 }
+          Write-Output "::notice title=portable smoke test::$s"
+          $zipMb = [math]::Round((Get-Item portable\ClipForge-portable-win64.zip).Length / 1MB, 1)
+          Write-Output "::notice title=portable size::$zipMb MB zipped"
+          Stop-Process -Id $p.Id -Force
+          Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClipForge-portable-win64
+          path: portable/ClipForge-portable-win64.zip
+          retention-days: 14

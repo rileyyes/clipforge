@@ -17,3 +17,6 @@ frontend/.test-build/
 *.mp3
 ClipForgeWorkspace/
 .launcher-*
+
+# Windows portable build output
+/portable/

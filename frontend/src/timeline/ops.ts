@@ -8,7 +8,7 @@ import { KF_LIMITS } from "./keyframes";
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
 const EPS = 1e-6;
 
-export type OpResult = { timeline: Timeline; error?: undefined; created?: string[] } | { error: string; timeline?: undefined };
+export type OpResult = { timeline: Timeline; error?: undefined; created?: string[] } | { error: string; timeline?: undefined; created?: undefined };
 
 export function newId(): string {
   const c = (globalThis as any).crypto;

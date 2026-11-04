@@ -511,44 +511,33 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
 
         # ---- stage 3: assemble + encode -------------------------------------
         ctx.stage(3, stages, "Encoding final video")
-        _write_concat(work / "base.ffconcat", base_names)
-        inputs = ["-f", "concat", "-i", str(work / "base.ffconcat")]
-        for name in overlay_names:
-            inputs += ["-i", str(work / name)]
-        inputs += ["-i", str(mix_wav)]
-
-        g = ["[0:v]setpts=PTS-STARTPTS[v0]"]
-        last = "v0"
-        for i, s in enumerate(plan.overlays, start=1):
-            c = s.clip
-            g.append(f"[{i}:v]setpts=PTS-STARTPTS+{s.start_frame}/({plan.fps})/TB[o{i}]")
-            if look.needs_warp(c):  # full transparent canvas, already positioned
-                g.append(f"[{last}][o{i}]overlay=x=0:y=0:eof_action=pass[v{i}]")
-            else:
-                t0 = float(s.start_frame / plan.fps)
-                src_t = f"({c.source_in:.6f}+(t-{t0:.6f})*{c.speed:.6f})"
-                x, y = look.prop_expr(c, "x", src_t), look.prop_expr(c, "y", src_t)
-                ev = "frame" if look.animated(c, "x") or look.animated(c, "y") else "init"
-                g.append(f"[{last}][o{i}]overlay=x='(W-w)/2+({x})+{look.crop_shift(c, 'x')}':"
-                         f"y='(H-h)/2+({y})+{look.crop_shift(c, 'y')}':eval={ev}:eof_action=pass[v{i}]")
-            last = f"v{i}"
-        audio_idx = 1 + len(overlay_names)
-        n_inputs = audio_idx + 1
-        last, more_inputs, ass_cwd = _video_effects(project, project_dir, plan, out, work, g, last, n_inputs)
-        g.append(f"[{audio_idx}:a]apad,atrim=end_sample={plan.total_samples},asetpts=PTS-STARTPTS[aout]")
-
         encoder = ff.pick_h264_encoder(settings.ffmpeg_bin, encoder_pref)
         partial = dest.with_name(dest.stem + ".partial.mp4")
-        args = inputs + more_inputs + [
-            "-filter_complex", ";".join(g), "-map", f"[{last}]", "-map", "[aout]",
-            *encoder_args(encoder, quality), "-pix_fmt", "yuv420p", "-r", str(plan.fps),
-            "-frames:v", str(plan.total_frames),
-            "-c:a", "aac", "-b:a", "192k", "-ar", str(AUDIO_RATE), "-ac", "2",
-            "-movflags", "+faststart", str(partial),
-        ]
-        ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=plan.duration,
-                      cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s,
-                      on_progress=lambda f: ctx.progress(seg_weight + mix_weight + final_weight * f), cwd=ass_cwd)
+        final_progress = lambda f: ctx.progress(seg_weight + mix_weight + final_weight * f)  # noqa: E731
+        blocks_info = None
+        if encoder == "libx264" and settings.block_render:
+            blocks_info = _render_blocks(settings, project, project_dir, plan, out, work, base_names,
+                                         overlay_names, mix_wav, encoder, quality, cache, ctx, partial,
+                                         final_progress)
+        else:
+            _write_concat(work / "base.ffconcat", base_names)
+            inputs, g, last, idx = _final_graph(plan, work, overlay_names,
+                                                ["-f", "concat", "-i", str(work / "base.ffconcat")], None)
+            audio_idx = idx
+            inputs += ["-i", str(mix_wav)]
+            last, more_inputs, ass_cwd = _video_effects(project, project_dir, plan, out, work, g, last,
+                                                        audio_idx + 1)
+            g.append(f"[{audio_idx}:a]apad,atrim=end_sample={plan.total_samples},asetpts=PTS-STARTPTS[aout]")
+            args = inputs + more_inputs + [
+                "-filter_complex", ";".join(g), "-map", f"[{last}]", "-map", "[aout]",
+                *encoder_args(encoder, quality), "-pix_fmt", "yuv420p", "-r", str(plan.fps),
+                "-frames:v", str(plan.total_frames),
+                "-c:a", "aac", "-b:a", "192k", "-ar", str(AUDIO_RATE), "-ac", "2",
+                "-movflags", "+faststart", str(partial),
+            ]
+            ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=plan.duration,
+                          cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s,
+                          on_progress=final_progress, cwd=ass_cwd)
         partial.replace(dest)
 
         ctx.stage(3, stages, "Validating export")
@@ -556,6 +545,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                                  target_lufs=project.audio.target_lufs if loud.get("normalized") else None)
         report.update(encoder=encoder, quality=quality, project_revision=project.revision, loudness=loud,
                       cache={"enabled": cache.enabled, "reused": cache.hits, "rendered": cache.misses},
+                      **({"blocks": blocks_info} if blocks_info else {}),
                       **({"missing_sounds": missing_sounds} if missing_sounds else {}))
         (exports / (dest.stem + ".report.json")).write_text(json.dumps(report, indent=2), encoding="utf-8")
         return {"file": dest.name, "validation": report}
@@ -567,16 +557,150 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         shutil.rmtree(work, ignore_errors=True)
 
 
+BLOCK_S = 20.0  # final-quality video is encoded in blocks this long (each one cached)
+
+
+def _final_graph(plan: "RenderPlan", work: Path, overlay_names: list[str], base_input: list[str],
+                 win: Optional[tuple[int, int]], n_base: int = 1,
+                 base_trims: Optional[list[Optional[float]]] = None) -> tuple[list[str], list[str], str, int]:
+    """Base video + overlay tracks. With ``win`` = (first, end) frames only overlays that
+    are visible in that window are used, each seeked to it; timestamps stay absolute
+    (timeline seconds) so every time-based filter behaves exactly as in a full render."""
+    fps = plan.fps
+    A = win[0] if win else 0
+    inputs = list(base_input)
+    if not win:
+        g = ["[0:v]setpts=PTS-STARTPTS[v0]"]
+    else:
+        # inputs are coarse-seeked with timestamps kept (-copyts); trim drops to the exact frame
+        g = [f"[{j}:v]{f'trim=start={t:.6f},' if t is not None else ''}setpts=PTS-STARTPTS[bs{j}]"
+             for j, t in enumerate(base_trims or [None] * n_base)]
+        if n_base > 1:
+            g.append("".join(f"[bs{j}]" for j in range(n_base)) + f"concat=n={n_base}:v=1:a=0[bj]")
+            src = "bj"
+        else:
+            src = "bs0"
+        g.append(f"[{src}]setpts=PTS-STARTPTS+{A}/({fps})/TB[v0]")
+    last, idx = "v0", n_base
+    for i, s in enumerate(plan.overlays):
+        off = 0
+        if win:
+            if s.start_frame + s.count <= win[0] or s.start_frame >= win[1]:
+                continue
+            off = max(0, win[0] - s.start_frame)
+        trim = ""
+        if off:
+            t = float((off - Fraction(1, 2)) / fps)
+            inputs += ["-noaccurate_seek", "-ss", f"{t:.6f}"]
+            trim = f"trim=start={t:.6f},"
+        inputs += ["-i", str(work / overlay_names[i])]
+        c = s.clip
+        g.append(f"[{idx}:v]{trim}setpts=PTS-STARTPTS+{s.start_frame + off}/({fps})/TB[o{idx}]")
+        if look.needs_warp(c):  # full transparent canvas, already positioned
+            g.append(f"[{last}][o{idx}]overlay=x=0:y=0:eof_action=pass[v{idx}]")
+        else:
+            t0 = float(s.start_frame / fps)
+            src_t = f"({c.source_in:.6f}+(t-{t0:.6f})*{c.speed:.6f})"
+            x, y = look.prop_expr(c, "x", src_t), look.prop_expr(c, "y", src_t)
+            ev = "frame" if look.animated(c, "x") or look.animated(c, "y") else "init"
+            g.append(f"[{last}][o{idx}]overlay=x='(W-w)/2+({x})+{look.crop_shift(c, 'x')}':"
+                     f"y='(H-h)/2+({y})+{look.crop_shift(c, 'y')}':eval={ev}:eof_action=pass[v{idx}]")
+        last = f"v{idx}"
+        idx += 1
+    return inputs, g, last, idx
+
+
+def block_windows(total_frames: int, fps: Fraction, block_s: Optional[float] = None) -> list[tuple[int, int]]:
+    n = max(1, int(round((block_s or BLOCK_S) * fps)))
+    wins = [(a, min(a + n, total_frames)) for a in range(0, total_frames, n)]
+    if len(wins) > 1 and wins[-1][1] - wins[-1][0] < n // 4:  # fold a tiny tail into the previous block
+        wins[-2] = (wins[-2][0], wins[-1][1])
+        wins.pop()
+    return wins
+
+
+def _render_blocks(settings: Settings, project: Project, project_dir: Path, plan: "RenderPlan",
+                   out: OutputSettings, work: Path, base_names: list[str], overlay_names: list[str],
+                   mix_wav: Path, encoder: str, quality: str, cache: RenderCache, ctx: JobContext,
+                   partial: Path, progress) -> dict:
+    """Encode the final video in independent blocks, then join them without re-encoding.
+
+    Each block gets exactly the filters that are visible in it, so its cache key only
+    changes when something inside it changes: after a small edit a re-export re-encodes
+    just the affected blocks and copies the rest."""
+    fps = plan.fps
+    starts, f = [], 0
+    for s in plan.base:
+        starts.append(f)
+        f += s.count
+    wins = block_windows(plan.total_frames, fps)
+    names, reused = [], 0
+    total = plan.total_frames or 1
+    for k, (A, B) in enumerate(wins):
+        ctx.check_cancel()
+        members = [i for i, s in enumerate(plan.base) if starts[i] < B and starts[i] + s.count > A]
+        # each segment is its own input (the concat demuxer can't seek accurately); the
+        # first is seeked to the keyframe before the block and trimmed to its first frame
+        off = A - starts[members[0]]
+        base_in: list[str] = ["-copyts"]
+        trims: list[Optional[float]] = [None] * len(members)
+        for j, i in enumerate(members):
+            if j == 0 and off:
+                t = float((off - Fraction(1, 2)) / fps)
+                base_in += ["-noaccurate_seek", "-ss", f"{t:.6f}"]
+                trims[0] = t
+            base_in += ["-i", str(work / base_names[i])]
+        inputs, g, last, idx = _final_graph(plan, work, overlay_names, base_in, (A, B), len(members), trims)
+        last, more, ass_cwd = _video_effects(project, project_dir, plan, out, work, g, last, idx,
+                                             win=(A, B), tag=f"{k:04d}")
+        g.append(f"[{last}]setpts=PTS-STARTPTS[vout]")
+        name = f"final{k:04d}.mp4"
+        args = inputs + more + [
+            "-filter_complex", ";".join(g), "-map", "[vout]", "-an",
+            *encoder_args(encoder, quality), "-pix_fmt", "yuv420p", "-r", str(fps),
+            "-frames:v", str(B - A), "-video_track_timescale", "90000", str(work / name)]
+        ass = work / f"cap{k:04d}.ass"
+        key = cache.key(args, work, name, extra=ass.read_text(encoding="utf-8") if ass.exists() else "")
+        names.append(name)
+        if cache.fetch(key, work / name):
+            reused += 1
+            progress(B / total * 0.95)
+            continue
+        ff.run_ffmpeg(settings.ffmpeg_bin, args, expected_duration=max(float((B - A) / fps), 0.001),
+                      cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s,
+                      on_progress=lambda x, a=A, b=B: progress((a + x * (b - a)) / total * 0.95), cwd=ass_cwd)
+        cache.store(key, work / name)
+    cache.evict()
+    ctx.check_cancel()
+    aac = work / "final_audio.m4a"
+    ff.run_ffmpeg(settings.ffmpeg_bin, [
+        "-i", str(mix_wav), "-af", f"apad,atrim=end_sample={plan.total_samples},asetpts=PTS-STARTPTS",
+        "-c:a", "aac", "-b:a", "192k", "-ar", str(AUDIO_RATE), "-ac", "2", str(aac)],
+        expected_duration=plan.duration, cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s)
+    _write_concat(work / "final.ffconcat", names)
+    ff.run_ffmpeg(settings.ffmpeg_bin, [
+        "-f", "concat", "-i", str(work / "final.ffconcat"), "-i", str(aac),
+        "-map", "0:v", "-map", "1:a", "-c", "copy", "-movflags", "+faststart", str(partial)],
+        expected_duration=plan.duration, cancel_event=ctx.cancel_event, timeout=settings.render_timeout_s)
+    progress(1.0)
+    return {"count": len(wins), "reused": reused, "seconds": BLOCK_S}
+
+
 def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out: OutputSettings,
-                   work: Path, g: list[str], last: str, n_inputs: int) -> tuple[str, list[str], Optional[Path]]:
-    """Append zoom/shake (zoompan), flashes, pop-up overlays and burned captions."""
+                   work: Path, g: list[str], last: str, n_inputs: int,
+                   win: Optional[tuple[int, int]] = None, tag: str = "") -> tuple[str, list[str], Optional[Path]]:
+    """Append zoom/shake (zoompan), flashes, pop-up overlays and burned captions.
+
+    With ``win`` (a block's first/end frame) only effects visible in that block are
+    added; timestamps are absolute timeline seconds either way."""
     W, H, F = out.width, out.height, plan.fps
     D = plan.duration
+    lo, hi = (float(win[0] / F), float(win[1] / F)) if win else (0.0, D)
     wins = {k: [] for k in ("zoom", "shake", "flash", "text", "image")}
     for e in project.effects:
         if e.enabled and e.kind in wins:
             for w in fx.map_to_timeline(project, e, "video"):
-                if w.start < D:
+                if w.start < D and (not win or (min(w.end, D) > lo and w.start < hi)):
                     wins[e.kind].append((w.start, min(w.end, D), e))
     more: list[str] = []
     # zoom + shake in one zoompan pass ('it' = timeline seconds)
@@ -590,7 +714,9 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         z = "1+" + "+".join(zt)
         x = f"clip((iw-iw/zoom)*(0.5+({cx}))+({sx}),0,iw-iw/zoom)"
         y = f"clip((ih-ih/zoom)*(0.5+({cy}))+({sy}),0,ih-ih/zoom)"
-        g.append(f"[{last}]zoompan=z='{z}':x='{x}':y='{y}':d=1:s={W}x{H}:fps={F},setsar=1[zp]")
+        # zoompan numbers its output from 0, so a block puts its own start time back
+        restamp = f",setpts=PTS-STARTPTS+{win[0]}/({F})/TB" if win else ""
+        g.append(f"[{last}]zoompan=z='{z}':x='{x}':y='{y}':d=1:s={W}x{H}:fps={F},setsar=1{restamp}[zp]")
         last = "zp"
     for i, (a, b, e) in enumerate(wins["flash"]):
         g.append(f"[{last}]drawbox=x=0:y=0:w=iw:h=ih:color=white@0.8:t=fill:"
@@ -599,7 +725,7 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
     k = n_inputs
     pops = sorted(wins["text"] + wins["image"], key=lambda x: x[0])
     for i, (a, b, e) in enumerate(pops):
-        png = work / f"pop{i:04d}.png"
+        png = work / f"pop{tag}_{i:04d}.png"
         try:
             if e.kind == "text":
                 pw, ph = fx.text_png(e.text or "", max(12, int(H * e.size)), e.color, png)
@@ -622,13 +748,34 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         k += 1
     cwd = None
     if project.captions.enabled:
-        chunks = fx.caption_chunks(project, project_dir)
+        chunks = _caption_chunks_cached(project, project_dir, work)
+        if win:
+            chunks = [c for c in chunks if c["end"] > lo - 0.5 and c["start"] < hi + 0.5]
         if chunks:
-            family = fx.prepare_caption_font(work) or "Arial"
-            (work / "captions.ass").write_text(fx.captions_ass(project, chunks, family, H, W), encoding="utf-8")
-            g.append(f"[{last}]ass=captions.ass:fontsdir=.[cap]")
+            family = _caption_font_cached(work)
+            ass = f"cap{tag}.ass" if win else "captions.ass"
+            (work / ass).write_text(fx.captions_ass(project, chunks, family, H, W), encoding="utf-8")
+            g.append(f"[{last}]ass={ass}:fontsdir=.[cap]")
             last, cwd = "cap", work
     return last, more, cwd
+
+
+def _caption_chunks_cached(project: Project, project_dir: Path, work: Path) -> list[dict]:
+    p = work / "caption_chunks.json"
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    chunks = fx.caption_chunks(project, project_dir)
+    p.write_text(json.dumps(chunks), encoding="utf-8")
+    return chunks
+
+
+def _caption_font_cached(work: Path) -> str:
+    p = work / "caption_font.txt"
+    if p.exists():
+        return p.read_text(encoding="utf-8")
+    family = fx.prepare_caption_font(work) or "Arial"
+    p.write_text(family, encoding="utf-8")
+    return family
 
 
 NR = {"light": 0.3, "medium": 1.0, "strong": 3.0}  # anlmdn strength (non-local means denoiser)

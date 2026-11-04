@@ -3,8 +3,8 @@
 A segment's key is a hash of exactly what produces it — the FFmpeg arguments (filters,
 timings, encoder settings), the source files (path + size + modification time) and the
 keys of any intermediate files it reads — plus the FFmpeg version. Change anything and
-the key changes, so a cached file can never be stale. Only per-segment renders are
-cached; the final mix/encode always runs. Oldest entries are evicted past the size limit.
+the key changes, so a cached file can never be stale. Per-segment renders and
+final-quality video blocks are cached; the audio mix and the final copy always run. Oldest entries are evicted past the size limit.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 CACHE_VERSION = "1"
+SMALL_FILE = 8 * 1024 * 1024  # helper files up to this size are keyed by content
 
 
 @functools.lru_cache(maxsize=4)
@@ -43,11 +44,20 @@ class RenderCache:
         if self.enabled:
             root.mkdir(parents=True, exist_ok=True)
 
-    def key(self, args: list[str], work: Path, dest_name: str) -> Optional[str]:
-        """None when some input can't be identified (then the segment isn't cached)."""
+    def register(self, name: str, parts: list[Optional[str]]) -> None:
+        """Give a derived work file (e.g. a concat list) a key built from its members' keys."""
+        if self.enabled and all(parts):
+            self.keys[name] = hashlib.sha256("|".join(parts).encode()).hexdigest()[:40]  # type: ignore[arg-type]
+
+    def key(self, args: list[str], work: Path, dest_name: str, extra: str = "") -> Optional[str]:
+        """None when some input can't be identified (then the segment isn't cached).
+
+        Small helper files in the work dir that have no key of their own (pop-up PNGs)
+        are identified by their content. ``extra`` adds text the arguments only refer to
+        indirectly (e.g. the subtitle file a filter reads)."""
         if not self.enabled:
             return None
-        h = hashlib.sha256(f"{CACHE_VERSION}|{self.version}".encode())
+        h = hashlib.sha256(f"{CACHE_VERSION}|{self.version}|{extra}".encode())
         wp = str(work) + os.sep
         for a in args:
             if a.startswith(wp):
@@ -57,7 +67,10 @@ class RenderCache:
                 elif name in self.keys:
                     a = "<" + self.keys[name] + ">"
                 else:
-                    return None
+                    f = work / name
+                    if not f.is_file() or f.stat().st_size > SMALL_FILE:
+                        return None
+                    a = "<#" + hashlib.sha256(f.read_bytes()).hexdigest() + ">"
             elif os.path.isabs(a) and os.path.isfile(a):
                 st = os.stat(a)
                 a = f"{a}|{st.st_size}|{st.st_mtime_ns}"
