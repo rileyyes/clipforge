@@ -84,9 +84,14 @@ export interface Plan {
   warnings: string[]; transcript: boolean; levels: Record<string, number | null>;
 }
 
+export interface AutoStatus {
+  media: { media_id: string; analyzed: boolean; has_transcript: boolean; transcript_error?: string | null; ai_rated?: number; ai_model?: string | null }[];
+  transcriber: string | null; ai?: { model: string; external: boolean } | null; ai_help?: string | null;
+}
 export const autoedit = {
   status: (pid: string) =>
-    call<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean; transcript_error?: string | null }[]; transcriber: string | null }>("GET", `/api/projects/${pid}/autoedit`),
+    call<AutoStatus>("GET", `/api/projects/${pid}/autoedit`),
+  aiRate: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/autoedit/ai-rate`, { media_id }),
   analyze: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/autoedit/analyze`, { media_id }),
   plan: (pid: string, media_id: string, settings: AutoEditSettings) =>
     call<Plan>("POST", `/api/projects/${pid}/autoedit/plan`, { media_id, settings }),

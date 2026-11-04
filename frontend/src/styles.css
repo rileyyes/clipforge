@@ -250,3 +250,5 @@ a.btn.primary { color: #fff; }
 .lib-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; }
 .lib-image { display: grid; gap: 2px; min-width: 0; }
 .lib-image img { width: 100%; aspect-ratio: 1; object-fit: contain; background: repeating-conic-gradient(#333 0 25%, #2a2a2a 0 50%) 0 0/12px 12px; border-radius: 6px; }
+
+.ai-box { display: grid; gap: 6px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; }

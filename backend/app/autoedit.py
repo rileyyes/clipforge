@@ -30,6 +30,7 @@ from typing import Literal, Optional
 import numpy as np
 from pydantic import BaseModel, Field
 
+from . import language
 from .schema import MIN_CLIP_DURATION
 
 SilencePreset = Literal["off", "conservative", "balanced", "aggressive"]
@@ -43,16 +44,26 @@ SILENCE = {  # min silence to cut (s), pause kept on each side (s), merge-into-b
 }
 
 # feature weights per style
+# Language features (laughs, punchlines, exclaim, questions, story; see language.py) only
+# exist with a transcript, and "ai" only with the optional local AI rating. Missing
+# features simply drop out of a beat's weighted average.
 STYLES: dict[str, dict[str, float]] = {
-    "balanced": dict(loudness=1, reactions=1, density=1, motion=1, cuts=0.5, speech_rate=0.5),
-    "excitement": dict(loudness=1.5, reactions=2, density=0.3, motion=1.2, cuts=0.6, speech_rate=0.6),
-    "information": dict(loudness=0.5, reactions=0.3, density=2.5, motion=0.3, cuts=0.2, speech_rate=1.5),
-    "reactions": dict(loudness=1, reactions=3, density=0.4, motion=0.6, cuts=0.3, speech_rate=0.3),
-    "action": dict(loudness=0.6, reactions=0.6, density=0.3, motion=2.5, cuts=1.5, speech_rate=0.2),
+    "balanced": dict(loudness=1, reactions=1, density=1, motion=1, cuts=0.5, speech_rate=0.5,
+                     laughs=0.7, punchlines=0.7, exclaim=0.5, questions=0.3, story=0.3, ai=2.0),
+    "excitement": dict(loudness=1.5, reactions=2, density=0.3, motion=1.2, cuts=0.6, speech_rate=0.6,
+                       laughs=0.6, punchlines=0.8, exclaim=1.5, questions=0.2, story=0.1, ai=1.5),
+    "information": dict(loudness=0.5, reactions=0.3, density=2.5, motion=0.3, cuts=0.2, speech_rate=1.5,
+                        laughs=0.1, punchlines=0.2, exclaim=0.1, questions=1.0, story=0.8, ai=2.5),
+    "reactions": dict(loudness=1, reactions=3, density=0.4, motion=0.6, cuts=0.3, speech_rate=0.3,
+                      laughs=1.5, punchlines=1.0, exclaim=2.0, questions=0.2, story=0.1, ai=1.5),
+    "action": dict(loudness=0.6, reactions=0.6, density=0.3, motion=2.5, cuts=1.5, speech_rate=0.2,
+                   laughs=0.2, punchlines=0.2, exclaim=0.5, questions=0.1, story=0.1, ai=1.0),
     # humor/story genuinely need language understanding; without a transcript they
     # fall back to the closest signals and say so in the warnings.
-    "humor": dict(loudness=0.8, reactions=2.5, density=0.6, motion=0.4, cuts=0.3, speech_rate=1.0),
-    "story": dict(loudness=0.6, reactions=0.6, density=2.0, motion=0.4, cuts=0.3, speech_rate=1.0),
+    "humor": dict(loudness=0.8, reactions=2.0, density=0.6, motion=0.4, cuts=0.3, speech_rate=0.8,
+                  laughs=3.0, punchlines=3.0, exclaim=1.0, questions=0.5, story=0.3, ai=3.0),
+    "story": dict(loudness=0.6, reactions=0.6, density=2.0, motion=0.4, cuts=0.3, speech_rate=1.0,
+                  laughs=0.5, punchlines=1.0, exclaim=0.3, questions=1.0, story=3.0, ai=3.0),
 }
 
 MAX_BEAT = 45.0
@@ -81,6 +92,7 @@ class Beat:
     ranks: dict[str, float] = field(default_factory=dict)
     score: float = 0.0
     reasons: list[str] = field(default_factory=list)
+    ai_why: Optional[str] = None
     selected: bool = False
     why: str = ""
 
@@ -222,6 +234,8 @@ def score_beats(beats: list[Beat], analysis: dict, style: str, thr_info: dict) -
     motion = np.asarray(analysis.get("motion") or [], dtype=np.float32)
     cuts = np.asarray(analysis.get("cuts") or [], dtype=np.float32)
     words = analysis.get("words")
+    events = language.word_events(words, analysis.get("rms_db") or [], hop) if words else None
+    ratings = analysis.get("ai_ratings") or []
     speech_db = thr_info.get("speech_db")
     thr = thr_info.get("threshold_db")
     for b in beats:
@@ -238,10 +252,17 @@ def score_beats(beats: list[Beat], analysis: dict, style: str, thr_info: dict) -
         if m.size:
             f["motion"] = float(np.mean(m))
             f["cuts"] = float(np.sum((cuts >= b.start) & (cuts < b.end))) / span * 60
+        ai_why = None
         if words:
             n = sum(1 for w in words if b.start <= w["start"] < b.end)
             f["speech_rate"] = n / span * 60
+            f.update(language.beat_features(events, b.start, b.end))
+        if ratings:
+            hit = language.ai_feature(ratings, b.start, b.end)
+            if hit is not None:
+                f["ai"], ai_why = hit
         b.features = {k: round(v, 3) for k, v in f.items()}
+        b.ai_why = ai_why
     # percentile ranks across beats (robust to scale); single beat → 0.5
     keys = sorted({k for b in beats for k in b.features})
     weights = STYLES[style]
@@ -257,12 +278,16 @@ def score_beats(beats: list[Beat], analysis: dict, style: str, thr_info: dict) -
         for b, rk in zip([b for b, o in zip(beats, ok) if o], ranks):
             b.ranks[k] = round(float(rk), 3)
     for b in beats:
+        if "ai" in b.features:  # an absolute 0-10 judgement: use it as is, not its rank
+            b.ranks["ai"] = round(min(1.0, max(0.0, b.features["ai"] / 10)), 3)
         num = sum(weights.get(k, 0) * v for k, v in b.ranks.items())
         den = sum(weights.get(k, 0) for k in b.ranks) or 1
         # very short beats rarely stand alone well
         brevity = min(1.0, 0.6 + 0.4 * b.kept / 6.0)
         b.score = round(100 * num / den * brevity, 1)
         b.reasons = explain(b, weights)
+        if b.ai_why and b.features.get("ai", 0) >= 6:
+            b.reasons = [f"AI: {b.ai_why} ({b.features['ai']:.0f}/10)"] + b.reasons[:1]
 
 
 LABELS = {
@@ -272,11 +297,17 @@ LABELS = {
     "motion": ("lots of on-screen movement", "static picture"),
     "cuts": ("fast visual changes", "no scene changes"),
     "speech_rate": ("fast, dense speech", "slow speech"),
+    "laughs": ("laughter", "no laughs"),
+    "punchlines": ("punchline: setup then payoff", "no payoff moments"),
+    "exclaim": ("exclamations & reactions in the words", "calm wording"),
+    "questions": ("questions / set-ups", "no questions"),
+    "story": ("storytelling", "no story markers"),
+    "ai": ("AI rates it highly", "AI rates it low"),
 }
 
 
 def explain(b: Beat, weights: dict[str, float]) -> list[str]:
-    contrib = sorted(((weights.get(k, 0) * (v - 0.5), k, v) for k, v in b.ranks.items()),
+    contrib = sorted(((weights.get(k, 0) * (v - 0.5), k, v) for k, v in b.ranks.items() if k != "ai"),
                      reverse=True)
     out = []
     for c, k, v in contrib[:2]:

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  api, autoedit, fmtTime, library, mediaUrl, uploadMedia, type LibraryItem, type AutoEditSettings, type Extras, type Beat, type Plan, type ProjectSummary,
+  api, autoedit, fmtTime, library, mediaUrl, uploadMedia, type LibraryItem, type AutoEditSettings, type AutoStatus, type Extras, type Beat, type Plan, type ProjectSummary,
 } from "../api";
 import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import type { MediaAsset, Project } from "../timeline/types";
@@ -100,7 +100,7 @@ function Strip({ plan, active, onPick }: { plan: Plan; active: number | null; on
 function Workspace({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<Project | null>(null);
   const [mediaId, setMediaId] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ media: { media_id: string; analyzed: boolean; has_transcript: boolean; transcript_error?: string | null }[]; transcriber: string | null } | null>(null);
+  const [status, setStatus] = useState<AutoStatus | null>(null);
   const [settings, setSettings] = useState<AutoEditSettings>(DEFAULTS);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
@@ -138,6 +138,10 @@ function Workspace({ projectId }: { projectId: string }) {
   const analyzed = !!status?.media.find((m) => m.media_id === mediaId)?.analyzed;
   const hasTranscript = !!status?.media.find((m) => m.media_id === mediaId)?.has_transcript;
   const transcriptError = status?.media.find((m) => m.media_id === mediaId)?.transcript_error;
+  const aiRated = status?.media.find((m) => m.media_id === mediaId)?.ai_rated ?? 0;
+  const aiJob = jobs.find((j) => j.kind === "ai_rate" && j.params.media_id === mediaId);
+  const aiActive = aiJob && (aiJob.status === "queued" || aiJob.status === "running");
+  useEffect(() => { if (aiJob?.status === "succeeded") { loadStatus(); setSettings((s) => ({ ...s })); } }, [aiJob?.status]);
   const job = jobs.find((j) => j.kind === "analyze" && j.params.media_id === mediaId);
   const jobActive = job && (job.status === "queued" || job.status === "running");
   useEffect(() => { if (job?.status === "succeeded") loadStatus(); }, [job?.status]);
@@ -322,6 +326,27 @@ function Workspace({ projectId }: { projectId: string }) {
               {(settings.include.length > 0 || settings.exclude.length > 0) && (
                 <button className="btn sm" onClick={() => set({ include: [], exclude: [] })}>Reset my keep/drop choices ({settings.include.length + settings.exclude.length})</button>
               )}
+              <div className="ai-box" data-testid="ai-box">
+                <div style={{ fontSize: 12, fontWeight: 600 }}>Judge moments by what's said</div>
+                {!hasTranscript ? (
+                  <div className="muted" style={{ fontSize: 11 }}>With a transcript, laughs, punchlines, questions and stories count too (best for Humor and Story styles).</div>
+                ) : (
+                  <div className="muted" style={{ fontSize: 11 }}>✓ Using the transcript: laughs, punchlines, exclamations, questions and storytelling.</div>
+                )}
+                {hasTranscript && (status?.ai ? (<>
+                  {aiJob && aiActive && <JobRow job={aiJob} onChange={refresh} />}
+                  {aiJob && ["failed", "interrupted"].includes(aiJob.status) && <JobRow job={aiJob} onChange={refresh} />}
+                  {!aiActive && (
+                    <button className="btn sm" onClick={async () => { try { await autoedit.aiRate(projectId, mediaId!); refresh(); } catch (e: any) { toast(e.message, true); } }}>
+                      <Icon name="wand" size={13} />{aiRated ? `Re-rate with local AI (${status.ai.model})` : `Rate moments with local AI (${status.ai.model})`}
+                    </button>
+                  )}
+                  {aiRated > 0 && <div className="muted" style={{ fontSize: 11 }}>✓ {aiRated} parts rated by {status.media.find((m) => m.media_id === mediaId)?.ai_model}. Moments it liked show "AI: …" in the list.</div>}
+                  {status.ai.external && <div className="chip warn">This AI server isn't on your computer — your transcript is sent to it.</div>}
+                </>) : (
+                  <div className="muted" style={{ fontSize: 11 }}>Optional: a free local AI can also rate which parts are funny or important. {status?.ai_help}</div>
+                ))}
+              </div>
               <button className="btn sm ghost" onClick={async () => { await autoedit.analyze(projectId, mediaId!); setStatus(null); refresh(); loadStatus(); }}>Re-analyse</button>
             </div>
           )}

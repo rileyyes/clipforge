@@ -123,7 +123,7 @@ export function useJobs(projectId?: string, enabled = true) {
   return { jobs, refresh };
 }
 
-const KIND_LABEL: Record<string, string> = { derive_media: "Prepare media", render: "Export", analyze: "Analyse recording", thumb_analyze: "Analyse edit for thumbnail", thumb_generate: "Generate artwork" };
+const KIND_LABEL: Record<string, string> = { ai_rate: "AI rating", make_short: "Make Short", transcribe: "Transcribe speech", youtube_upload: "Upload to YouTube", derive_media: "Prepare media", render: "Export", analyze: "Analyse recording", thumb_analyze: "Analyse edit for thumbnail", thumb_generate: "Generate artwork" };
 
 export function statusChip(s: Job["status"]) {
   const cls = s === "succeeded" ? "ok" : s === "running" || s === "queued" ? "run" : s === "cancelled" ? "" : "err";

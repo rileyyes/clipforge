@@ -90,6 +90,7 @@ class Services:
         self.jobs.register("render", self._render)
         self.jobs.register("analyze", self._analyze)
         self.jobs.register("transcribe", self._transcribe)
+        self.jobs.register("ai_rate", self._ai_rate)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -155,6 +156,28 @@ class Services:
                                                          transcriber))
         return {"media": results}
 
+    def _ai_rate(self, ctx: JobContext) -> dict:
+        """Optional local AI: rate transcript chunks (funny / interesting / filler)."""
+        from . import language
+        pid, mid = ctx.job.project_id, ctx.job.params["media_id"]
+        model = language.text_model()
+        if model is None:
+            raise RuntimeError("No local AI model found. " + language_setup_help())
+        pdir = self.store.dir(pid)
+        a = analysis_svc.load_analysis(pdir, mid)
+        if not a or not a.get("words"):
+            raise RuntimeError("This recording has no transcript yet — transcribe it first.")
+        ctx.stage(1, 1, f"Rating moments with {model.model}")
+        ratings = language.ai_rate(model, a["words"], on_progress=ctx.progress, cancel=ctx.cancel_event)
+        if not ratings:
+            raise RuntimeError("The AI model didn't return usable ratings — try again, or a different model.")
+        a["ai_ratings"], a["ai_model"] = ratings, model.model
+        out = analysis_svc.analysis_path(pdir, mid)
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text(__import__("json").dumps(a), encoding="utf-8")
+        replace_retry(tmp, out)
+        return {"media_id": mid, "rated": len(ratings), "model": model.model}
+
     def _render(self, ctx: JobContext) -> dict:
         pid = ctx.job.project_id
         p = ctx.job.params
@@ -162,6 +185,11 @@ class Services:
         return render_project(ctx, self.settings, project, self.store.dir(pid),
                               p.get("filename", "export"), p.get("quality", "standard"),
                               p.get("encoder", "auto"))
+
+
+def language_setup_help() -> str:
+    return ("It's optional and free: install Ollama (https://ollama.com), run `ollama pull llama3.1`, and keep "
+            "Ollama running — ClipForge finds it automatically.")
 
 
 def build_routes(svc: Services) -> list[Route]:
@@ -537,9 +565,29 @@ def build_routes(svc: Services) -> list[Route]:
             a = analysis_svc.load_analysis(store.dir(pid), m.id)
             items.append({"media_id": m.id, "analyzed": a is not None,
                           "has_transcript": bool(a and a.get("words")),
+                          "ai_rated": len((a or {}).get("ai_ratings") or []), "ai_model": (a or {}).get("ai_model"),
                           "transcript_error": (a or {}).get("transcript_error")})
         t = available_transcriber()
-        return JSONResponse({"media": items, "transcriber": t.name if t else None})
+        from . import language
+        lm = language.text_model()
+        return JSONResponse({"media": items, "transcriber": t.name if t else None,
+                             "ai": {"model": lm.model, "external": lm.external} if lm else None,
+                             "ai_help": None if lm else language_setup_help()})
+
+    async def start_ai_rate(request: Request):
+        pid = pid_of(request)
+        body = await body_model(request, AnalyzeBody)
+        p = load(pid)
+        if body.media_id not in p.media_by_id():
+            return err(404, "media not found")
+        from . import language
+        if language.text_model() is None:
+            return err(409, "No local AI model found. " + language_setup_help())
+        a = analysis_svc.load_analysis(store.dir(pid), body.media_id)
+        if not a or not a.get("words"):
+            return err(409, "Transcribe this recording first — the AI judges what's said.")
+        job = svc.jobs.submit("ai_rate", pid, {"media_id": body.media_id})
+        return JSONResponse(job.model_dump(), status_code=202)
 
     async def start_analysis(request: Request):
         pid = pid_of(request)
@@ -1043,6 +1091,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/exports/{name}/validate", revalidate_export, methods=["POST"]),
         Route(P + "/autoedit", autoedit_status),
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
+        Route(P + "/autoedit/ai-rate", start_ai_rate, methods=["POST"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
         Route("/api/library", library_list),
