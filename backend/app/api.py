@@ -26,11 +26,11 @@ from . import analysis as analysis_svc
 from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
 from .transcription import available_transcriber
-from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline
+from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline, now_iso
 from . import rcache
 from .library import Library, LibraryError, project_sound
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
-from .storage import (replace_retry, PathSecurityError, dir_size, display_name, media_extension, new_id,
+from .storage import (atomic_write_json, replace_retry, PathSecurityError, dir_size, display_name, media_extension, new_id,
                       safe_join, validate_id)
 
 
@@ -92,6 +92,7 @@ class Services:
         self.jobs.register("transcribe", self._transcribe)
         self.jobs.register("ai_rate", self._ai_rate)
         self.jobs.register("make_short", self._make_short)
+        self.jobs.register("youtube_upload", self._youtube_upload)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -214,6 +215,24 @@ class Services:
         new = self.store.create_from(pid, name, doc)
         return {"project_id": new.id, "name": new.name, "follow": follow,
                 "captions": doc["captions"]["enabled"], "duration": round(end - start, 2)}
+
+    def _youtube_upload(self, ctx: JobContext) -> dict:
+        """Upload an export to YouTube with the saved publish draft (resumable)."""
+        from . import youtube as YT
+        pid, prm = ctx.job.project_id, ctx.job.params
+        pdir = self.store.dir(pid)
+        video = safe_join(pdir, "exports", prm["export_file"])
+        thumb = safe_join(pdir, "thumbnails", "exports", prm["thumbnail_file"]) if prm.get("thumbnail_file") else None
+        if thumb is not None and not thumb.is_file():
+            thumb = None
+        ctx.stage(1, 1, "Uploading to YouTube")
+        yt = YT.YouTube(self.settings.workspace)
+        res = yt.upload(video, YT.metadata(prm["draft"]), thumb, on_progress=ctx.progress, cancel=ctx.cancel_event)
+        log = pdir / "youtube.json"
+        hist = __import__("json").loads(log.read_bytes()) if log.exists() else []
+        hist.append({**res, "title": prm["draft"].get("title"), "file": prm["export_file"], "at": now_iso()})
+        atomic_write_json(log, hist[-50:], keep_backup=False)
+        return res
 
     def _render(self, ctx: JobContext) -> dict:
         pid = ctx.job.project_id
@@ -611,6 +630,159 @@ def build_routes(svc: Services) -> list[Route]:
         return JSONResponse({"media": items, "transcriber": t.name if t else None,
                              "ai": {"model": lm.model, "external": lm.external} if lm else None,
                              "ai_help": None if lm else language_setup_help()})
+
+    # -- Publish: chapters, titles, description, tags ------------------------
+    class PublishSuggestBody(BaseModel):
+        use_ai: bool = False
+
+    def draft_path(pid: str) -> Path:
+        return store.dir(pid) / "publish.json"
+
+    async def publish_suggest(request: Request):
+        """Chapters, title ideas, description and tags from the final edit's transcript"""
+        pid = pid_of(request)
+        body = await body_model(request, PublishSuggestBody)
+        p = load(pid)
+        from . import effects as fx, language, publish as PB
+        words = fx.edit_words(p, store.dir(pid))
+        out = PB.suggest(words, p.timeline.duration, p.name)
+        if body.use_ai:
+            model = language.text_model()
+            if model is None:
+                return err(409, "No local AI model found. " + language_setup_help())
+            if not words:
+                return err(409, "Transcribe the video first — the AI writes from what's said.")
+            import asyncio
+            try:
+                out = await asyncio.to_thread(PB.ai_polish, model, words, out)
+            except Exception as exc:  # noqa: BLE001 - keep the rule-based result, say why
+                out["warnings"].append(f"The local AI didn't answer usefully ({exc}); showing the automatic version.")
+            out["ai_model"] = model.model
+        out["chapter_problems"] = PB.validate_chapters(out["chapters"], p.timeline.duration)
+        return JSONResponse(out)
+
+    async def publish_get(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        from . import publish as PB
+        f = draft_path(pid)
+        d = PB.PublishDraft.model_validate_json(f.read_bytes()) if f.exists() else PB.PublishDraft()
+        return JSONResponse({"draft": d.model_dump(), "categories": PB.CATEGORIES})
+
+    async def publish_put(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        from . import publish as PB
+        d = await body_model(request, PB.PublishDraft)
+        atomic_write_json(draft_path(pid), d.model_dump(), keep_backup=False)
+        return JSONResponse({"draft": d.model_dump(),
+                             "chapter_problems": PB.validate_chapters([c.model_dump() for c in d.chapters], p.timeline.duration)})
+
+    # -- YouTube ------------------------------------------------------------
+    from . import youtube as YT
+    yt = YT.YouTube(S.workspace)
+
+    async def ai_status(request: Request):
+        """Is a local AI model available (Ollama auto-detected, or configured)?"""
+        from . import language
+        m = language.text_model()
+        return JSONResponse({"model": m.model if m else None, "external": bool(m and m.external),
+                             "help": None if m else language_setup_help()})
+
+    async def youtube_status(request: Request):
+        return JSONResponse(yt.status())
+
+    async def youtube_client(request: Request):
+        """Add your Google OAuth client file (Desktop app JSON)"""
+        data = await read_upload(request, 64 * 1024)
+        try:
+            return JSONResponse({**yt.set_client(data), **yt.status()})
+        except YT.YouTubeError as exc:
+            return err(422, str(exc))
+
+    async def youtube_client_delete(request: Request):
+        yt.disconnect()
+        yt.client_file.unlink(missing_ok=True)
+        return JSONResponse(yt.status())
+
+    def callback_uri(request: Request) -> str:
+        host = request.url.hostname if request.url.hostname in ("127.0.0.1", "localhost") else "127.0.0.1"
+        return f"http://{host}:{request.url.port or S.port}/api/youtube/callback"
+
+    async def youtube_connect(request: Request):
+        """Start Google sign-in; returns the URL to open"""
+        try:
+            return JSONResponse({"url": yt.auth_url(callback_uri(request))})
+        except YT.YouTubeError as exc:
+            return err(409, str(exc))
+
+    async def youtube_callback(request: Request):
+        """Google redirects here after sign-in (one-time state check)"""
+        from starlette.responses import HTMLResponse
+        import html as _html
+        q = request.query_params
+
+        def page(title: str, msg: str, ok: bool) -> HTMLResponse:
+            return HTMLResponse(
+                "<!doctype html><meta charset=utf-8><title>ClipForge</title><body style='font:16px system-ui;"
+                "max-width:560px;margin:60px auto;text-align:center'>"
+                f"<h2>{'✅' if ok else '⚠️'} {_html.escape(title)}</h2><p>{_html.escape(msg)}</p>"
+                "<p>You can close this tab and go back to ClipForge.</p>", status_code=200 if ok else 400)
+        if q.get("error"):
+            return page("Not connected", f"Google said: {q.get('error')}.", False)
+        try:
+            st = yt.finish(q.get("state", ""), q.get("code", ""))
+        except YT.YouTubeError as exc:
+            return page("Not connected", str(exc), False)
+        ch = (st.get("channel") or {}).get("title")
+        return page("YouTube connected", f"Uploads will go to {ch}." if ch else "You're connected.", True)
+
+    async def youtube_disconnect(request: Request):
+        yt.disconnect()
+        return JSONResponse(yt.status())
+
+    class UploadBody(BaseModel):
+        confirm: bool = False
+        export_file: Optional[str] = Field(default=None, max_length=200)
+
+    async def youtube_upload(request: Request):
+        """Upload an export with the saved publish draft (asks for explicit confirmation)"""
+        pid = pid_of(request)
+        body = await body_model(request, UploadBody)
+        load(pid)
+        if not body.confirm:
+            return err(400, "Uploading publishes to your channel — confirm first (confirm: true).")
+        if not yt.status()["connected"]:
+            return err(409, "Connect your YouTube account first.")
+        from . import publish as PB
+        f = draft_path(pid)
+        draft = PB.PublishDraft.model_validate_json(f.read_bytes()) if f.exists() else PB.PublishDraft()
+        if not draft.title.strip():
+            return err(422, "Add a title first.")
+        name = body.export_file or draft.export_file
+        if not name:
+            return err(422, "Choose which export to upload.")
+        try:
+            video = export_path(pid, name)
+        except HTTPException:
+            return err(404, "That export doesn't exist.")
+        if draft.thumbnail_file:
+            try:
+                safe_join(store.dir(pid), "thumbnails", "exports", draft.thumbnail_file)
+            except PathSecurityError:
+                return err(422, "Invalid thumbnail file.")
+        active = [j for j in svc.jobs.active_for_project(pid) if j.kind == "youtube_upload"]
+        if active:
+            return err(409, "An upload for this project is already running.")
+        job = svc.jobs.submit("youtube_upload", pid, {"export_file": video.name, "thumbnail_file": draft.thumbnail_file,
+                                                      "draft": draft.model_dump()})
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    async def youtube_history(request: Request):
+        pid = pid_of(request)
+        load(pid)
+        log = store.dir(pid) / "youtube.json"
+        return JSONResponse({"uploads": __import__("json").loads(log.read_bytes()) if log.exists() else []})
 
     # -- Shorts -------------------------------------------------------------
     class ShortSuggestBody(BaseModel):
@@ -1176,6 +1348,18 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/ai-rate", start_ai_rate, methods=["POST"]),
         Route(P + "/shorts/suggest", shorts_suggest, methods=["POST"]),
         Route(P + "/shorts", shorts_make, methods=["POST"]),
+        Route(P + "/publish/suggest", publish_suggest, methods=["POST"]),
+        Route(P + "/youtube/upload", youtube_upload, methods=["POST"]),
+        Route(P + "/youtube/uploads", youtube_history),
+        Route("/api/youtube/status", youtube_status),
+        Route("/api/ai/status", ai_status),
+        Route("/api/youtube/client", youtube_client, methods=["POST"]),
+        Route("/api/youtube/client", youtube_client_delete, methods=["DELETE"]),
+        Route("/api/youtube/connect", youtube_connect, methods=["POST"]),
+        Route("/api/youtube/callback", youtube_callback),
+        Route("/api/youtube/disconnect", youtube_disconnect, methods=["POST"]),
+        Route(P + "/publish", publish_get),
+        Route(P + "/publish", publish_put, methods=["PUT"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
         Route("/api/library", library_list),

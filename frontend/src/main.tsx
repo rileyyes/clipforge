@@ -10,6 +10,7 @@ import AutoEditor from "./pages/AutoEditor";
 import SettingsPage from "./pages/Settings";
 import Thumbnails from "./pages/Thumbnails";
 import Shorts from "./pages/Shorts";
+import Publish from "./pages/Publish";
 
 import { parseHash, type Route } from "./router";
 
@@ -31,6 +32,7 @@ const NAV = [
   { page: "thumbs", label: "Thumbnails", icon: "image" },
   { page: "projects", label: "Projects", icon: "folder" },
   { page: "export", label: "Export", icon: "export" },
+  { page: "publish", label: "Publish", icon: "upload" },
   { page: "settings", label: "Settings", icon: "gear" },
 ];
 
@@ -43,7 +45,7 @@ function App() {
       <nav className="sidebar" aria-label="Main">
         <div className="brand"><div className="brand-mark">▶</div>{!inEditor && "ClipForge"}</div>
         {NAV.map((n) => {
-          const target = (n.page === "editor" || n.page === "export" || n.page === "thumbs") && lastProject ? `${n.page}/${lastProject}` : n.page;
+          const target = (n.page === "editor" || n.page === "export" || n.page === "thumbs" || n.page === "publish") && lastProject ? `${n.page}/${lastProject}` : n.page;
           return (
             <a key={n.page} href={"#/" + target} title={n.label}
               className={"nav-item" + (route.page === n.page ? " active" : "")}>
@@ -62,6 +64,7 @@ function App() {
         {route.page === "settings" && <SettingsPage />}
         {route.page === "thumbs" && <Thumbnails projectId={route.id || undefined} />}
         {route.page === "shorts" && <Shorts projectId={route.id || undefined} />}
+        {route.page === "publish" && <Publish projectId={route.id || undefined} />}
       </main>
     </div>
   );

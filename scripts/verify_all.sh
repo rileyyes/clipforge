@@ -26,4 +26,6 @@ echo "== browser E2E: my sounds & images (mic recording, import, custom bleep, e
 python3 scripts/e2e_library.py 2>&1 | grep -E "OK|bleep window|Error"
 echo "== browser E2E: Shorts (best moments, vertical, follows the subject)"
 python3 scripts/e2e_shorts.py 2>&1 | grep -E "OK|made:|Error"
+echo "== browser E2E: Publish (chapters/title/tags + YouTube upload vs a fake Google)"
+python3 scripts/e2e_publish.py 2>&1 | grep -E "OK|uploaded:|Error"
 echo "ALL CHECKS PASSED"

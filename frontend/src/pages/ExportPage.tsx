@@ -48,6 +48,7 @@ export default function ExportPage({ projectId }: { projectId: string }) {
       <div className="row" style={{ marginBottom: 18 }}>
         <div className="grow"><h1>Export</h1><div className="muted">{project.name} · {fmtTime(duration)} on the timeline</div></div>
         <a className="btn" href={`#/editor/${projectId}`} style={{ textDecoration: "none" }}><Icon name="film" />Back to editor</a>
+        <a className="btn" href={`#/publish/${projectId}`} style={{ textDecoration: "none", marginLeft: 6 }}><Icon name="upload" />Publish to YouTube</a>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: "380px 1fr", alignItems: "start" }}>

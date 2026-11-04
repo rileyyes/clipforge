@@ -257,3 +257,7 @@ a.btn.primary { color: #fff; }
 .short-row { display: grid; gap: 5px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); min-width: 0; }
 .short-frame { position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%); border: 2px dashed rgba(255,255,255,.7);
   box-shadow: 0 0 0 9999px rgba(0,0,0,.35); pointer-events: none; border-radius: 4px; }
+
+/* Publish */
+.chip.tag { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; }
+textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
