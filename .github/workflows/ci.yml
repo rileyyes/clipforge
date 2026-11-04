@@ -220,14 +220,17 @@ jobs:
       - name: Build the portable package
         shell: powershell
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 *>&1 | Tee-Object build.txt
+          $ErrorActionPreference = "Continue"
+          cmd /c "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 > build.txt 2>&1"
           $code = $LASTEXITCODE
+          Get-Content build.txt
           $tail = ((Get-Content build.txt) | Select-Object -Last 40) -join "%0A"
           if ($code -ne 0) { Write-Output "::error title=portable build::$tail"; exit 1 }
           Write-Output "::notice title=portable build::$tail"
       - name: Run it from a fresh folder with no Python, Node or FFmpeg on PATH
         shell: powershell
         run: |
+          $ErrorActionPreference = "Continue"
           $dest = Join-Path $env:RUNNER_TEMP "pp"
           Expand-Archive portable\ClipForge-portable-win64.zip $dest
           $hostPy = (Get-Command python).Source

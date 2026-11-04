@@ -29,6 +29,15 @@ $Pkg = Join-Path $Root "$Out\ClipForge"
 $Tmp = Join-Path $Root "$Out\_download"
 
 function Say($m) { Write-Host "[portable] $m" }
+# Run a program. Windows PowerShell 5.1 turns a program's stderr lines (pip/npm notices) into
+# errors when its own output is redirected, which "Stop" would treat as fatal: run with
+# "Continue", pass every line through as text, and judge by the exit code instead.
+function Native([string]$what, [scriptblock]$cmd) {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try { & $cmd 2>&1 | ForEach-Object { "$_" } } finally { $ErrorActionPreference = $old }
+  if ($LASTEXITCODE -ne 0) { throw "$what failed (exit code $LASTEXITCODE)" }
+}
 function Sha256($path) {
   $sha = [System.Security.Cryptography.SHA256]::Create()
   try { return [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) -replace "-", "" }
@@ -46,7 +55,7 @@ if (Test-Path (Join-Path $Root $Out)) { Remove-Item -Recurse -Force (Join-Path $
 New-Item -ItemType Directory -Force $Pkg, $Tmp | Out-Null
 
 # ---- host Python must match the embeddable one (same minor version -> same wheels)
-$hostVer = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
+$hostVer = (Native "python" { python -c "import sys; print('%d.%d' % sys.version_info[:2])" } | Select-Object -Last 1).Trim()
 $want = ($PythonVersion -split "\.")[0..1] -join "."
 if ($hostVer -ne $want) { throw "Build with Python $want (this is $hostVer) so the packages match the bundled Python." }
 
@@ -71,18 +80,16 @@ foreach ($l in Get-Content (Join-Path $Root "backend\requirements.txt")) {
 if (-not $NoAI) { $lines += Get-Content (Join-Path $Root "backend\requirements-ai.txt") }
 Set-Content -Encoding ASCII $req $lines
 Say "installing packages"
-& python -m pip install --disable-pip-version-check --no-warn-script-location --only-binary=:all: `
-  --target (Join-Path $PyDir "Lib\site-packages") -r $req
-if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
-& python -m pip freeze --path (Join-Path $PyDir "Lib\site-packages") | Set-Content -Encoding UTF8 (Join-Path $Pkg "packages.txt")
+$site = Join-Path $PyDir "Lib\site-packages"
+Native "pip install" { python -m pip install --disable-pip-version-check --no-warn-script-location --only-binary=:all: --target $site -r $req }
+Native "pip freeze" { python -m pip freeze --path $site } | Set-Content -Encoding UTF8 (Join-Path $Pkg "packages.txt")
 
 # ---- 3. ClipForge + built UI
 Say "building the UI"
 Push-Location (Join-Path $Root "frontend")
 try {
-  if (-not (Test-Path "node_modules")) { npm install --no-audit --no-fund; if ($LASTEXITCODE -ne 0) { throw "npm install failed" } }
-  node build.mjs
-  if ($LASTEXITCODE -ne 0) { throw "UI build failed" }
+  if (-not (Test-Path "node_modules")) { Native "npm install" { npm install --no-audit --no-fund } }
+  Native "UI build" { node build.mjs }
 } finally { Pop-Location }
 New-Item -ItemType Directory -Force (Join-Path $Pkg "backend"), (Join-Path $Pkg "frontend") | Out-Null
 Copy-Item -Recurse (Join-Path $Root "backend\app") (Join-Path $Pkg "backend\app")
@@ -112,9 +119,10 @@ New-Item -ItemType Directory -Force $FfDir | Out-Null
 Copy-Item (Join-Path $bin.DirectoryName "ffmpeg.exe"), (Join-Path $bin.DirectoryName "ffprobe.exe") $FfDir
 $lic = Get-ChildItem $ffTmp -Recurse -Filter "LICENSE*" | Select-Object -First 1
 if ($lic) { Copy-Item $lic.FullName (Join-Path $FfDir "LICENSE.txt") }
-$ffVer = (& (Join-Path $FfDir "ffmpeg.exe") -version | Select-Object -First 1)
+$ffExe = Join-Path $FfDir "ffmpeg.exe"
+$ffVer = (Native "ffmpeg -version" { & $ffExe -version } | Select-Object -First 1)
 Say $ffVer
-$enc = (& (Join-Path $FfDir "ffmpeg.exe") -hide_banner -encoders) -join "`n"
+$enc = (Native "ffmpeg -encoders" { & $ffExe -hide_banner -encoders }) -join "`n"
 if ($enc -notmatch "libx264") { throw "this FFmpeg build has no libx264" }
 
 # ---- 5. launcher + notes
@@ -146,7 +154,7 @@ if errorlevel 1 if not defined CI pause
 Set-Content -Encoding ASCII (Join-Path $Pkg "ClipForge.bat") $bat
 
 $commit = ""
-try { $commit = (git -C $Root rev-parse --short HEAD).Trim() } catch { }
+try { $commit = (Native "git" { git -C $Root rev-parse --short HEAD } | Select-Object -Last 1).Trim() } catch { }
 $third = @"
 ClipForge portable package (commit $commit, built $(Get-Date -Format yyyy-MM-dd))
 

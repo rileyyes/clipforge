@@ -30,9 +30,11 @@ echo "== browser E2E: Publish (chapters/title/tags + YouTube upload vs a fake Go
 python3 scripts/e2e_publish.py 2>&1 | grep -E "OK|uploaded:|Error"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
-(cd backend && CLIPFORGE_WORKSPACE="$SMOKE_WS" CLIPFORGE_PORT=8798 python3 -m app.main >/dev/null 2>&1) &
-SMOKE_PID=$!
+pushd backend >/dev/null
+CLIPFORGE_WORKSPACE="$SMOKE_WS" CLIPFORGE_PORT=8798 python3 -m app.main >/dev/null 2>&1 &
+SMOKE_PID=$!   # the server itself (not a subshell), so kill really stops it
+popd >/dev/null
 for _ in $(seq 60); do curl -fs http://127.0.0.1:8798/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 python3 scripts/smoke_export.py --base http://127.0.0.1:8798 2>&1 | grep -E "export|all good|Error"
-kill $SMOKE_PID; rm -rf "$SMOKE_WS"
+kill $SMOKE_PID; wait $SMOKE_PID 2>/dev/null || true; rm -rf "$SMOKE_WS"
 echo "ALL CHECKS PASSED"
