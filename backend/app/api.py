@@ -305,6 +305,27 @@ def build_routes(svc: Services) -> list[Route]:
             for partial in pdir.rglob("*.partial*"):
                 freed += partial.stat().st_size
                 partial.unlink(missing_ok=True)
+            later = pdir / "media" / ".delete-later"
+            if later.is_file():  # media removed while Windows still had the file open
+                keep = []
+                for name in {n.strip() for n in later.read_text(encoding="utf-8").splitlines() if n.strip()}:
+                    for sub in ("original", "proxy", "thumbs", "waveforms"):
+                        try:
+                            f = safe_join(pdir / "media", sub, name)
+                        except PathSecurityError:
+                            continue
+                        if f.is_file():
+                            try:
+                                if os.name == "nt":
+                                    f.chmod(0o600)
+                                freed += f.stat().st_size
+                                f.unlink()
+                            except OSError:
+                                keep.append(name)
+                if keep:
+                    later.write_text("".join(f"{n}\n" for n in keep), encoding="utf-8")
+                else:
+                    later.unlink(missing_ok=True)
         for t in S.tmp_dir.iterdir():
             freed += t.stat().st_size if t.is_file() else dir_size(t)
             shutil.rmtree(t, ignore_errors=True) if t.is_dir() else t.unlink(missing_ok=True)
@@ -499,17 +520,38 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         if any(c.media_id == asset.id for t in p.timeline.tracks for c in t.clips):
             return err(409, "This media is used on the timeline. Remove its clips first.")
+        # background jobs still reading this file would block deletion on Windows
+        busy = [j for j in svc.jobs.active_for_project(pid)
+                if j.params.get("media_id") == asset.id and j.kind in ("derive_media", "analyze", "transcribe")]
+        for j in busy:
+            svc.jobs.cancel(j.id)
+        import asyncio
+        for _ in range(100):
+            if not any(x.id in {b.id for b in busy} for x in svc.jobs.active_for_project(pid)):
+                break
+            await asyncio.sleep(0.1)
         store.update(pid, lambda d: {**d, "media": [m for m in d["media"]
                                                      if m["id"] != asset.id]})
         (store.dir(pid) / "analysis" / f"{asset.id}.json").unlink(missing_ok=True)
         base = store.dir(pid) / "media"
+        stuck = []
         for sub, name in (("original", asset.stored_name), ("proxy", asset.proxy),
                           ("thumbs", asset.thumbnail), ("waveforms", asset.waveform)):
             if name:
                 f = base / sub / name
                 if f.exists():
-                    f.chmod(0o600)
-                    f.unlink()
+                    if os.name == "nt":  # read-only files can't be deleted on Windows
+                        f.chmod(0o600)   # (elsewhere it isn't needed: Shorts share these files)
+                    for i in range(30):
+                        try:
+                            f.unlink()
+                            break
+                        except PermissionError:  # Windows: still open for a moment
+                            await asyncio.sleep(0.1)
+                    else:
+                        stuck.append(f.name)
+        if stuck:  # removed from the project; the file itself goes with the next cleanup
+            (base / ".delete-later").open("a", encoding="utf-8").write("".join(f"{n}\n" for n in stuck))
         return Response(status_code=204)
 
     # -- exports ----------------------------------------------------------

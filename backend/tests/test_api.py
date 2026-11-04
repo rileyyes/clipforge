@@ -319,3 +319,30 @@ def test_probe_reports_missing_binary(tmp_path):
     from app import ffmpeg as ff
     with pytest.raises(ff.FFmpegError, match="FFmpeg wasn't found"):
         ff.probe("definitely-not-ffprobe-xyz", tmp_path / "x.mp4")
+
+
+def test_delete_media_while_windows_holds_the_file(server, media_dir, monkeypatch):
+    """Windows CI: removing media right after import failed (500): a background job still
+    had the file open, and Windows can't delete open files. Now: wait/retry, and if the
+    file stays locked, remove it from the project and delete the file at the next cleanup."""
+    import pathlib
+    p = new_project(server)
+    _, r, _ = server.upload(p["id"], media_dir / "av.mp4")
+    mid, stored = r["media"]["id"], r["media"]["stored_name"]
+    real = pathlib.Path.unlink
+    calls = {"n": 0}
+
+    def locked(self, *a, **k):
+        if self.name == stored:
+            calls["n"] += 1
+            raise PermissionError(13, "The process cannot access the file because it is being used")
+        return real(self, *a, **k)
+    monkeypatch.setattr(pathlib.Path, "unlink", locked)
+    st, _, _ = server.req("DELETE", f"/api/projects/{p['id']}/media/{mid}")
+    assert st == 204 and calls["n"] >= 2  # retried, then deferred
+    assert server.req("GET", f"/api/projects/{p['id']}")[1]["media"] == []
+    orig = server.settings.projects_dir / p["id"] / "media" / "original" / stored
+    assert orig.exists()
+    monkeypatch.setattr(pathlib.Path, "unlink", real)  # the lock is gone later
+    assert server.req("POST", "/api/maintenance/cleanup")[0] == 200
+    assert not orig.exists() and not (orig.parent.parent / ".delete-later").exists()
