@@ -84,6 +84,21 @@ async def main(pid):
         await pg.wait_for_timeout(300)
         assert await pg.get_by_text("Vignette", exact=True).count() == 0, "undo should remove the vignette"
         await pg.get_by_text("Draft saved").wait_for(timeout=10000)
+        # cut the subject out of the footage frame -> a new transparent layer
+        layers = pg.locator(".card", has=pg.get_by_role("heading", name="Layers")).locator("div.row")
+        for i in range(1, await layers.count()):
+            await layers.nth(i).click()
+            if await pg.get_by_role("button", name="Cut out subject").count():
+                break
+        n_before = await layers.count()
+        await pg.get_by_role("button", name="Cut out subject").click()
+        for _ in range(100):
+            if await layers.count() > n_before:
+                break
+            await pg.wait_for_timeout(100)
+        assert await layers.count() == n_before + 1 and await pg.get_by_text("Cut-out", exact=True).count() >= 1
+        print("cut-out layer added")
+        await pg.get_by_text("Draft saved").wait_for(timeout=10000)
         await pg.get_by_role("button", name="Save version").click()
         await pg.get_by_text("First version").wait_for(timeout=5000)
         await pg.get_by_role("button", name="Export 1280×720").click()

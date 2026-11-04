@@ -3,7 +3,7 @@ import { ApiError, api } from "../api";
 import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import { History } from "../timeline/history";
 import {
-  FONTS, addLayer, duplicateLayer, fitTextBox, hitTest, makeShape, makeText, moveLayerOrder, removeLayer, updateLayer,
+  FONTS, addLayer, duplicateLayer, fitTextBox, hitTest, makeImage, makeShape, makeText, moveLayerOrder, removeLayer, updateLayer,
   type Concept, type Design, type Layer, type Result, type TextLayer,
 } from "../thumbs/model";
 import { drawDesign, exportBlob, loadImages, type ImageMap } from "../thumbs/render";
@@ -111,6 +111,23 @@ function Studio({ pid, designId, onClose }: { pid: string; designId: string; onC
   const live = (r: Result) => { if (r.design) { dirty.current = true; setDesign(r.design); } };
   const layer = design?.layers.find((l) => l.id === sel) ?? null;
   const upd = (patch: Partial<Layer>, label = "Edit") => layer && apply(updateLayer(design!, layer.id, patch), label);
+  const [libImages, setLibImages] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => { fetch("/api/library").then((r) => r.json()).then((d) => setLibImages(d.images ?? [])).catch(() => {}); }, []);
+  const imgFile = useRef<HTMLInputElement>(null);
+  /** New image layer from an asset, sized to fit (height-led for tall cut-outs), placed right-of-centre. */
+  const placeAsset = (a: { id: string; width: number; height: number; label?: string }, side: "right" | "centre" = "centre") => {
+    const k = Math.min(1280 * 0.6 / a.width, 720 * 0.95 / a.height, 1);
+    const w = Math.round(a.width * k), h = Math.round(a.height * k);
+    const l = makeImage(a.id, a.label || "Image", w, h);
+    l.fit = "contain";
+    l.x = side === "right" ? 1280 - w - 30 : Math.round((1280 - w) / 2);
+    l.y = side === "right" ? 720 - h : Math.round((720 - h) / 2);
+    // a cut-out goes under the text (the usual thumbnail look: you in front, words on top)
+    const firstText = design!.layers.findIndex((x) => x.type === "text");
+    apply(addLayer(design!, l, side === "right" && firstText >= 0 ? firstText : undefined), side === "right" ? "Cut out subject" : "Add image");
+    setSel(l.id);
+  };
+  const [cutting, setCutting] = useState(false);
   const updText = (patch: Partial<TextLayer>) => {
     if (!layer || layer.type !== "text") return;
     apply(updateLayer(design!, layer.id, fitTextBox({ ...(layer as TextLayer), ...patch }) as any), "Edit text");
@@ -202,6 +219,23 @@ function Studio({ pid, designId, onClose }: { pid: string; designId: string; onC
             <div className="row"><h3 style={{ margin: 0 }}>Layers</h3><span className="spacer" />
               <button className="btn sm" onClick={() => { const t = fitTextBox(makeText()); apply(addLayer(design, t), "Add text"); setSel(t.id); }}>+ Text</button>
               <button className="btn sm" onClick={() => { const s = makeShape("highlight"); apply(addLayer(design, s), "Add shape"); setSel(s.id); }}>+ Shape</button>
+              <button className="btn sm" onClick={() => imgFile.current?.click()}>+ Image</button>
+              <input ref={imgFile} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async (e) => {
+                const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                try {
+                  const r = await fetch(`/api/projects/${pid}/thumbnails/assets`, { method: "POST", headers: { "X-ClipForge": "1" }, body: f });
+                  const d = await r.json(); if (!r.ok) throw new Error(d.error); placeAsset({ ...d, label: f.name.replace(/\.[^.]+$/, "") });
+                } catch (err: any) { toast(err.message, true); }
+              }} />
+              {libImages.length > 0 && (
+                <select className="btn sm" value="" aria-label="Add from my library" onChange={async (e) => {
+                  const id = e.target.value; if (!id) return;
+                  try { placeAsset(await call<any>("POST", `/api/projects/${pid}/thumbnails/assets/from-library`, { id })); } catch (err: any) { toast(err.message, true); }
+                }}>
+                  <option value="">From my library…</option>
+                  {libImages.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              )}
             </div>
             {[...design.layers].reverse().map((l) => (
               <div key={l.id} className="row" onClick={() => setSel(l.id)} style={{ padding: "4px 6px", borderRadius: 6, cursor: "pointer", background: sel === l.id ? "var(--panel-3)" : undefined, opacity: l.hidden ? 0.5 : 1, fontSize: 12 }}>
@@ -231,6 +265,16 @@ function Studio({ pid, designId, onClose }: { pid: string; designId: string; onC
                   <label className="field">Align<select value={(layer as TextLayer).align} onChange={(e) => updText({ align: e.target.value as any })}><option>left</option><option>center</option><option>right</option></select></label>
                 </div>
               </>)}
+              {layer.type === "image" && (
+                <button className="btn sm" disabled={cutting || layer.locked} title="Removes the background around the person or object (quick and local — edges around hair can be rough)" onClick={async () => {
+                  setCutting(true);
+                  try {
+                    const a = await call<any>("POST", `/api/projects/${pid}/thumbnails/assets/${(layer as any).asset_id}/cutout`);
+                    placeAsset({ ...a, label: "Cut-out" }, "right");
+                    toast(a.method === "face" ? "Cut out around the face — tweak position and size as you like" : "Cut out the middle subject (no face found)");
+                  } catch (err: any) { toast(err.message, true); } finally { setCutting(false); }
+                }}><Icon name="scissors" size={13} />{cutting ? "Cutting out…" : "Cut out subject"}</button>
+              )}
               {layer.type === "image" && (<>{fs("brightness", "Brightness", 20, 200)}{fs("contrast", "Contrast", 20, 200)}{fs("saturation", "Saturation", 0, 200)}{fs("blur", "Blur", 0, 20)}</>)}
               {layer.type === "shape" && (
                 <label className="field">Colour<input type="color" value={((layer as any).stroke && (layer as any).stroke_width ? (layer as any).stroke : (layer as any).fill).slice(0, 7)}
@@ -292,7 +336,11 @@ function Workspace({ pid }: { pid: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const { jobs, refresh } = useJobs(pid);
   const toast = useToast();
-  const load = () => call<any>("GET", `/api/projects/${pid}/thumbnails`).then((s) => { setSt(s); setCtx((c: any) => ({ ...c, ...s.context })); }).catch((e) => toast(e.message, true));
+  const load = () => call<any>("GET", `/api/projects/${pid}/thumbnails`).then((s) => {
+    setSt(s);
+    setCtx((c: any) => { const n = { ...c, ...s.context }; if (!n.title && s.publish_title) n.title = s.publish_title; return n; });  // from Publish
+  }).catch((e) => toast(e.message, true));
+  const [useAi, setUseAi] = useState(false);
   useEffect(() => { load(); }, [pid]);
   const aJob = jobs.find((j) => j.kind === "thumb_analyze");
   const gJob = jobs.find((j) => j.kind === "thumb_generate");
@@ -306,7 +354,10 @@ function Workspace({ pid }: { pid: string }) {
   const getConcepts = async (s = seed) => {
     setBusy("concepts");
     try {
-      const r = await call<any>("POST", `/api/projects/${pid}/thumbnails/concepts`, { context: ctx, seed: s });
+      const tm = st?.text_model;
+      if (useAi && tm?.external && !confirm("Your text model isn't on this computer. Send a short text summary of the video (no images) to it?")) return;
+      const r = await call<any>("POST", `/api/projects/${pid}/thumbnails/concepts`, { context: ctx, seed: s, use_text_model: useAi && !!tm, consent_external: !!tm?.external });
+      if (r.notice) toast(r.notice, true);
       if (r.needs_context) { setNeed(r.needs_context.reason); setConcepts(null); }
       else { setNeed(null); setConcepts(r.concepts); setHeadlines(r.headlines); }
     } catch (e: any) { toast(e.message, true); } finally { setBusy(null); }
@@ -368,6 +419,7 @@ function Workspace({ pid }: { pid: string }) {
               <label className="field">Main subject<input type="text" maxLength={200} value={ctx.subject} onChange={(e) => setCtx({ ...ctx, subject: e.target.value })} /></label>
             </div>
             {need && <div className="banner" style={{ borderRadius: 8 }}>{need}</div>}
+            {st.text_model && <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} />Use local AI for ideas ({st.text_model.model})</label>}
             <button className="btn primary" disabled={!analysis || busy === "concepts"} onClick={() => getConcepts()}><Icon name="wand" size={14} />Get 3 concepts</button>
           </div>
         </div>

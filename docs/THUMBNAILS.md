@@ -28,7 +28,7 @@ Nothing leaves your computer. `CLIPFORGE_SDWEBUI_STEPS` (default 28) trades spee
 
 ## Free smarter concepts (optional): Ollama
 
-`ollama pull llama3.1`, then `CLIPFORGE_LLM_BASE_URL=http://127.0.0.1:11434/v1` (`CLIPFORGE_LLM_MODEL` to change the model). The built-in director works without it. *(The API supports it; the UI toggle comes in a later version.)*
+Install Ollama, run `ollama pull llama3.1` and keep Ollama running: ClipForge finds it automatically. A **Use local AI for ideas** box then appears above *Get 3 concepts*. `CLIPFORGE_LLM_BASE_URL` / `CLIPFORGE_LLM_MODEL` point it at another server or model. The built-in director works without it.
 
 ## Paid option (off unless you turn it on)
 
@@ -39,6 +39,13 @@ Nothing leaves your computer. `CLIPFORGE_SDWEBUI_STEPS` (default 28) trades spee
 - Built-in director, frame extraction, studio, versions, export and validation: tested (unit, API and browser E2E).
 - Stable Diffusion WebUI, OpenAI Images and the Ollama/OpenAI text model: tested only against a **fake local server** that mimics their documented APIs (requests, responses, errors, cancel). **Not yet run against the real services.**
 
+## Also in the studio (Phase 8)
+
+- **Cut out subject**: select an image layer and the person (found by their face) or the central subject is cut out onto a transparent layer, placed under your text. It's quick and local (OpenCV GrabCut, no model download); edges around hair can be rough.
+- **+ Image** uploads any picture; **From my library** uses your own library images.
+- **Face detection** now works out of the box (a bundled OpenCV model), so frames with a face rank higher.
+- The **video title** comes over from the Publish page if you've written one.
+
 ## Not built yet
 
-Automated design scoring/review, conversational refinement through a text model, image upload in the studio UI (the API exists), crop handles, version side-by-side compare, background removal / subject cut-outs, vision-model scene understanding.
+Automated design scoring/review, conversational refinement through a text model, crop handles, version side-by-side compare, AI-quality background removal (hair-level edges), vision-model scene understanding.

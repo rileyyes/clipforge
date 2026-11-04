@@ -200,7 +200,9 @@ def frame_stats(img: np.ndarray) -> dict:
     if _face is None:
         _face = False
         try:
-            path = Path(getattr(cv2, "data", None).haarcascades) / "haarcascade_frontalface_default.xml"
+            path = Path(__file__).parent / "models" / "haarcascade_frontalface_default.xml"  # bundled
+            if not path.exists() and getattr(cv2, "data", None) is not None:
+                path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
             if path.exists():
                 clf = cv2.CascadeClassifier(str(path))
                 _face = clf if not clf.empty() else False

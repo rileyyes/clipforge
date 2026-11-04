@@ -1,6 +1,7 @@
 """Thumbnail Maker HTTP routes (kept deliberately simple — see ROADMAP Phase 4b)."""
 from __future__ import annotations
 
+import json
 from typing import Literal, Optional
 
 import cv2
@@ -16,7 +17,8 @@ from . import thumb_director as director
 from .jobs import JobContext
 from .storage import PathSecurityError, safe_join, validate_id
 from .thumb_models import (YOUTUBE_MAX_BYTES, YOUTUBE_MIN_WIDTH, Concept, Design, ThumbContext)
-from .thumb_providers import SETUP_HELP, ProviderError, image_provider, text_model
+from .thumb_providers import SETUP_HELP, ProviderError, image_provider
+from .language import text_model  # configured server, or a running local Ollama (auto)
 from .thumb_store import AssetError, ThumbNotFound, ThumbStore
 
 
@@ -139,7 +141,15 @@ def build_thumb_routes(svc, load, pid_of, body_model, err) -> list[Route]:
             "fingerprint": fp,
             "timeline_empty": project.timeline.duration <= 0,
             "designs": st.list(),
+            "publish_title": _publish_title(pid),
         })
+
+    def _publish_title(pid: str) -> str:
+        f = svc.store.dir(pid) / "publish.json"
+        try:
+            return json.loads(f.read_bytes()).get("title", "") if f.exists() else ""
+        except ValueError:
+            return ""
 
     async def start_analysis(request: Request):
         pid = pid_of(request)
@@ -342,6 +352,44 @@ def build_thumb_routes(svc, load, pid_of, body_model, err) -> list[Route]:
             return err(415, str(exc))
         return JSONResponse(meta, status_code=201)
 
+    async def cutout(request: Request):
+        """Cut the subject out of an image asset (quick, local; rough edges possible)"""
+        pid = pid_of(request)
+        load(pid)
+        st = store_for(pid)
+        try:
+            path = st.asset_path(request.path_params["aid"])
+        except (ThumbNotFound, PathSecurityError):
+            return err(404, "asset not found")
+        from .cutout import cut_out
+        import asyncio
+        img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return err(415, "the image could not be read")
+        try:
+            out, info = await asyncio.to_thread(cut_out, img)
+        except ValueError as exc:
+            return err(422, str(exc))
+        meta = st.add_asset(out, "cutout", {"label": "Cut-out", "source_asset": path.stem, **info})
+        return JSONResponse(meta, status_code=201)
+
+    class FromLibrary(BaseModel):
+        id: str
+
+    async def asset_from_library(request: Request):
+        """Use an image from My library in a thumbnail"""
+        pid = pid_of(request)
+        load(pid)
+        body = await body_model(request, FromLibrary)
+        from .library import Library
+        try:
+            item = Library(svc.settings).get("image", validate_id(body.id))
+            data = Library(svc.settings).file("image", body.id).read_bytes()
+        except (KeyError, PathSecurityError):
+            return err(404, "That image isn't in your library.")
+        meta = store_for(pid).add_asset(data, "upload", {"label": item.name})
+        return JSONResponse(meta, status_code=201)
+
     async def frame_at(request: Request):
         pid = pid_of(request)
         project = load(pid)
@@ -416,6 +464,8 @@ def build_thumb_routes(svc, load, pid_of, body_model, err) -> list[Route]:
         Route(T + "/frame", frame_at, methods=["POST"]),
         Route(T + "/assets", upload_asset, methods=["POST"]),
         Route(T + "/assets/{aid}", asset),
+        Route(T + "/assets/{aid}/cutout", cutout, methods=["POST"]),
+        Route(T + "/assets/from-library", asset_from_library, methods=["POST"]),
         Route(T + "/exports", list_exports),
         Route(T + "/exports/{name}", download_export),
         Route(T + "/designs", new_design, methods=["POST"]),

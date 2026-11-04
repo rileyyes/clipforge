@@ -66,9 +66,18 @@ jobs:
       - name: Unit + fuzz tests
         working-directory: frontend
         run: npm test
-      - name: Typecheck
+      - name: Typecheck (engine, strict)
         working-directory: frontend
         run: npm run typecheck
+      - name: Typecheck (whole UI, with React types)
+        working-directory: frontend
+        shell: bash
+        run: |
+          set +e
+          npx tsc -p tsconfig.ui.json --pretty false 2>&1 | tee tsc-ui.log
+          code=${PIPESTATUS[0]}
+          grep -E "error TS" tsc-ui.log | head -40 | sed 's/^/::error title=tsc::/'
+          exit $code
       - name: Build
         working-directory: frontend
         run: npm run build
