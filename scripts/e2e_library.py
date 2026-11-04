@@ -128,12 +128,25 @@ async def main(pid: str):
             await pg.keyboard.press("ArrowRight")
         await row.get_by_role("button", name="Add").click()
         await pg.wait_for_timeout(300)
+        # ---- keywords -> suggestion: tag the image with a word that's said in the video
+        await img.get_by_role("button", name="#").click()
+        await pg.get_by_role("textbox").last.fill("oh, shit")
+        await pg.get_by_role("button", name="Save", exact=True).click()
+        await img.get_by_role("button", name="#").wait_for()
+        br = pg.get_by_test_id("broll")
+        await br.get_by_role("button", name="Suggest").click()
+        sug = br.get_by_test_id("broll-suggestion").first
+        await sug.wait_for(timeout=10000)
+        print("library suggestion:", (await sug.inner_text()).replace("\n", " "))
+        assert "you said" in await sug.inner_text()
+        await sug.get_by_role("button", name="Add").click()
+        await pg.wait_for_timeout(300)
         await pg.get_by_text("All changes saved").wait_for(timeout=10000)
         await pg.screenshot(path=str(TMP / "library.png"))
         p = api("GET", f"/api/projects/{pid}")
         kinds = sorted((e["kind"], e.get("sound")) for e in p["effects"])
         print("effects:", kinds)
-        assert kinds == [("censor", "custom"), ("image", None), ("sfx", "custom")], kinds
+        assert kinds == [("censor", "custom"), ("image", None), ("image", None), ("sfx", "custom")], kinds
         # ---- export and measure
         job = api("POST", f"/api/projects/{pid}/exports", {"filename": "lib", "quality": "draft",
                                                             "output": {"width": 640, "height": 360, "fps": 30, "fit_mode": "fit"}})

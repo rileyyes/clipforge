@@ -1157,13 +1157,15 @@ def build_routes(svc: Services) -> list[Route]:
         return JSONResponse(item.model_dump(), status_code=201)
 
     class LibRename(BaseModel):
-        name: str = Field(min_length=1, max_length=60)
+        name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+        tags: Optional[list[str]] = Field(default=None, max_length=30)
 
     async def library_rename(request: Request):
+        """Rename a library item and/or set its keywords"""
         kind, iid = lib_kind(request), lib_id(request)
         body = await body_model(request, LibRename)
         try:
-            return JSONResponse(lib.rename(kind, iid, body.name).model_dump())
+            return JSONResponse(lib.rename(kind, iid, body.name, body.tags).model_dump())
         except KeyError:
             return err(404, "not found")
 
@@ -1198,6 +1200,17 @@ def build_routes(svc: Services) -> list[Route]:
         except (KeyError, PathSecurityError):
             return err(404, "That item isn't in your library.")
         return JSONResponse(item.model_dump())
+
+    async def broll_suggest(request: Request):
+        """Where your own library sounds/images fit: words you say + big reactions"""
+        pid = pid_of(request)
+        p = load(pid)
+        from . import broll
+        items = lib.list()
+        allitems = items["sounds"] + items["images"]
+        if not allitems:
+            return JSONResponse({"suggestions": [], "note": "Your library is empty — record or import sounds and images first."})
+        return JSONResponse({"suggestions": broll.suggest(p, store.dir(pid), allitems)})
 
     async def project_sound_file(request: Request):
         pid = pid_of(request)
@@ -1422,6 +1435,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/fx/fun/suggest", suggest_fun, methods=["POST"]),
         Route(P + "/captions.srt", captions_srt),
         Route(P + "/fx/library", library_use, methods=["POST"]),
+        Route(P + "/fx/broll/suggest", broll_suggest, methods=["POST"]),
         Route(P + "/fx/sounds/{sid}", project_sound_file),
         Route(P + "/fx/images", list_fx_images),
         Route(P + "/fx/images", upload_fx_image, methods=["POST"]),

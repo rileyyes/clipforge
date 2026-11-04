@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError, effectSoundUrl, fmtTime, library, type Job, type LibraryItem } from "../api";
+import { api, ApiError, effectSoundUrl, fmtTime, library, type BrollSuggestion, type Job, type LibraryItem } from "../api";
 import LibraryPanel from "./LibraryPanel";
 import { activeEffects, effectTime, newEffectAt } from "../timeline/effects";
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
@@ -80,6 +80,24 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
     setFx([...effects.filter((e) => !(e.origin === "auto" && kinds(e.kind))), ...incoming], captions, label);
   const patch = (id: string, p: Partial<Effect>, label = "Edit effect") =>
     setFx(effects.map((e) => (e.id === id ? { ...e, ...p } : e)), captions, label);
+  const [broll, setBroll] = useState<BrollSuggestion[] | null>(null);
+  const [brollNote, setBrollNote] = useState("");
+  /** Effects from library suggestions, anchored at timeline time t. */
+  const brollEffect = async (s: BrollSuggestion): Promise<Effect | null> => {
+    await library.use(projectId, s.kind, s.item_id);
+    return newEffectAt(timeline, s.t + 0.01, s.kind === "image" ? "image" : "sfx", s.kind === "image"
+      ? { asset: s.item_id, y: 0.35 } : { sound: "custom", sound_asset: s.item_id, duration: Math.max(0.05, Math.min(30, s.duration ?? 1)) });
+  };
+  const addBroll = async (list: BrollSuggestion[]) => {
+    try {
+      const made = (await Promise.all(list.map(brollEffect))).filter(Boolean) as Effect[];
+      if (!made.length) return toast("Those moments aren't on the timeline any more", true);
+      if (list.some((s) => s.kind === "image")) loadImages();
+      setFx([...effects, ...made], captions, list.length > 1 ? "Add suggestions" : "Add suggestion");
+      setBroll((b) => (b ? b.filter((x) => !list.includes(x)) : b));
+      toast(`Added ${made.length}`);
+    } catch (e: any) { toast(e.message, true); }
+  };
   const add = (kind: EffectKind, extra: Partial<Effect> = {}) => {
     if (kind === "text" || kind === "image") {
       // don't stack on top of a pop-up that's already showing here
@@ -200,6 +218,31 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           loadImages();
           add("image", { asset: i.id });
         }} />
+
+      {/* ---------------- library suggestions */}
+      <div className="insp-section" data-testid="broll">
+        <div className="row"><h3 style={{ margin: 0 }}>Suggestions from your library</h3><span className="spacer" />
+          <button className="btn sm" onClick={async () => {
+            try { const r = await library.suggest(projectId); setBroll(r.suggestions); setBrollNote(r.note ?? (r.suggestions.length ? "" : "No good spots found — add keywords (#) to your sounds and images, or transcribe the video.")); }
+            catch (e: any) { toast(e.message, true); }
+          }}><Icon name="wand" size={13} />Suggest</button></div>
+        <div className="dim" style={{ fontSize: 11 }}>Finds where you <em>say</em> an item's name or keywords (#), and big reactions for reaction sounds.</div>
+        {brollNote && <div className="muted" style={{ fontSize: 12 }}>{brollNote}</div>}
+        {broll && broll.length > 0 && (<>
+          {broll.map((s, i) => (
+            <div key={i} className="lib-row" data-testid="broll-suggestion">
+              <div className="lib-line">
+                <button className="btn xs ghost mono" title="Go there" onClick={() => seek(s.t)}>{fmtTime(s.t, false)}</button>
+                <Icon name={s.kind === "image" ? "image" : "music"} size={12} />
+                <span className="ellipsis grow" title={s.name}>{s.name}</span>
+                <span className="dim" style={{ fontSize: 10 }}>{s.why}</span>
+                <button className="btn xs" onClick={() => addBroll([s])}><Icon name="plus" size={11} />Add</button>
+              </div>
+            </div>
+          ))}
+          <button className="btn sm" onClick={() => addBroll(broll)}>Add all {broll.length}</button>
+        </>)}
+      </div>
 
       {/* ---------------- captions */}
       <div className="insp-section">

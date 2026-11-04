@@ -50,6 +50,7 @@ class LibraryItem(BaseModel):
     duration: Optional[float] = None
     width: Optional[int] = None
     height: Optional[int] = None
+    tags: list[str] = Field(default_factory=list, max_length=30)  # words that should trigger it
 
 
 def clean_name(name: str, fallback: str) -> str:
@@ -184,9 +185,18 @@ class Library:
         return item
 
     # ---------------------------------------------------------------- edit
-    def rename(self, kind: str, item_id: str, name: str) -> LibraryItem:
+    def rename(self, kind: str, item_id: str, name: Optional[str] = None,
+               tags: Optional[list[str]] = None) -> LibraryItem:
         item = self.get(kind, item_id)
-        item.name = clean_name(name, item.name)
+        if name is not None:
+            item.name = clean_name(name, item.name)
+        if tags is not None:
+            clean = []
+            for t in tags:
+                t = re.sub(r"[^\w' -]", "", t.lower()).strip()[:30]
+                if t and t not in clean:
+                    clean.append(t)
+            item.tags = clean[:30]
         self._save_meta(item)
         return item
 

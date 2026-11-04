@@ -194,11 +194,8 @@ INTENSITY = {"minimal": dict(gap=45.0, zoom=1.15, text_every=3, sfx=False),
              "chaotic": dict(gap=6.0, zoom=1.35, text_every=1, sfx=True)}
 
 
-def suggest_fun(project: Project, project_dir: Path, intensity: str = "balanced") -> list[Effect]:
-    """Place punch-ins, shakes, pop-up text and SFX on the loudest reactions in
-    the FINAL edit, spaced by intensity. Deterministic; never inserts images."""
-    cfg = INTENSITY[intensity]
-    D = project.timeline.duration
+def reaction_moments(project: Project, project_dir: Path) -> list[tuple[float, float, float]]:
+    """Loud reactions in the FINAL edit: [(timeline t, strength 0..1, loudness dB)]."""
     cands: list[tuple[float, float, float]] = []  # (timeline t, strength 0..1, loud db)
     for track in [t for t in project.timeline.tracks if t.kind == "audio" and not t.muted]:
         for c in track.clips:
@@ -229,6 +226,15 @@ def suggest_fun(project: Project, project_dir: Path, intensity: str = "balanced"
                     k = j + int(1.0 / hop)
                 else:
                     k += 1
+    return cands
+
+
+def suggest_fun(project: Project, project_dir: Path, intensity: str = "balanced") -> list[Effect]:
+    """Place punch-ins, shakes, pop-up text and SFX on the loudest reactions in
+    the FINAL edit, spaced by intensity. Deterministic; never inserts images."""
+    cfg = INTENSITY[intensity]
+    D = project.timeline.duration
+    cands = reaction_moments(project, project_dir)
     cands.sort(key=lambda x: (-x[1], x[0]))
     censored = [(w.start, w.end) for e in project.effects if e.kind == "censor" and e.enabled
                 for w in map_to_timeline(project, e, "audio")]

@@ -27,6 +27,7 @@ export default function LibraryPanel({ onUseSound, onAddSound, onAddImage, bleep
   const [take, setTake] = useState<null | { blob: Blob; url: string }>(null);
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<LibraryItem | null>(null);
+  const [tagging, setTagging] = useState<LibraryItem | null>(null);
   const [tick, setTick] = useState(0);
   const recorder = useRef<{ mr: MediaRecorder; stream: MediaStream; ctx?: AudioContext; raf: number; timer: any } | null>(null);
   const soundFile = useRef<HTMLInputElement>(null);
@@ -172,10 +173,12 @@ export default function LibraryPanel({ onUseSound, onAddSound, onAddImage, bleep
             <span className="mono dim" style={{ fontSize: 10 }}>{(s.duration ?? 0).toFixed(1)}s</span>
             {s.source === "recorded" && <span className="chip" title="Recorded with your mic">mic</span>}
           </div>
+          {!!s.tags?.length && <div className="dim ellipsis" style={{ fontSize: 10 }}>keywords: {s.tags.join(", ")}</div>}
           <div className="lib-line">
           <button className={"btn xs" + (bleepSound === s.id ? " on" : " ghost")} title="Use this as the sound for bleeping swears" onClick={() => onUseSound(s)}>Bleep</button>
           <button className="btn xs ghost" title="Add at the playhead as a sound effect" onClick={() => onAddSound(s)}><Icon name="plus" size={11} />Add</button>
           <button className="btn icon ghost xs" title="Rename" onClick={() => setRenaming(s)}><Icon name="pencil" size={11} /></button>
+          <button className="btn xs ghost" title="Keywords: when you say one, ClipForge suggests this sound there" onClick={() => setTagging(s)}>#</button>
           <span className="spacer" />
           <button className="btn icon ghost xs" title="Delete from library" onClick={() => remove(s)}><Icon name="trash" size={11} /></button>
           </div>
@@ -193,6 +196,7 @@ export default function LibraryPanel({ onUseSound, onAddSound, onAddImage, bleep
                 <button className="btn xs" onClick={() => onAddImage(i)} title="Add at the playhead as a pop-up"><Icon name="plus" size={11} />Add</button>
                 <span className="spacer" />
                 <button className="btn icon ghost xs" title="Rename" onClick={() => setRenaming(i)}><Icon name="pencil" size={11} /></button>
+                <button className="btn xs ghost" title={`Keywords${i.tags?.length ? ": " + i.tags.join(", ") : ""} (when you say one, ClipForge suggests this image there)`} onClick={() => setTagging(i)}>#</button>
                 <button className="btn icon ghost xs" title="Delete from library" onClick={() => remove(i)}><Icon name="trash" size={11} /></button>
               </div>
             </div>
@@ -201,6 +205,14 @@ export default function LibraryPanel({ onUseSound, onAddSound, onAddImage, bleep
       )}
       {items && !items.sounds.length && !items.images.length && !take && <div className="muted" style={{ fontSize: 12 }}>Nothing here yet.</div>}
 
+      {tagging && (
+        <PromptModal title={`Keywords for “${tagging.name}”`} label="When you say one of these words, ClipForge suggests it there (comma separated). Its name counts too."
+          initial={(tagging.tags ?? []).join(", ")} confirm="Save" onClose={() => setTagging(null)}
+          onSubmit={async (v) => {
+            const it = tagging; setTagging(null);
+            try { await library.setTags(it.kind, it.id, v.split(",").map((t) => t.trim()).filter(Boolean)); load(); } catch (e: any) { toast(e.message, true); }
+          }} />
+      )}
       {renaming && (
         <PromptModal title={`Rename ${renaming.kind}`} label="Name" initial={renaming.name} confirm="Rename" onClose={() => setRenaming(null)}
           onSubmit={async (v) => {

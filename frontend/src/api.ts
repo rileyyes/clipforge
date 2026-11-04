@@ -110,8 +110,9 @@ export interface ExtraNote { step: string; ok: boolean; detail: string }
 // ---------------------------------------------------------------- My library (your own sounds & images)
 export interface LibraryItem {
   id: string; kind: "sound" | "image"; name: string; source: "recorded" | "imported"; created_at: string;
-  duration?: number | null; width?: number | null; height?: number | null;
+  duration?: number | null; width?: number | null; height?: number | null; tags?: string[];
 }
+export interface BrollSuggestion { t: number; kind: "sound" | "image"; item_id: string; name: string; duration?: number | null; why: string }
 async function upload<T>(path: string, body: Blob): Promise<T> {
   const res = await fetch(path, { method: "POST", headers: H, body });
   const data = await res.json().catch(() => ({}));
@@ -124,6 +125,8 @@ export const library = {
     upload<LibraryItem>(`/api/library/sounds?name=${encodeURIComponent(name)}${recorded ? "&recorded=1" : ""}`, blob),
   addImage: (blob: Blob, name: string) => upload<LibraryItem>(`/api/library/images?name=${encodeURIComponent(name)}`, blob),
   rename: (kind: "sound" | "image", id: string, name: string) => call<LibraryItem>("PUT", `/api/library/${kind}s/${id}`, { name }),
+  setTags: (kind: "sound" | "image", id: string, tags: string[]) => call<LibraryItem>("PUT", `/api/library/${kind}s/${id}`, { tags }),
+  suggest: (pid: string) => call<{ suggestions: BrollSuggestion[]; note?: string }>("POST", `/api/projects/${pid}/fx/broll/suggest`),
   remove: (kind: "sound" | "image", id: string) => call<void>("DELETE", `/api/library/${kind}s/${id}`),
   /** Copy into the project so its effects can use it (safe to repeat). */
   use: (pid: string, kind: "sound" | "image", id: string) => call<LibraryItem>("POST", `/api/projects/${pid}/fx/library`, { kind, id }),
