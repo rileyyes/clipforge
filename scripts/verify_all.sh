@@ -28,4 +28,11 @@ echo "== browser E2E: Shorts (best moments, vertical, follows the subject)"
 python3 scripts/e2e_shorts.py 2>&1 | grep -E "OK|made:|Error"
 echo "== browser E2E: Publish (chapters/title/tags + YouTube upload vs a fake Google)"
 python3 scripts/e2e_publish.py 2>&1 | grep -E "OK|uploaded:|Error"
+echo "== smoke test: import, export, cached re-export through a running server"
+SMOKE_WS=$(mktemp -d)
+(cd backend && CLIPFORGE_WORKSPACE="$SMOKE_WS" CLIPFORGE_PORT=8798 python3 -m app.main >/dev/null 2>&1) &
+SMOKE_PID=$!
+for _ in $(seq 60); do curl -fs http://127.0.0.1:8798/api/health >/dev/null 2>&1 && break; sleep 0.5; done
+python3 scripts/smoke_export.py --base http://127.0.0.1:8798 2>&1 | grep -E "export|all good|Error"
+kill $SMOKE_PID; rm -rf "$SMOKE_WS"
 echo "ALL CHECKS PASSED"

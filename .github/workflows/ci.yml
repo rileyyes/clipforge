@@ -220,8 +220,11 @@ jobs:
       - name: Build the portable package
         shell: powershell
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1
-          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=portable::build failed"; exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 *>&1 | Tee-Object build.txt
+          $code = $LASTEXITCODE
+          $tail = ((Get-Content build.txt) | Select-Object -Last 40) -join "%0A"
+          if ($code -ne 0) { Write-Output "::error title=portable build::$tail"; exit 1 }
+          Write-Output "::notice title=portable build::$tail"
       - name: Run it from a fresh folder with no Python, Node or FFmpeg on PATH
         shell: powershell
         run: |

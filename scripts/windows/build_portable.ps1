@@ -92,7 +92,17 @@ foreach ($f in "LICENSE", "README.md") { if (Test-Path (Join-Path $Root $f)) { C
 
 # ---- 4. FFmpeg
 $ffZip = Join-Path $Tmp "ffmpeg.zip"
-$ffHash = Download $FfmpegZip $ffZip
+try { $ffHash = Download $FfmpegZip $ffZip }
+catch {
+  # release file names change now and then: ask GitHub for the current GPL win64 build
+  Say "  not found ($($_.Exception.Message)); looking up the current BtbN release"
+  $rel = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "clipforge-build" }
+  $asset = $rel.assets | Where-Object { $_.name -match "^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$" } | Sort-Object name -Descending | Select-Object -First 1
+  if (-not $asset) { $asset = $rel.assets | Where-Object { $_.name -eq "ffmpeg-master-latest-win64-gpl.zip" } | Select-Object -First 1 }
+  if (-not $asset) { throw "no Windows GPL FFmpeg build found in the BtbN release" }
+  $FfmpegZip = $asset.browser_download_url
+  $ffHash = Download $FfmpegZip $ffZip
+}
 $ffTmp = Join-Path $Tmp "ffmpeg"
 Expand-Archive $ffZip $ffTmp
 $bin = Get-ChildItem $ffTmp -Recurse -Filter "ffmpeg.exe" | Select-Object -First 1
