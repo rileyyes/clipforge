@@ -11,7 +11,7 @@ cd frontend && npm run typecheck           # strict TypeScript on the engine
 python scripts/e2e_browser.py              # headless Chromium end-to-end (needs Playwright + built frontend)
 ```
 
-## Current results (2026-11-03, Phase 7) — full suite run 3× in a row locally and green in CI on Ubuntu + Windows
+## Current results (2026-11-04, Phase 8) — full suite (`scripts/verify_all.sh`) run 3× in a row locally and green in CI on Ubuntu + Windows
 
 | Suite | Tests | Result |
 |---|---|---|
@@ -22,6 +22,8 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Audio & transitions (`tests/test_audio_transitions.py`) | 12 (pixel-measured crossfade/dip/fades, ducking measured in the 220 Hz band, noise floor, −14/−16 LUFS) | ✅ |
 | Look & animation (`tests/test_look.py`) | 51 (keyframe maths vs FFmpeg expressions, pixel-measured rotation, crop, opacity, colour/looks, volume keyframes, all 21 transitions) | ✅ |
 | Render cache & previews (`tests/test_perf.py`) | 6 (full reuse, only changed clip re-renders, off switch, eviction, proxy + 100 peaks/s waveform) | ✅ |
+| Block rendering (`tests/test_blocks.py`) | 6 (block windows; block render vs one-pass render **frame by frame** with zoom, shake, flash, pop-up, keyframed overlay, wipe and captions across 1 s block edges; audio matches; exact frame counts at 25/30 fps over 0.4 s blocks; a small edit re-encodes one block and the copied blocks are bit-identical; a caption word change only touches nearby blocks) | ✅ |
+| Phase 8 creator tools | Shorts 10 (moment picking, face + motion tracking, steady camera path, vertical render that follows the subject), language/AI 9, Publish 7 (chapter rules, tags limits, API), YouTube 5 (client file checks, one-time sign-in state + PKCE, resumable upload surviving partial writes and a 503, scheduling forces private, quota message, full API flow; all against a fake Google), library suggestions 4, cut-out 4 | ✅ |
 | My library (`tests/test_library.py`) | 14 (mic-style WebM/Ogg/MP3/WAV import, silence trim, −1 dBFS levelling, 30 s cap, bad/silent files, images re-encoded/downscaled, custom bleeps & sound effects verified by FFT, library deletion vs. project copies, duplicate keeps assets, API + path safety) | ✅ |
 | OpenAPI (`tests/test_openapi.py`) | 2 (every route documented, bodies resolved, CSRF header on every write, script-free docs page) | ✅ |
 | Version history & one-click extras (`tests/test_history.py`) | 9 (snapshots, throttled checkpoints, pruning, legacy import, compare maths, restore/undo-restore/conflict, deleted-media guard, one-click extras with and without a transcript, idempotent re-run, render) | ✅ |
@@ -36,7 +38,8 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Browser E2E: AI auto editor | full flow incl. finishing touches (applied/skipped report) | ✅ no console errors |
 | Browser E2E: advanced editor | rotation + crop + B&W + 2-keyframe zoom (preview checked) + volume keyframes + wipe → meters move → light preview proxy → reopen → export frame is rotated & grey → 2nd export fully cached | ✅ no console errors |
 | Browser E2E: my library | fake mic → record → save → use as bleep → find swears → import image → add both at playhead → export: the swear is replaced by *your* recording (FFT), the image is in the frame → shared with a new project | ✅ no console errors |
-| **CI (GitHub Actions)** | every push: backend on **Ubuntu + Windows**, frontend, cross-check, 8 browser E2E flows, Windows launcher from scratch, pip-audit + npm audit | ✅ all green |
+| **CI (GitHub Actions)** | every push: backend on **Ubuntu + Windows**, frontend (incl. a typecheck of the whole UI with React types), cross-check, all browser E2E flows, Windows launcher from scratch, **Windows portable package built and run from a clean PATH** (import → export → cached re-export), pip-audit + npm audit | ✅ all green |
+| Smoke test (`scripts/smoke_export.py`) | against a running server: import, export, validation, re-export with every block cached. In `verify_all.sh` and in CI on the portable package | ✅ |
 | Benchmark (`scripts/benchmark.py`) | 2-hour source → 30-min 1080p edit, see docs/BENCHMARKS.md | ✅ validated |
 | Browser E2E: version history | save version → delete clip → compare → restore → undo the restore → reload | ✅ no console errors |
 | Browser E2E: effects | transcript → bleeps → auto comedy edits → pop-up → captions → undo/redo → export → reopen | ✅ no console errors |
@@ -49,6 +52,11 @@ Run everything: `scripts/verify_all.sh`.
 
 | Found by | Bug |
 |---|---|
+| block-render tests | FFmpeg's accurate seek kept one frame too many when several inputs feed a `concat` filter (picture one frame late inside a block). Now: coarse seek with timestamps kept, exact trim in the graph |
+| block-render tests | The concat demuxer can't seek accurately at all (blocks came out empty). Now each segment is its own input |
+| CI (Ubuntu + Windows) | OpenCV 5.x wheels have no Haar face detector, so Shorts and thumbnail face finding crashed. Pinned OpenCV < 5, and both now fall back to motion if a build lacks it |
+| CI UI typecheck | Two type errors the bundler doesn't check (a union type missing `created`, CSS import declaration) |
+| CI portable job | Windows PowerShell 5.1 treated pip/npm notices on stderr as fatal; the pinned FFmpeg file name had moved |
 | fuzz | Ripple delete could shift linked video and audio by different amounts (A/V out of sync) |
 | fuzz | Speeding up a very short clip could make it shorter than the minimum (server would reject the save) |
 | fuzz | The last video/audio track could be removed |

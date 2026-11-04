@@ -19,7 +19,7 @@
 param(
   [string]$Out = "portable",
   [string]$PythonVersion = "3.13.1",
-  [string]$FfmpegZip = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n7.1-latest-win64-gpl-7.1.zip",
+  [string]$FfmpegZip = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
   [switch]$NoAI
 )
 $ErrorActionPreference = "Stop"
@@ -35,7 +35,9 @@ function Say($m) { Write-Host "[portable] $m" }
 function Native([string]$what, [scriptblock]$cmd) {
   $old = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
-  try { & $cmd 2>&1 | ForEach-Object { "$_" } } finally { $ErrorActionPreference = $old }
+  try {
+    & $cmd 2>&1 | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
+  } finally { $ErrorActionPreference = $old }
   if ($LASTEXITCODE -ne 0) { throw "$what failed (exit code $LASTEXITCODE)" }
 }
 function Sha256($path) {

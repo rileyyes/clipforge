@@ -25,7 +25,7 @@ A zip (`ClipForge-portable-win64.zip`, built by `scripts/windows/build_portable.
 
 **Known limits:**
 - Not code-signed, so SmartScreen warns the first time: *More info → Run anyway*. Signing needs a certificate.
-- Size: a few hundred MB, mostly FFmpeg, OpenCV and the speech-to-text engine (`-NoAI` builds a smaller one without speech-to-text). CI prints the exact size on every run.
+- Size: about 280 MB zipped (278.5 MB on 2026-11-04), mostly FFmpeg, OpenCV and the speech-to-text engine. `-NoAI` builds a smaller one without speech-to-text. CI prints the exact size on every run.
 - Local AI (Ollama) and Stable Diffusion aren't bundled; they're separate apps you install if you want them.
 - "Update ClipForge.bat" is a from-source feature. The portable package is updated by downloading a new zip.
 
