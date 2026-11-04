@@ -91,6 +91,7 @@ class Services:
         self.jobs.register("analyze", self._analyze)
         self.jobs.register("transcribe", self._transcribe)
         self.jobs.register("ai_rate", self._ai_rate)
+        self.jobs.register("make_short", self._make_short)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -177,6 +178,42 @@ class Services:
         tmp.write_text(__import__("json").dumps(a), encoding="utf-8")
         replace_retry(tmp, out)
         return {"media_id": mid, "rated": len(ratings), "model": model.model}
+
+    def _make_short(self, ctx: JobContext) -> dict:
+        """Vertical 9:16 project from one moment, following the subject."""
+        from . import shorts as SH
+        pid, prm = ctx.job.project_id, ctx.job.params
+        src_project = self.store.load(pid)
+        asset = src_project.media_by_id()[prm["media_id"]]
+        pdir = self.store.dir(pid)
+        start, end = float(prm["start"]), min(float(prm["end"]), asset.duration)
+        W, H = 1080, 1920
+        follow = {"samples": 0, "faces": 0, "motion": 0, "moves": 0}
+        kfs: list[dict] = []
+        scale = 1.0
+        if asset.has_video and asset.width and asset.height:
+            scale, picture_w = SH.vertical_geometry(asset.width, asset.height, W, H)
+            if prm.get("follow", True) and picture_w > W * 1.05:
+                ctx.stage(1, 2, "Finding you in the shot")
+                samples = SH.sample_track(self.settings.ffmpeg_bin, pdir / "media" / "original" / asset.stored_name,
+                                          start, end, asset.width, asset.height,
+                                          on_progress=ctx.progress, cancel=ctx.cancel_event)
+                path = SH.camera_path(samples, view=W / picture_w)
+                kfs = SH.keyframes_for(path, picture_w, W)
+                follow = {"samples": len(samples), "faces": sum(s.kind == "face" for s in samples),
+                          "motion": sum(s.kind == "motion" for s in samples), "moves": max(0, len(path) - 1)}
+        ctx.stage(2, 2, "Creating the Short")
+        words = (analysis_svc.load_analysis(pdir, asset.id) or {}).get("words")
+        doc = SH.build_short_project(src_project.model_dump(mode="json"), asset.model_dump(mode="json"),
+                                     start, end, kfs, scale, prm.get("title", ""),
+                                     bool(prm.get("captions", True) and words), new_id)
+        existing = sum(1 for x in self.store.list() if x.get("name", "").startswith(f"{src_project.name} — Short"))
+        name = (prm.get("title") or "").strip() or f"{src_project.name} — Short {existing + 1}"
+        if prm.get("title"):
+            name = f"{src_project.name} — Short: {name}"
+        new = self.store.create_from(pid, name, doc)
+        return {"project_id": new.id, "name": new.name, "follow": follow,
+                "captions": doc["captions"]["enabled"], "duration": round(end - start, 2)}
 
     def _render(self, ctx: JobContext) -> dict:
         pid = ctx.job.project_id
@@ -463,7 +500,8 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         if body.output is not None and body.output != p.output:
             out = body.output.model_dump(mode="json")
-            p = store.update(pid, lambda d: {**d, "output": out})
+            from .schema import rescale_positions
+            p = store.update(pid, lambda d: {**rescale_positions(d, d["output"], out), "output": out})
         if p.timeline.duration <= 0:
             return err(400, "The timeline is empty — add at least one clip before exporting.")
         missing = project_payload(p)["missing_media"]
@@ -573,6 +611,50 @@ def build_routes(svc: Services) -> list[Route]:
         return JSONResponse({"media": items, "transcriber": t.name if t else None,
                              "ai": {"model": lm.model, "external": lm.external} if lm else None,
                              "ai_help": None if lm else language_setup_help()})
+
+    # -- Shorts -------------------------------------------------------------
+    class ShortSuggestBody(BaseModel):
+        media_id: str
+        count: int = Field(default=5, ge=1, le=20)
+        min_seconds: float = Field(default=15, ge=3, le=170)
+        max_seconds: float = Field(default=60, ge=5, le=180)
+        style: Literal["balanced", "excitement", "information", "reactions", "action", "humor", "story"] = "balanced"
+
+    class ShortBody(BaseModel):
+        media_id: str
+        start: float = Field(ge=0)
+        end: float = Field(gt=0)
+        title: str = Field(default="", max_length=80)
+        captions: bool = True
+        follow: bool = True
+
+    async def shorts_suggest(request: Request):
+        """Best moments for vertical Shorts (needs the recording analysed)"""
+        pid = pid_of(request)
+        body = await body_model(request, ShortSuggestBody)
+        p = load(pid)
+        if body.media_id not in p.media_by_id():
+            return err(404, "media not found")
+        a = analysis_svc.load_analysis(store.dir(pid), body.media_id)
+        if a is None:
+            return err(409, "Analyse this recording first (AI Auto Editor → Analyse).")
+        from . import shorts as SH
+        lo, hi = min(body.min_seconds, body.max_seconds), max(body.min_seconds, body.max_seconds)
+        return JSONResponse({"suggestions": SH.suggest(a, body.count, lo, hi, body.style),
+                             "transcript": bool(a.get("words")), "ai_rated": bool(a.get("ai_ratings"))})
+
+    async def shorts_make(request: Request):
+        """Make a vertical Short project from one moment (background job)"""
+        pid = pid_of(request)
+        body = await body_model(request, ShortBody)
+        p = load(pid)
+        m = p.media_by_id().get(body.media_id)
+        if m is None:
+            return err(404, "media not found")
+        if not (0 <= body.start < body.end <= m.duration + 0.01) or not (3 <= body.end - body.start <= 180):
+            return err(422, "A Short must be 3 s to 3 min long and inside the recording.")
+        job = svc.jobs.submit("make_short", pid, body.model_dump())
+        return JSONResponse(job.model_dump(), status_code=202)
 
     async def start_ai_rate(request: Request):
         pid = pid_of(request)
@@ -1092,6 +1174,8 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit", autoedit_status),
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
         Route(P + "/autoedit/ai-rate", start_ai_rate, methods=["POST"]),
+        Route(P + "/shorts/suggest", shorts_suggest, methods=["POST"]),
+        Route(P + "/shorts", shorts_make, methods=["POST"]),
         Route(P + "/autoedit/plan", autoedit_plan, methods=["POST"]),
         Route(P + "/autoedit/apply", autoedit_apply, methods=["POST"]),
         Route("/api/library", library_list),

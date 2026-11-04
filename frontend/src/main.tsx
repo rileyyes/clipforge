@@ -9,6 +9,7 @@ import ExportPage from "./pages/ExportPage";
 import AutoEditor from "./pages/AutoEditor";
 import SettingsPage from "./pages/Settings";
 import Thumbnails from "./pages/Thumbnails";
+import Shorts from "./pages/Shorts";
 
 import { parseHash, type Route } from "./router";
 
@@ -26,6 +27,7 @@ const NAV = [
   { page: "dashboard", label: "Dashboard", icon: "home" },
   { page: "auto", label: "AI Auto Editor", icon: "wand" },
   { page: "editor", label: "Manual Editor", icon: "film" },
+  { page: "shorts", label: "Shorts", icon: "phone" },
   { page: "thumbs", label: "Thumbnails", icon: "image" },
   { page: "projects", label: "Projects", icon: "folder" },
   { page: "export", label: "Export", icon: "export" },
@@ -59,6 +61,7 @@ function App() {
         {route.page === "auto" && <AutoEditor projectId={route.id || undefined} />}
         {route.page === "settings" && <SettingsPage />}
         {route.page === "thumbs" && <Thumbnails projectId={route.id || undefined} />}
+        {route.page === "shorts" && <Shorts projectId={route.id || undefined} />}
       </main>
     </div>
   );

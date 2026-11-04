@@ -24,4 +24,6 @@ echo "== browser E2E: advanced editor (keyframes, rotation, crop, colour, meters
 python3 scripts/e2e_phase6.py 2>&1 | grep -E "OK|cache:|Error"
 echo "== browser E2E: my sounds & images (mic recording, import, custom bleep, export)"
 python3 scripts/e2e_library.py 2>&1 | grep -E "OK|bleep window|Error"
+echo "== browser E2E: Shorts (best moments, vertical, follows the subject)"
+python3 scripts/e2e_shorts.py 2>&1 | grep -E "OK|made:|Error"
 echo "ALL CHECKS PASSED"

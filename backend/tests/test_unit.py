@@ -209,3 +209,17 @@ def test_project_file_never_disappears_under_concurrent_reads(tmp_path):
         t.join()
     assert not errors, errors[:3]
     assert read_json(f)["n"] == 149 and read_json(f.with_suffix(".json.bak"))["n"] == 148
+
+
+def test_positions_follow_the_output_size():
+    """Found by the Shorts tests: a picture-in-picture designed at 1080p landed in the wrong
+    place when exported at another size (positions are output pixels)."""
+    from app.schema import rescale_positions
+    d = {"timeline": {"tracks": [{"clips": [{"transform": {"x": 600, "y": -300, "scale": 0.3},
+                                             "keyframes": {"x": [{"t": 0, "v": 600}, {"t": 1, "v": -600}],
+                                                           "scale": [{"t": 0, "v": 1}]}}]}]}}
+    out = rescale_positions(d, {"width": 1920, "height": 1080}, {"width": 1280, "height": 720})
+    c = out["timeline"]["tracks"][0]["clips"][0]
+    assert c["transform"] == {"x": 400, "y": -200, "scale": 0.3}
+    assert [k["v"] for k in c["keyframes"]["x"]] == [400, -400] and c["keyframes"]["scale"][0]["v"] == 1
+    assert rescale_positions(d, {"width": 1280, "height": 720}, {"width": 1280, "height": 720}) is d

@@ -426,3 +426,24 @@ def migrate(data: dict) -> dict:
     if data.get("schema_version", 3) < 4:  # v3 -> v4: crop, colour, rotation, opacity, keyframes (defaulted)
         data = {**data, "schema_version": 4}
     return data
+
+
+def rescale_positions(data: dict, old: dict, new: dict) -> dict:
+    """Clip positions are pixels of the project's output size. When that size changes
+    (e.g. exporting a 1080p design at 720p), scale every x/y offset (static and keyframed)
+    so pictures stay in the same place relative to the frame."""
+    kx = new["width"] / old["width"] if old.get("width") else 1.0
+    ky = new["height"] / old["height"] if old.get("height") else 1.0
+    if abs(kx - 1) < 1e-9 and abs(ky - 1) < 1e-9:
+        return data
+    for t in data.get("timeline", {}).get("tracks", []):
+        for c in t.get("clips", []):
+            tr = c.get("transform") or {}
+            if "x" in tr:
+                tr["x"] = round(tr["x"] * kx, 2)
+            if "y" in tr:
+                tr["y"] = round(tr["y"] * ky, 2)
+            for prop, k in (("x", kx), ("y", ky)):
+                for kf in (c.get("keyframes") or {}).get(prop, []) or []:
+                    kf["v"] = round(kf["v"] * k, 2)
+    return data

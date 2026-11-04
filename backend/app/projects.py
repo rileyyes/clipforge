@@ -14,6 +14,7 @@ single-user local app; see ARCHITECTURE.md for when SQLite/Postgres comes in.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -140,14 +141,40 @@ class ProjectStore:
                           keep_backup=False)
         return project
 
+    def create_from(self, source_id: str, name: str, data: dict) -> Project:
+        """A new project that shares the source's media files: originals and previews are
+        hard-linked (no extra disk space; copied if links aren't possible), analysis and
+        effect assets are copied in the same way. ``data`` is the new project document."""
+        src = self.dir(source_id)
+        pid = new_id()
+        d = self.dir(pid)
+        d.mkdir(parents=True)
+        for sub in ("media", "analysis", "fx"):
+            if (src / sub).is_dir():
+                shutil.copytree(src / sub, d / sub, copy_function=_link_or_copy)
+        for sub in ("media/original", "media/proxy", "media/thumbs", "media/waveforms", "exports", "work"):
+            (d / sub).mkdir(parents=True, exist_ok=True)
+        doc = {k: v for k, v in data.items() if not k.startswith("_")}
+        doc.update(id=pid, name=(name.strip() or "Short")[:120], revision=0, edit_revision=0,
+                   created_at=now_iso(), updated_at=now_iso())
+        project = Project.model_validate(migrate(doc))
+        atomic_write_json(self._file(pid), project.model_dump(mode="json"), keep_backup=False)
+        return project
+
     def delete(self, project_id: str) -> None:
         d = self.dir(project_id)
         if not (d / "project.json").exists():
             raise ProjectNotFound(project_id)
-        # Originals are chmod 0400; make writable so rmtree can remove them.
+        # Originals are read-only. On POSIX only directory permissions matter for deleting,
+        # so files are left alone: a Short's media are hard links shared with its source
+        # project, and chmod would strip the source's read-only protection too. Windows
+        # refuses to delete read-only files, so there they're made writable first.
         for p in d.rglob("*"):
             try:
-                p.chmod(0o700 if p.is_dir() else 0o600)
+                if p.is_dir():
+                    p.chmod(0o700)
+                elif os.name == "nt":
+                    p.chmod(0o600)
             except OSError:
                 pass
         shutil.rmtree(d)
@@ -155,3 +182,11 @@ class ProjectStore:
     def usage(self, project_id: str) -> dict:
         d = self.dir(project_id)
         return {k: dir_size(d / k) for k in ("media", "exports", "work")}
+
+
+def _link_or_copy(src: str, dst: str) -> str:
+    try:
+        os.link(src, dst)
+    except OSError:
+        shutil.copy2(src, dst)
+    return dst

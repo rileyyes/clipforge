@@ -115,7 +115,7 @@ jobs:
         shell: bash
         run: |
           fail=0
-          for t in e2e_browser e2e_autoedit e2e_effects e2e_audio e2e_history e2e_phase6 e2e_library e2e_thumbnails; do
+          for t in e2e_browser e2e_autoedit e2e_effects e2e_audio e2e_history e2e_phase6 e2e_library e2e_shorts e2e_thumbnails; do
             echo "::group::$t"
             if ! python scripts/$t.py; then echo "::error title=$t::browser E2E failed"; fail=1; fi
             echo "::endgroup::"

@@ -26,7 +26,7 @@ from .schema import Project
 
 TAGS = [("system", "System"), ("projects", "Projects"), ("media", "Media"), ("timeline", "Timeline"),
         ("exports", "Exports"), ("autoedit", "AI Auto Editor"), ("effects", "Effects & captions"),
-        ("library", "My library"), ("history", "Version history"), ("thumbnails", "Thumbnail Maker"),
+        ("library", "My library"), ("shorts", "Shorts"), ("history", "Version history"), ("thumbnails", "Thumbnail Maker"),
         ("jobs", "Jobs")]
 
 
@@ -45,7 +45,7 @@ def _tag(path: str) -> str:
     return {"": "projects", "rename": "projects", "duplicate": "projects", "media": "media", "timeline": "timeline",
             "exports": "exports", "autoedit": "autoedit", "fx": "effects", "transcribe": "effects",
             "transcript": "effects", "captions.srt": "effects", "history": "history",
-            "thumbnails": "thumbnails"}.get(head, "projects")
+            "thumbnails": "thumbnails", "shorts": "shorts"}.get(head, "projects")
 
 
 def _summary(fn) -> str:
