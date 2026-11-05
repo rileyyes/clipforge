@@ -235,10 +235,45 @@ class Title(Strict):
         return _check_id(v)
 
 
+class BlurKey(Strict):
+    """Where the blurred area is at timeline time t (fractions of the frame; x, y = top-left)."""
+    t: float = Field(ge=0, le=86400)
+    x: float = Field(ge=-0.5, le=1)
+    y: float = Field(ge=-0.5, le=1)
+    w: float = Field(ge=0.01, le=1)
+    h: float = Field(ge=0.01, le=1)
+
+
+class Blur(Strict):
+    """Hide part of the picture (a face, a licence plate, a chat window) for a stretch of
+    the timeline. One key = a fixed area; several = it moves (e.g. after tracking)."""
+    id: str
+    start: float = Field(ge=0, le=86400)
+    duration: float = Field(default=3.0, ge=0.1, le=3600)
+    mode: Literal["blur", "pixelate", "black"] = "blur"
+    shape: Literal["rect", "ellipse"] = "rect"
+    strength: float = Field(default=0.7, ge=0.1, le=1)
+    keys: list[BlurKey] = Field(min_length=1, max_length=2000)
+
+    @field_validator("id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+    @field_validator("keys")
+    @classmethod
+    def _v_keys(cls, v: list) -> list:
+        for a, b in zip(v, v[1:]):
+            if b.t - a.t < 0.001:
+                raise ValueError("blur keys must be in time order")
+        return v
+
+
 class Timeline(Strict):
     # Video tracks: index order = stacking order (first = bottom / V1).
     tracks: list[Track] = Field(default_factory=list, max_length=32)
     titles: list[Title] = Field(default_factory=list, max_length=500)
+    blurs: list[Blur] = Field(default_factory=list, max_length=200)
 
     @property
     def duration(self) -> float:

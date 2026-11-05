@@ -2,7 +2,7 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
-import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Title, TitleTemplate, Track, TrackKind } from "./types";
+import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Title, TitleTemplate, Track, TrackKind, Blur, BlurKey } from "./types";
 import { KF_LIMITS } from "./keyframes";
 
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
@@ -599,7 +599,8 @@ export function cutRanges(tl: Timeline, ranges: [number, number][]): OpResult {
     };
     // titles move with the picture; one that starts inside the cut starts where the cut was
     cur = { ...cur, titles: (cur.titles ?? []).map((t) => t.start >= b - EPS ? { ...t, start: round6(t.start - (b - a)) }
-      : t.start > a ? { ...t, start: round6(a) } : t) };
+      : t.start > a ? { ...t, start: round6(a) } : t),
+      blurs: (cur.blurs ?? []).map((x) => x.start >= b - EPS ? shiftBlur(x, -(b - a)) : x.start > a ? shiftBlur(x, a - x.start) : x) };
     cur = withTracks(cur, (track) => {
       const out: Clip[] = [];
       for (const c of track.clips) {
@@ -660,4 +661,50 @@ export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title,
 
 export function removeTitle(tl: Timeline, id: string): OpResult {
   return { timeline: { ...tl, titles: (tl.titles ?? []).filter((x) => x.id !== id) } };
+}
+
+// ---------------------------------------------------------------- privacy blur
+export function shiftBlur(b: Blur, dt: number): Blur {
+  const start = round6(Math.max(0, b.start + dt));
+  const d = start - b.start;
+  return { ...b, start, keys: b.keys.map((k) => ({ ...k, t: round6(Math.max(0, k.t + d)) })).filter((k, i, a) => i === 0 || k.t - a[i - 1].t >= 0.001) };
+}
+
+/** The blurred box at timeline time t (keys interpolated; held before the first / after the last). */
+export function blurAt(b: Blur, t: number): BlurKey {
+  const k = b.keys;
+  if (t <= k[0].t || k.length === 1) return k[0];
+  if (t >= k[k.length - 1].t) return k[k.length - 1];
+  let i = 0;
+  while (i + 1 < k.length && k[i + 1].t <= t) i++;
+  const a = k[i], c = k[i + 1], f = (t - a.t) / (c.t - a.t);
+  return { t, x: a.x + (c.x - a.x) * f, y: a.y + (c.y - a.y) * f, w: a.w + (c.w - a.w) * f, h: a.h + (c.h - a.h) * f };
+}
+
+const clampBox = (k: BlurKey): BlurKey => {
+  const w = Math.max(0.01, Math.min(1, k.w)), h = Math.max(0.01, Math.min(1, k.h));
+  return { t: round6(Math.max(0, k.t)), w: round6(w), h: round6(h), x: round6(Math.max(-0.5, Math.min(1, k.x))), y: round6(Math.max(-0.5, Math.min(1, k.y))) };
+};
+
+export function addBlur(tl: Timeline, at: number, box: Omit<BlurKey, "t">, duration = 3): OpResult & { id?: string } {
+  const b: Blur = { id: newId(), start: round6(Math.max(0, at)), duration: Math.max(0.1, Math.min(3600, duration)), mode: "blur", shape: "rect",
+    strength: 0.7, keys: [clampBox({ t: Math.max(0, at), ...box })] };
+  return { timeline: { ...tl, blurs: [...(tl.blurs ?? []), b] }, id: b.id };
+}
+
+export function updateBlur(tl: Timeline, id: string, patch: Partial<Omit<Blur, "id">>): OpResult {
+  const b = (tl.blurs ?? []).find((x) => x.id === id);
+  if (!b) return { error: "Blur not found" };
+  let n: Blur = { ...b, ...patch };
+  if (patch.start !== undefined) n = shiftBlur({ ...n, start: b.start }, patch.start - b.start);
+  n.duration = round6(Math.max(0.1, Math.min(3600, n.duration)));
+  n.strength = Math.max(0.1, Math.min(1, n.strength));
+  const keys = [...n.keys].map(clampBox).sort((x, y) => x.t - y.t).filter((k, i, a) => i === 0 || k.t - a[i - 1].t >= 0.001).slice(0, 2000);
+  if (!keys.length) return { error: "A blur needs an area" };
+  n.keys = keys;
+  return { timeline: { ...tl, blurs: (tl.blurs ?? []).map((x) => (x.id === id ? n : x)) } };
+}
+
+export function removeBlur(tl: Timeline, id: string): OpResult {
+  return { timeline: { ...tl, blurs: (tl.blurs ?? []).filter((x) => x.id !== id) } };
 }

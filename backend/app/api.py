@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -96,6 +97,7 @@ class Services:
         self.jobs.register("youtube_upload", self._youtube_upload)
         self.jobs.register("facecam_sync", self._facecam_sync)
         self.jobs.register("facecam_matte", self._facecam_matte)
+        self.jobs.register("blur_track", self._blur_track)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -248,6 +250,52 @@ class Services:
         ctx.stage(1, 1, "Finding you in every frame")
         path = matte.ensure(self.settings, self.store.dir(pid), asset, ctx.cancel_event, ctx.progress)
         return {"media_id": asset.id, "bytes": path.stat().st_size}
+
+    def _blur_track(self, ctx: JobContext) -> dict:
+        """Follow a blurred area through the clip(s) under it (template matching)."""
+        from . import blur as BL
+        pid, prm = ctx.job.project_id, ctx.job.params
+        p = self.store.load(pid)
+        media, out = p.media_by_id(), p.output
+        orig = self.store.dir(pid) / "media" / "original"
+        box_out = (prm["box"]["x"], prm["box"]["y"], prm["box"]["w"], prm["box"]["h"])
+        pts: list[tuple[float, float, float, float, float]] = []   # t, x, y, w, h (output fractions)
+        lost = 0
+        tpl, st = None, {}
+        total = sum(pc["src_end"] - pc["src_start"] for pc in prm["pieces"]) or 1.0
+        done = 0.0
+        for i, pc in enumerate(prm["pieces"]):
+            ctx.check_cancel()
+            ctx.stage(1, 1, f"Following it ({i + 1} of {len(prm['pieces'])})")
+            a = media[pc["media_id"]]
+            rect = BL.picture_rect(a.width, a.height, out.width, out.height, out.fit_mode,
+                                   pc.get("scale", 1.0), pc.get("x", 0.0), pc.get("y", 0.0))
+            frames = BL.grab(self.settings.ffmpeg_bin, orig / a.stored_name, pc["src_start"], pc["src_end"],
+                             320, a.width, a.height)
+            if not len(frames):
+                continue
+            sb = BL.to_source(box_out, rect, out.width, out.height)
+            span = pc["src_end"] - pc["src_start"]
+            res = BL.track(frames, sb, on_progress=lambda f, d=done, s_=span: ctx.progress(min(1.0, (d + f * s_) / total)),
+                           template=tpl, state=st)
+            tpl = st.get("template")
+            for j, (x, y, w, h, score) in enumerate(res):
+                t = pc["t_start"] + (j / BL.TRACK_FPS) / pc.get("speed", 1.0)
+                ox, oy, ow, oh = BL.to_output((x, y, w, h), rect, out.width, out.height)
+                pts.append((round(t, 3), ox, oy, ow, oh))
+                lost += score < 0.35
+            box_out = pts[-1][1:]
+            done += span
+        if not pts:
+            raise RuntimeError("Couldn't read the video under the blur.")
+        tol = 0.004
+        keep = BL.simplify([(t, x + w / 2, y + h / 2) for t, x, y, w, h in pts], tol)
+        while len(keep) > BL.MAX_KEYS:
+            tol *= 1.6
+            keep = BL.simplify([(t, x + w / 2, y + h / 2) for t, x, y, w, h in pts], tol)
+        keys = [{"t": pts[i][0], "x": round(pts[i][1], 4), "y": round(pts[i][2], 4),
+                 "w": round(pts[i][3], 4), "h": round(pts[i][4], 4)} for i in keep]
+        return {"keys": keys, "frames": len(pts), "lost": int(lost)}
 
     def _youtube_upload(self, ctx: JobContext) -> dict:
         """Upload an export to YouTube with the saved publish draft (resumable)."""
@@ -976,6 +1024,86 @@ def build_routes(svc: Services) -> list[Route]:
         job = svc.jobs.submit("facecam_matte", pid, {"media_id": cam.id})
         return JSONResponse(job.model_dump(), status_code=202)
 
+    # -- phase 10: privacy blur ------------------------------------------------
+    class BlurPiece(BaseModel):
+        media_id: str
+        src_start: float = Field(ge=0)
+        src_end: float = Field(gt=0)
+        speed: float = Field(default=1.0, ge=0.25, le=4)
+        t_start: float = Field(ge=0)
+        scale: float = Field(default=1.0, gt=0.01, le=10)
+        x: float = 0.0
+        y: float = 0.0
+
+    class BlurBox(BaseModel):
+        x: float = Field(ge=-0.5, le=1)
+        y: float = Field(ge=-0.5, le=1)
+        w: float = Field(gt=0, le=1)
+        h: float = Field(gt=0, le=1)
+
+    class BlurTrackBody(BaseModel):
+        pieces: list[BlurPiece] = Field(min_length=1, max_length=50)
+        box: BlurBox
+
+    async def blur_track(request: Request):
+        """Follow a blurred area as it moves (background job; returns keys)"""
+        pid = pid_of(request)
+        body = await body_model(request, BlurTrackBody)
+        p = load(pid)
+        media = p.media_by_id()
+        for pc in body.pieces:
+            m = media.get(pc.media_id)
+            if m is None or not m.has_video or not m.width:
+                return err(404, "The clip under the blur has no picture to follow.")
+            if pc.src_end <= pc.src_start or pc.src_end > m.duration + 0.05:
+                return err(422, "That part of the clip doesn't exist.")
+        if sum(pc.src_end - pc.src_start for pc in body.pieces) > 20 * 60:
+            return err(422, "Track at most 20 minutes at a time.")
+        job = svc.jobs.submit("blur_track", pid, body.model_dump())
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    class BlurFacesBody(BaseModel):
+        media_id: str
+        time: float = Field(ge=0)
+        scale: float = Field(default=1.0, gt=0.01, le=10)
+        x: float = 0.0
+        y: float = 0.0
+
+    async def blur_faces(request: Request):
+        """Faces in one frame of a clip, as boxes on the output frame (for one-click face blur)"""
+        pid = pid_of(request)
+        body = await body_model(request, BlurFacesBody)
+        p = load(pid)
+        m = p.media_by_id().get(body.media_id)
+        if m is None or not m.has_video or not m.width:
+            return err(404, "media not found")
+        from . import blur as BL
+        from .shorts import _detector
+        from starlette.concurrency import run_in_threadpool
+        det = _detector()
+        if det is None:
+            return err(409, "Face detection isn't available in this installation.")
+        src = store.dir(pid) / "media" / "original" / m.stored_name
+        sw = 640
+        sh = max(2, int(round(m.height * sw / m.width / 2)) * 2)
+
+        def grab():
+            raw = subprocess.run([S.ffmpeg_bin, "-v", "error", *ff.untrusted_input_args(src, seek=min(body.time, m.duration - 0.05)),
+                                  "-frames:v", "1", "-vf", f"scale={sw}:{sh}", "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+                                 capture_output=True, timeout=60).stdout
+            import numpy as np
+            return det(np.frombuffer(raw, np.uint8).reshape(sh, sw)) if len(raw) == sw * sh else []
+        faces = await run_in_threadpool(grab)
+        out = p.output
+        rect = BL.picture_rect(m.width, m.height, out.width, out.height, out.fit_mode, body.scale, body.x, body.y)
+        boxes = []
+        for (fx_, fy, fw, fh) in faces:
+            pad = 0.25  # cover hair and chin too
+            sx, sy, sw_, sh_ = (fx_ - fw * pad) / sw, (fy - fh * pad) / sh, fw * (1 + 2 * pad) / sw, fh * (1 + 2 * pad) / sh
+            x, y, w, h = BL.to_output((sx, sy, sw_, sh_), rect, out.width, out.height)
+            boxes.append({"x": round(x, 4), "y": round(y, 4), "w": round(min(w, 1), 4), "h": round(min(h, 1), 4)})
+        return JSONResponse({"faces": boxes})
+
     async def start_ai_rate(request: Request):
         pid = pid_of(request)
         body = await body_model(request, AnalyzeBody)
@@ -1553,6 +1681,8 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/facecam/sync", facecam_sync, methods=["POST"]),
         Route(P + "/facecam/face-crop", facecam_face_crop, methods=["POST"]),
         Route(P + "/facecam/matte", facecam_matte, methods=["POST"]),
+        Route(P + "/blur/track", blur_track, methods=["POST"]),
+        Route(P + "/blur/faces", blur_faces, methods=["POST"]),
         Route(P + "/shorts", shorts_make, methods=["POST"]),
         Route(P + "/publish/suggest", publish_suggest, methods=["POST"]),
         Route(P + "/youtube/upload", youtube_upload, methods=["POST"]),

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   MIN_CLIP, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
-  addTitle, cutRanges, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
+  addBlur, addTitle, cutRanges, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
 import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
@@ -88,7 +88,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 20);
+      const op = Math.floor(r() * 22);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -129,6 +129,13 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
           const ts = tl.titles ?? [];
           res = ts.length ? (r() < 0.3 ? removeTitle(tl, pick(ts).id) : updateTitle(tl, pick(ts).id, { start: t - 2, duration: r() * 20, size: r() * 3,
             text: "x".repeat(Math.floor(r() * 120)), align: pick(["left", "center", "right"] as const) })) : { error: "none" };
+          break;
+        }
+        case 20: res = addBlur(tl, t, { x: r() * 1.5 - 0.5, y: r() * 1.5 - 0.5, w: r() * 1.2, h: r() * 1.2 }, r() * 10); break;
+        case 21: {
+          const bs = tl.blurs ?? [];
+          res = bs.length ? (r() < 0.3 ? removeBlur(tl, pick(bs).id) : updateBlur(tl, pick(bs).id, { start: t - 1, duration: r() * 30, strength: r() * 2,
+            mode: pick(["blur", "pixelate", "black"] as const), keys: Array.from({ length: Math.floor(r() * 5) + 1 }, () => ({ t: r() * dur, x: r(), y: r(), w: r(), h: r() })) })) : { error: "none" };
           break;
         }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };

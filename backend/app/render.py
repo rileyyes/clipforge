@@ -35,6 +35,7 @@ from .effects import mutes_for_clip
 from . import look
 from . import facecam, matte
 from . import titles as titles_mod
+from . import blur as blur_mod
 from .rcache import RenderCache
 from .library import project_sound
 from .storage import PathSecurityError
@@ -842,6 +843,11 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         last = f"po{i}"
         k += 1
     cwd = None
+    bl = [b for b in project.timeline.blurs
+          if b.start < D and (not win or (b.start + b.duration > lo - 0.1 and b.start < hi + 0.1))]
+    if bl:
+        last = blur_mod.filters(bl, W, H, last, g, work, tag or "x")
+        cwd = work  # ellipse masks are read from the work folder
     if project.captions.enabled:
         chunks = _caption_chunks_cached(project, project_dir, work)
         if win:

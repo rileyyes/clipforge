@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
-import { clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
+import { blurAt, clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
 import { camAspect, camAt, layoutBox } from "../timeline/facecam";
@@ -21,8 +21,10 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour is a CSS approximation and transitions show as cuts.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview, facecam = null }: {
+  lightPreview = false, onLightPreview, facecam = null, drawBox }: {
   projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[]; facecam?: FaceCam | null;
+  /** when set, dragging on the picture draws a box (frame fractions) and calls this */
+  drawBox?: ((box: { x: number; y: number; w: number; h: number }) => void) | null;
   playhead: number; setPlayhead: (t: number) => void; playing: boolean; setPlaying: (p: boolean) => void;
   lightPreview?: boolean; onLightPreview?: (on: boolean) => void;
 }) {
@@ -55,6 +57,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   const camAsset = facecam ? media[facecam.media_id] : undefined;
   const cam = camAt(timeline, facecam, camAsset, playhead);
   const camRef = useRef<HTMLVideoElement | null>(null);
+  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
 
   // ---- Web Audio: per-element gain -> master -> stereo analysers (meters)
   const audio = useRef<{ ctx: AudioContext; master: GainNode; an: [AnalyserNode, AnalyserNode]; gains: Map<HTMLMediaElement, GainNode> } | null>(null);
@@ -274,6 +277,36 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
             {camLayer()}
           </div>
           {flash && <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.8)" }} />}
+          {(timeline.blurs ?? []).filter((b) => playhead >= b.start && playhead < b.start + b.duration).map((b) => {
+            const k = scr.w / output.width, oy = (scr.h - output.height * k) / 2, box = blurAt(b, playhead);
+            const w = box.w * output.width * k, h = box.h * output.height * k;
+            return <div key={b.id} data-testid="blur-preview" style={{ position: "absolute", left: box.x * output.width * k, top: oy + box.y * output.height * k,
+              width: w, height: h, borderRadius: b.shape === "ellipse" ? "50%" : 0, pointerEvents: "none",
+              background: b.mode === "black" ? "#000" : undefined,
+              backdropFilter: b.mode === "black" ? undefined : `blur(${Math.max(2, b.strength * Math.min(w, h) / (b.mode === "pixelate" ? 6 : 8))}px)`,
+              WebkitBackdropFilter: b.mode === "black" ? undefined : `blur(${Math.max(2, b.strength * Math.min(w, h) / 8)}px)` } as React.CSSProperties} />;
+          })}
+          {drawBox && (() => {
+            const k = scr.w / output.width, oy = (scr.h - output.height * k) / 2;
+            const rel = (e: React.PointerEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+            return (
+              <div data-testid="draw-layer" style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5, background: "rgba(76,201,240,.06)" }}
+                onPointerDown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); const [x, y] = rel(e); setDrag({ x0: x, y0: y, x1: x, y1: y }); }}
+                onPointerMove={(e) => { if (drag) { const [x, y] = rel(e); setDrag({ ...drag, x1: x, y1: y }); } }}
+                onPointerUp={() => {
+                  if (!drag) return;
+                  const fw = output.width * k, fh = output.height * k;
+                  const x = Math.min(drag.x0, drag.x1) / fw, y = (Math.min(drag.y0, drag.y1) - oy) / fh;
+                  const w = Math.abs(drag.x1 - drag.x0) / fw, h = Math.abs(drag.y1 - drag.y0) / fh;
+                  setDrag(null);
+                  if (w > 0.01 && h > 0.01) drawBox({ x, y, w, h });
+                }}>
+                {drag && <div style={{ position: "absolute", left: Math.min(drag.x0, drag.x1), top: Math.min(drag.y0, drag.y1),
+                  width: Math.abs(drag.x1 - drag.x0), height: Math.abs(drag.y1 - drag.y0), border: "2px dashed #4cc9f0" }} />}
+                {!drag && <div className="overlay-msg" style={{ pointerEvents: "none" }}>Drag over what you want to hide</div>}
+              </div>
+            );
+          })()}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
             W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (

@@ -6,6 +6,7 @@ import HistoryPanel from "../components/HistoryPanel";
 import FaceCamPanel from "../components/FaceCamPanel";
 import ScriptPanel from "../components/ScriptPanel";
 import TitlesPanel from "../components/TitlesPanel";
+import BlurPanel from "../components/BlurPanel";
 import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
@@ -31,7 +32,8 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
   const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
-  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "script" | "cam" | "history">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "script" | "cam" | "history">("clip");
+  const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -321,6 +323,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
         <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam}
+          drawBox={rightTab === "blur" && drawing ? drawing.onBox : null}
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
@@ -328,11 +331,15 @@ export default function Editor({ projectId }: { projectId: string }) {
             <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
             <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} aria-label="Effects" title="Effects, bleeps, captions, audio" onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />FX{effects.length ? ` ${effects.length}` : ""}</button>
             <button className={"btn sm" + (rightTab === "text" ? " on" : " ghost")} title="Titles" onClick={() => setRightTab("text")}>Text</button>
+            <button className={"btn sm" + (rightTab === "blur" ? " on" : " ghost")} title="Privacy blur" onClick={() => setRightTab("blur")}>Blur</button>
             <button className={"btn sm" + (rightTab === "script" ? " on" : " ghost")} title="Edit by transcript" onClick={() => setRightTab("script")}>Script</button>
             <button className={"btn sm" + (rightTab === "cam" ? " on" : " ghost")} aria-label="Face cam" title="Face cam" onClick={() => setRightTab("cam")}><Icon name="webcam" size={13} />Cam</button>
             <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} aria-label="History" title="History (versions)" onClick={() => setRightTab("history")}><Icon name="undo" size={13} /></button>
           </div>
-          {rightTab === "text" ? (
+          {rightTab === "blur" ? (
+            <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+              commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} />
+          ) : rightTab === "text" ? (
             <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} />
           ) : rightTab === "script" ? (
             <ScriptPanel projectId={projectId} timeline={timeline} playhead={playhead} playing={playing} jobs={jobs}

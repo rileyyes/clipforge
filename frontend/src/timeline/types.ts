@@ -67,9 +67,16 @@ export interface Title {
   color: string; accent: string; align: "left" | "center" | "right"; size: number;
 }
 
+export interface BlurKey { t: number; x: number; y: number; w: number; h: number }  // timeline s; frame fractions
+export interface Blur {
+  id: string; start: number; duration: number; mode: "blur" | "pixelate" | "black"; shape: "rect" | "ellipse";
+  strength: number; keys: BlurKey[];
+}
+
 export interface Timeline {
   tracks: Track[];
   titles?: Title[];
+  blurs?: Blur[];
 }
 
 export interface MediaAsset {
