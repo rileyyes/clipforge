@@ -195,9 +195,11 @@ class Services:
         follow = {"samples": 0, "faces": 0, "motion": 0, "moves": 0}
         kfs: list[dict] = []
         scale = 1.0
+        stacked = (prm.get("facecam_layout") == "stacked"
+                   and SH.short_facecam(src_project.model_dump(mode="json"), asset.id, "stacked") is not None)
         if asset.has_video and asset.width and asset.height:
             scale, picture_w = SH.vertical_geometry(asset.width, asset.height, W, H)
-            if prm.get("follow", True) and picture_w > W * 1.05:
+            if prm.get("follow", True) and picture_w > W * 1.05 and not stacked:
                 ctx.stage(1, 2, "Finding you in the shot")
                 samples = SH.sample_track(self.settings.ffmpeg_bin, pdir / "media" / "original" / asset.stored_name,
                                           start, end, asset.width, asset.height,
@@ -210,13 +212,15 @@ class Services:
         words = (analysis_svc.load_analysis(pdir, asset.id) or {}).get("words")
         doc = SH.build_short_project(src_project.model_dump(mode="json"), asset.model_dump(mode="json"),
                                      start, end, kfs, scale, prm.get("title", ""),
-                                     bool(prm.get("captions", True) and words), new_id)
+                                     bool(prm.get("captions", True) and words), new_id,
+                                     prm.get("facecam_layout", "corner"))
         existing = sum(1 for x in self.store.list() if x.get("name", "").startswith(f"{src_project.name} — Short"))
         name = (prm.get("title") or "").strip() or f"{src_project.name} — Short {existing + 1}"
         if prm.get("title"):
             name = f"{src_project.name} — Short: {name}"
         new = self.store.create_from(pid, name, doc)
         return {"project_id": new.id, "name": new.name, "follow": follow,
+                "facecam": (new.facecam.corner if new.facecam else None),
                 "captions": doc["captions"]["enabled"], "duration": round(end - start, 2)}
 
     def _facecam_sync(self, ctx: JobContext) -> dict:
@@ -678,6 +682,7 @@ def build_routes(svc: Services) -> list[Route]:
         fun: Literal["off", "minimal", "balanced", "chaotic"] = "off"
         captions: bool = False
         audio_polish: bool = False
+        jump_cuts: Literal["off", "punch", "blend", "whip"] = "off"  # smoother jump cuts
 
     class ApplyBody(PlanBody):
         expected_output: Optional[float] = None  # guards against stale review screens
@@ -879,6 +884,7 @@ def build_routes(svc: Services) -> list[Route]:
         title: str = Field(default="", max_length=80)
         captions: bool = True
         follow: bool = True
+        facecam_layout: Literal["corner", "stacked", "none"] = "corner"
 
     async def shorts_suggest(request: Request):
         """Best moments for vertical Shorts (needs the recording analysed)"""
@@ -1073,8 +1079,15 @@ def build_routes(svc: Services) -> list[Route]:
         if ex.audio_polish:
             audio.update(normalize=True, enhance_voice=True)
             notes.append({"step": "Audio polish", "ok": True, "detail": "loudness to -14 LUFS + voice enhance"})
+        timeline = project.timeline.model_dump(mode="json")
+        if ex.jump_cuts != "off":
+            from . import jumpcuts
+            timeline, n = jumpcuts.smooth(timeline, ex.jump_cuts)
+            how = {"punch": "zoom punch-ins", "blend": "quick blends", "whip": "whip pans"}[ex.jump_cuts]
+            notes.append({"step": "Smoother jump cuts", "ok": True, "detail": f"{n} jump cut(s) smoothed with {how}"})
         eff_json = [e.model_dump(mode="json") for e in effects]
         store.update(pid, lambda d: {**d, "effects": eff_json, "captions": caps, "audio": audio,
+                                     **({"timeline": timeline} if ex.jump_cuts != "off" else {}),
                                      "edit_revision": d.get("edit_revision", 0) + 1})
         return notes
 

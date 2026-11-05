@@ -326,12 +326,79 @@ def _handles(seg: Seg) -> tuple[Seg, Seg]:
     return Seg("clip", seg.count, clip=pa), Seg("clip", seg.count, clip=pb)
 
 
-def video_transition_args(part_a: Path, part_b: Path, seg: Seg, fps: Fraction, dest: Path) -> list[str]:
-    kind = XFADE.get(seg.trans or "crossfade", "fade")
+# Phase 9 transitions, as xfade custom expressions (P runs 1 -> 0 over the transition).
+# a0..a3 / b0..b3(x, y) read plane 0..3 of the outgoing/incoming picture, so sampling
+# "this plane somewhere else" needs one call per plane (_at). Expressions use st/ld
+# variables, which aren't thread-safe in FFmpeg: transitions render single-threaded.
+def _at(src: str, x: str, y: str = "Y") -> str:
+    return (f"if(eq(PLANE,0),{src}0({x},{y}),if(eq(PLANE,1),{src}1({x},{y}),"
+            f"if(eq(PLANE,2),{src}2({x},{y}),{src}3({x},{y}))))")
+
+
+_E = "st(9,1-P);st(8,ld(9)*ld(9)*(3-2*ld(9)))"  # 9: progress 0..1, 8: eased progress
+_ZB = "ld(1)+(X-ld(1))/ld(6)", "ld(2)+(Y-ld(2))/ld(6)"
+CUSTOM = {
+    # fast eased slide with a motion blur (tmix) on top
+    "whip_left": (f"{_E};st(0,X+W*ld(8));if(lt(ld(0),W),{_at('a', 'ld(0)')},{_at('b', 'ld(0)-W')})", "tmix"),
+    "whip_right": (f"{_E};st(0,X-W*ld(8));if(gte(ld(0),0),{_at('a', 'ld(0)')},{_at('b', 'ld(0)+W')})", "tmix"),
+    # horizontal bands jump sideways and flip to the new picture at random moments
+    "glitch": (f"{_E};st(0,floor(Y*18/H));st(1,mod(abs(sin(ld(0)*12.9898+floor(ld(9)*14)*78.233))*43758.5453,1));"
+               "st(2,clip(X+(ld(1)-0.5)*W*0.16*sin(PI*ld(9)),0,W-1));"
+               f"if(lt(ld(1),ld(9)),{_at('b', 'ld(2)')},{_at('a', 'ld(2)')})", None),
+    # red and blue drift apart while crossfading (planes are G, B, R in gbrp)
+    "rgb_split": (f"{_E};st(0,W*0.035*sin(PI*ld(9)));"
+                  "st(1,clip(X+if(eq(PLANE,2),ld(0),if(eq(PLANE,1),-ld(0),0)),0,W-1));"
+                  f"{_at('a', 'ld(1)')}*(1-ld(8))+{_at('b', 'ld(1)')}*ld(8)", "gbrp"),
+    # crossfade under a warm glow from the top-right corner
+    "light_leak": (f"{_E};st(0,sin(PI*ld(9))*exp(-(pow(X/W-0.78,2)+pow(Y/H-0.25,2))*3.5));"
+                   "st(1,if(eq(PLANE,2),1,if(eq(PLANE,0),0.62,0.25)));"
+                   "min(255,A*(1-ld(8))+B*ld(8)+255*ld(0)*ld(1)*0.85)", "gbrp"),
+    # zoom into the old picture with a radial blur, then out of the new one
+    "zoom_blur": (f"{_E};st(0,if(lt(ld(9),0.5),1+ld(9)*1.6,1+(1-ld(9))*1.6));st(1,W/2);st(2,H/2);"
+                  "st(3,if(lt(ld(9),0.5),0,1));st(4,0);st(5,0);"
+                  f"while(lt(ld(5),4),st(6,ld(0)*(1+ld(5)*0.035));"
+                  f"st(4,ld(4)+if(ld(3),{_at('b', *_ZB)},{_at('a', *_ZB)}));st(5,ld(5)+1));ld(4)/4", None),
+    # hard cut in the middle with a white flash
+    "flash_cut": ("st(0,max(0,1-abs(P-0.5)*5));st(1,if(gt(P,0.5),A,B));"
+                  "if(eq(PLANE,0),min(255,ld(1)+(255-ld(1))*ld(0)),ld(1)+(128-ld(1))*ld(0))", None),
+    # hard cut in the middle, the picture shakes around it
+    "shake_cut": ("if(gt(P,0.5),A,B)", "shake"),
+    # spin: done with rotate filters (see transition_graph)
+}
+
+
+def transition_graph(kind: str, d: float, W: int, H: int) -> str:
+    """Filter graph from [0:v] (outgoing) and [1:v] (incoming) to [x]."""
+    if kind == "spin":  # the old picture spins away, the new one spins in; swap in the middle
+        # xfade plays [1] from its first frame at the swap, so start [1] there too
+        sw = d * 0.4
+        return (f"[0:v]rotate=a='PI*pow(t/{d:.4f},2)':c=black[ra];"
+                f"[1:v]trim=start={sw:.4f},setpts=PTS-STARTPTS,"
+                f"rotate=a='-PI*pow(max(0,1-(t+{sw:.4f})/{d:.4f}),2)':c=black[rb];"
+                f"[ra][rb]xfade=transition=fade:duration={d * 0.2:.4f}:offset={sw:.4f}[x]")
+    if kind in CUSTOM:
+        expr, post = CUSTOM[kind]
+        pre = "format=gbrp," if post == "gbrp" else ""
+        g = (f"[0:v]{pre}setsar=1[a];[1:v]{pre}setsar=1[b];"
+             f"[a][b]xfade=transition=custom:expr='{expr}':duration={d:.4f}:offset=0")
+        if post == "tmix":
+            g += ",tmix=frames=4"
+        elif post == "shake":
+            amp = 0.035
+            g += (f",crop=w=trunc(iw*0.92/2)*2:h=trunc(ih*0.92/2)*2:"
+                  f"x='(iw-ow)/2+iw*{amp}*sin(t*71)*max(0,1-abs(t-{d / 2:.4f})*{4 / d:.4f})':"
+                  f"y='(ih-oh)/2+ih*{amp}*cos(t*53)*max(0,1-abs(t-{d / 2:.4f})*{4 / d:.4f})',"
+                  f"scale={W}:{H},setsar=1")
+        return g + "[x]"
+    return f"[0:v][1:v]xfade=transition={XFADE.get(kind, 'fade')}:duration={d:.4f}:offset=0[x]"
+
+
+def video_transition_args(part_a: Path, part_b: Path, seg: Seg, fps: Fraction, dest: Path,
+                          size: tuple[int, int] = (1920, 1080)) -> list[str]:
     d = float(seg.count / fps)
-    return ["-i", str(part_a), "-i", str(part_b), "-filter_complex",
-            f"[0:v][1:v]xfade=transition={kind}:duration={d:.4f}:offset=0,"
-            f"tpad=stop_mode=clone:stop_duration=1,trim=end_frame={seg.count},setpts=PTS-STARTPTS,format=yuv420p[v]",
+    g = transition_graph(seg.trans or "crossfade", d, *size)
+    return ["-filter_complex_threads", "1", "-i", str(part_a), "-i", str(part_b), "-filter_complex",
+            f"{g};[x]tpad=stop_mode=clone:stop_duration=1,trim=end_frame={seg.count},setpts=PTS-STARTPTS,format=yuv420p[v]",
             "-map", "[v]", "-frames:v", str(seg.count), "-r", str(fps),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "14", "-video_track_timescale", "90000", str(dest)]
 
@@ -412,7 +479,8 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                 na, nb = f"b{i:05d}_ta.mp4", f"b{i:05d}_tb.mp4"
                 jobs.append((video_segment_args(src_of(s.prev), pa, out, plan.fps, True, work / na), secs, na))
                 jobs.append((video_segment_args(src_of(s.clip), pb, out, plan.fps, True, work / nb), secs, nb))
-                jobs.append((video_transition_args(work / na, work / nb, s, plan.fps, work / name), secs, name))
+                jobs.append((video_transition_args(work / na, work / nb, s, plan.fps, work / name,
+                                                   (out.width, out.height)), secs, name))
                 continue
             args = (video_segment_args(src_of(s.clip), s, out, plan.fps, True, work / name)
                     if s.kind == "clip" else gap_video_args(s, out, plan.fps, work / name))

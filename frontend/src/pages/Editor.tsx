@@ -3,6 +3,7 @@ import { api, ApiError } from "../api";
 import Inspector from "../components/Inspector";
 import EffectsPanel, { FX_COLOR } from "../components/EffectsPanel";
 import HistoryPanel from "../components/HistoryPanel";
+import FaceCamPanel from "../components/FaceCamPanel";
 import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
@@ -11,11 +12,11 @@ import { Icon, useJobs, useToast } from "../components/ui";
 import { History } from "../timeline/history";
 import {
   addMedia, addTrack, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
-  setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type OpResult,
+  setTransition, smoothJumpCuts, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type JumpCutMode, type OpResult,
 } from "../timeline/ops";
-import type { AudioSettings, CaptionSettings, Effect, MediaMap, Project, Timeline } from "../timeline/types";
+import type { AudioSettings, CaptionSettings, Effect, FaceCam, MediaMap, Project, Timeline } from "../timeline/types";
 
-type Doc = { timeline: Timeline; effects: Effect[]; captions: CaptionSettings; audio: AudioSettings };
+type Doc = { timeline: Timeline; effects: Effect[]; captions: CaptionSettings; audio: AudioSettings; facecam: FaceCam | null };
 import { go } from "../router";
 
 type SaveState = "saved" | "pending" | "saving" | "error" | "conflict";
@@ -26,8 +27,9 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [effects, setEffects] = useState<Effect[]>([]);
   const [captions, setCaptions] = useState<CaptionSettings | null>(null);
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
+  const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
-  const [rightTab, setRightTab] = useState<"clip" | "fx" | "history">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "cam" | "history">("clip");
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -43,21 +45,21 @@ export default function Editor({ projectId }: { projectId: string }) {
   const editRev = useRef(0);
   const dirty = useRef(false);
   const saving = useRef(false);
-  const latest = useRef<{ timeline: Timeline | null; project: Project | null; effects: Effect[]; captions: CaptionSettings | null; audio: AudioSettings | null }>({ timeline: null, project: null, effects: [], captions: null, audio: null });
-  latest.current = { timeline, project, effects, captions, audio };
+  const latest = useRef<{ timeline: Timeline | null; project: Project | null; effects: Effect[]; captions: CaptionSettings | null; audio: AudioSettings | null; facecam: FaceCam | null }>({ timeline: null, project: null, effects: [], captions: null, audio: null, facecam: null });
+  latest.current = { timeline, project, effects, captions, audio, facecam };
   const toast = useToast();
   const { jobs, refresh: refreshJobs } = useJobs(projectId);
 
   // ---------------------------------------------------------------- load
   const reloadMedia = useCallback(async () => {
     const p = await api.project(projectId);
-    setProject((cur) => (cur ? { ...cur, media: p.media, missing_media: p.missing_media, revision: p.revision } : p));
+    setProject((cur) => (cur ? { ...cur, media: p.media, missing_media: p.missing_media, mattes: p.mattes, revision: p.revision } : p));
   }, [projectId]);
 
   useEffect(() => {
     localStorage.setItem("cf:lastProject", projectId);
     api.project(projectId).then((p) => {
-      setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); setAudioState(p.audio); editRev.current = p.edit_revision;
+      setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); setAudioState(p.audio); setFacecamState(p.facecam ?? null); editRev.current = p.edit_revision;
       // zoom so the edit roughly fits
       const d = timelineDuration(p.timeline);
       if (d > 0) setPps(Math.max(2, Math.min(200, (window.innerWidth - 220) / (d * 1.15))));
@@ -65,7 +67,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   // derived media (thumbnails/waveforms/proxies) finish in the background → refresh
-  const doneDerives = jobs.filter((j) => j.kind === "derive_media" && j.status === "succeeded").length;
+  const doneDerives = jobs.filter((j) => (j.kind === "derive_media" || j.kind === "facecam_matte") && j.status === "succeeded").length;
   useEffect(() => { if (project) reloadMedia(); }, [doneDerives]);
 
   const media: MediaMap = useMemo(() => Object.fromEntries((project?.media ?? []).map((m) => [m.id, m])), [project?.media]);
@@ -73,13 +75,13 @@ export default function Editor({ projectId }: { projectId: string }) {
   // ---------------------------------------------------------------- autosave
   const flush = useCallback(async () => {
     if (saving.current || !dirty.current) return;
-    const { timeline: tl, project: p, effects: fxs, captions: caps, audio: aud } = latest.current;
+    const { timeline: tl, project: p, effects: fxs, captions: caps, audio: aud, facecam: cam } = latest.current;
     if (!tl || !p) return;
     saving.current = true; dirty.current = false; setSave("saving");
     try {
-      const saved = await api.saveTimeline(projectId, editRev.current, tl, p.output, fxs, caps ?? undefined, aud ?? undefined);
+      const saved = await api.saveTimeline(projectId, editRev.current, tl, p.output, fxs, caps ?? undefined, aud ?? undefined, cam);
       editRev.current = saved.edit_revision;
-      setProject((cur) => (cur ? { ...cur, media: saved.media, revision: saved.revision, updated_at: saved.updated_at } : saved));
+      setProject((cur) => (cur ? { ...cur, media: saved.media, mattes: saved.mattes, revision: saved.revision, updated_at: saved.updated_at } : saved));
       setSave(dirty.current ? "pending" : "saved");
     } catch (e: any) {
       if (e instanceof ApiError && e.status === 409) { setSave("conflict"); }
@@ -95,7 +97,7 @@ export default function Editor({ projectId }: { projectId: string }) {
     setSave("pending");
     const t = setTimeout(flush, 700);
     return () => clearTimeout(t);
-  }, [timeline, effects, captions, audio]);
+  }, [timeline, effects, captions, audio, facecam]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => { if (dirty.current || saving.current) { e.preventDefault(); } };
@@ -106,7 +108,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   // ---------------------------------------------------------------- editing
   function snapshot(): Doc {
     const l = latest.current;
-    return { timeline: l.timeline!, effects: l.effects, captions: l.captions!, audio: l.audio! };
+    return { timeline: l.timeline!, effects: l.effects, captions: l.captions!, audio: l.audio!, facecam: l.facecam };
   }
 
   /** ``coalesce``: slider drags with the same label within 0.8 s become one undo step. */
@@ -123,7 +125,7 @@ export default function Editor({ projectId }: { projectId: string }) {
     return true;
   }, [toast]);
 
-  const restore = (d: Doc) => { dirty.current = true; setTimeline(d.timeline); setEffects(d.effects); setCaptions(d.captions); setAudioState(d.audio); };
+  const restore = (d: Doc) => { dirty.current = true; setTimeline(d.timeline); setEffects(d.effects); setCaptions(d.captions); setAudioState(d.audio); setFacecamState(d.facecam); };
   const undo = () => {
     const e = history.current.undo(snapshot());
     if (!e) return;
@@ -152,7 +154,7 @@ export default function Editor({ projectId }: { projectId: string }) {
     dirty.current = false;
     history.current.clear();
     editRev.current = p.edit_revision;
-    setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); setAudioState(p.audio);
+    setProject(p); setTimeline(p.timeline); setEffects(p.effects ?? []); setCaptions(p.captions); setAudioState(p.audio); setFacecamState(p.facecam ?? null);
     setSelection([]); setSave("saved");
   };
   /** Effects/captions edits share the timeline's undo history; rapid slider moves coalesce. */
@@ -161,6 +163,20 @@ export default function Editor({ projectId }: { projectId: string }) {
     if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
     lastLabel.current = { label, at: now };
     dirty.current = true; setEffects(next); setCaptions(caps); force((n) => n + 1);
+  };
+  const setFacecam = (next: FaceCam | null, label: string) => {
+    const now = Date.now();
+    if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
+    lastLabel.current = { label, at: now };
+    dirty.current = true; setFacecamState(next); force((n) => n + 1);
+  };
+  const smoothCuts = (mode: JumpCutMode) => {
+    const r = smoothJumpCuts(timeline!, mode);
+    if (r.error !== undefined) return toast(r.error, true);
+    if (mode === "off") { commit(r, "Plain jump cuts"); return toast("Jump cuts are plain cuts again"); }
+    if (!r.count) return toast("No jump cuts found on V1 (back-to-back pieces of the same footage with a bit cut out)", true);
+    commit(r, "Smooth jump cuts");
+    toast(`${r.count} jump cut${r.count === 1 ? "" : "s"} smoothed with ${{ punch: "zoom punch-ins", blend: "quick blends", whip: "whip pans" }[mode]}`);
   };
   const setAudio = (next: AudioSettings, label: string) => {
     const now = Date.now();
@@ -245,6 +261,14 @@ export default function Editor({ projectId }: { projectId: string }) {
       <button className="btn sm ghost" title="Delete and close the gap (Shift+Del)" disabled={!selection.length} onClick={() => actions.del(true)}><Icon name="ripple" size={14} />Ripple delete</button>
       <button className="btn sm ghost" title="Duplicate (Ctrl+D)" disabled={selection.length !== 1} onClick={actions.duplicate}><Icon name="copy" size={14} />Duplicate</button>
       <button className={"btn sm" + (snapping ? " on" : " ghost")} title="Snapping (N) — hold Alt while dragging to bypass" onClick={() => setSnapping(!snapping)}><Icon name="magnet" size={14} />Snap</button>
+      <select className="btn sm ghost" value="" aria-label="Smooth jump cuts" title="Hide the jump where talking was cut out of one shot"
+        onChange={(e) => { if (e.target.value) smoothCuts(e.target.value as JumpCutMode); }}>
+        <option value="">Smooth jump cuts…</option>
+        <option value="punch">Zoom punch-in (alternate)</option>
+        <option value="blend">Quick blend</option>
+        <option value="whip">Whip pan</option>
+        <option value="off">Plain cuts (undo smoothing)</option>
+      </select>
       <span style={{ width: 1, height: 20, background: "var(--line)" }} />
       <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "video"), "Add video track")}><Icon name="plus" size={14} />Video track</button>
       <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "audio"), "Add audio track")}><Icon name="plus" size={14} />Audio track</button>
@@ -294,16 +318,21 @@ export default function Editor({ projectId }: { projectId: string }) {
         <MediaLibrary project={project} jobs={jobs} usedIds={usedIds}
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
-        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects}
+        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam}
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
           <div className="pane-head" style={{ gap: 4 }}>
             <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
             <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />Effects{effects.length ? ` (${effects.length})` : ""}</button>
+            <button className={"btn sm" + (rightTab === "cam" ? " on" : " ghost")} aria-label="Face cam" title="Face cam" onClick={() => setRightTab("cam")}><Icon name="webcam" size={13} />Cam</button>
             <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} onClick={() => setRightTab("history")}><Icon name="undo" size={13} />History</button>
           </div>
-          {rightTab === "history" ? (
+          {rightTab === "cam" ? (
+            <FaceCamPanel projectId={projectId} project={project} timeline={timeline} media={media} output={project.output}
+              facecam={facecam} setFacecam={setFacecam} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+              jobs={jobs} onJobs={() => { refreshJobs(); setTimeout(reloadMedia, 600); }} />
+          ) : rightTab === "history" ? (
             <HistoryPanel projectId={projectId} beforeChange={flushNow} onRestored={onRestored} revision={editRev.current} />
           ) : rightTab === "clip" ? (
             <Inspector timeline={timeline} media={media} selection={selection} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}

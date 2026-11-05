@@ -47,6 +47,7 @@ function Workspace({ projectId }: { projectId: string }) {
   const [edits, setEdits] = useState<Record<number, { start: number; end: number; title: string }>>({});
   const [captions, setCaptions] = useState(true);
   const [follow, setFollow] = useState(true);
+  const [camLayout, setCamLayout] = useState<"corner" | "stacked" | "none">("stacked");
   const [mine, setMine] = useState<string[]>([]);  // job ids started here
   const video = useRef<HTMLVideoElement>(null);
   const stopAt = useRef<number | null>(null);
@@ -79,7 +80,7 @@ function Workspace({ projectId }: { projectId: string }) {
   const make = async (i: number, s: Suggestion) => {
     const e = edits[i] ?? { start: s.start, end: s.end, title: s.title };
     try {
-      const j = await post<Job>(`/api/projects/${projectId}/shorts`, { media_id: mediaId, start: e.start, end: e.end, title: e.title, captions, follow });
+      const j = await post<Job>(`/api/projects/${projectId}/shorts`, { media_id: mediaId, start: e.start, end: e.end, title: e.title, captions, follow, facecam_layout: camLayout });
       setMine((m) => [...m, j.id]); refresh();
       toast("Making your Short… it appears below when ready");
     } catch (err: any) { toast(err.message, true); }
@@ -120,7 +121,16 @@ function Workspace({ projectId }: { projectId: string }) {
                 <option value="15-30">15–30 seconds</option><option value="15-60">15–60 seconds</option><option value="30-60">30–60 seconds</option><option value="45-90">45–90 seconds</option>
               </select>
             </label>
-            <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Keep me in frame (follows your face, or what moves)</label>
+            {project?.facecam && project.facecam.main_media_id === mediaId && (
+              <label className="row" style={{ fontSize: 12 }}>Face cam
+                <select value={camLayout} aria-label="Face cam layout" onChange={(e) => setCamLayout(e.target.value as any)}>
+                  <option value="stacked">Stacked: face cam on top, video below</option>
+                  <option value="corner">In its corner</option>
+                  <option value="none">Leave it out</option>
+                </select></label>
+            )}
+            {!(project?.facecam && project.facecam.main_media_id === mediaId && camLayout === "stacked") &&
+              <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Keep me in frame (follows your face, or what moves)</label>}
             <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={captions} onChange={(e) => setCaptions(e.target.checked)} />Captions (needs a transcript)</label>
             <div className="dim" style={{ fontSize: 11 }}>Each Short becomes its own project (1080×1920) that shares this video's files — no extra disk space. Your bleeps and effects come along.</div>
           </div>
@@ -169,7 +179,7 @@ function Workspace({ projectId }: { projectId: string }) {
               {j.status === "succeeded" ? (
                 <div className="row" style={{ gap: 6 }}>
                   <Icon name="check" size={14} /><strong style={{ fontSize: 12 }} className="ellipsis grow">{j.result.name}</strong>
-                  <span className="muted" style={{ fontSize: 11 }}>{j.result.follow?.moves ? `follows you (${j.result.follow.moves} moves)` : "centred"}{j.result.captions ? " · captions" : ""}</span>
+                  <span className="muted" style={{ fontSize: 11 }}>{j.result.facecam === "custom" ? "stacked with face cam" : j.result.follow?.moves ? `follows you (${j.result.follow.moves} moves)` : "centred"}{j.result.captions ? " · captions" : ""}</span>
                   <a className="btn sm" href={`#/editor/${j.result.project_id}`}>Open</a>
                   <a className="btn sm primary" href={`#/export/${j.result.project_id}`}><Icon name="export" size={13} />Export</a>
                 </div>

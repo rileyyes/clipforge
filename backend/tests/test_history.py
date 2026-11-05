@@ -249,3 +249,34 @@ def test_one_click_extras(server, tmp_path, monkeypatch):
     # bad extras rejected
     bad = {**body, "extras": {"fun": "nuclear"}}
     assert c.req("POST", f"/api/projects/{pid}/autoedit/apply", bad)[0] == 422
+
+
+def test_ai_edit_with_smoother_jump_cuts(server, tmp_path):
+    from test_autoedit import write_talk_wav
+    import subprocess
+    c = server
+    wav = write_talk_wav(tmp_path / "talk.wav")
+    vid = tmp_path / "talk.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=30",
+                    "-i", str(wav), "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", str(vid)], check=True)
+    _, p, _ = c.req("POST", "/api/projects", {"name": "jumps"})
+    pid = p["id"]
+    _, up, _ = c.upload(pid, vid)
+    mid = up["media"]["id"]
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/autoedit/analyze", {"media_id": mid})
+    assert c.wait_job(job["id"])["status"] == "succeeded"
+    for mode, check in (("punch", lambda cl: sum((x.get("crop") or {}).get("left", 0) > 0 for x in cl)),
+                        ("whip", lambda cl: sum((x.get("transition_in") or {}).get("kind", "").startswith("whip")
+                                                for x in cl))):
+        body = {"media_id": mid, "settings": {"target_mode": "original", "pause_mode": "aggressive"},
+                "extras": {"jump_cuts": mode}}
+        st, r, _ = c.req("POST", f"/api/projects/{pid}/autoedit/apply", body)
+        assert st == 200, r
+        note = next(n for n in r["extras"] if n["step"] == "Smoother jump cuts")
+        clips = r["project"]["timeline"]["tracks"][0]["clips"]
+        assert len(clips) >= 3 and note["ok"] and check(clips) >= 1, (note, len(clips))
+        assert str(check(clips)) in note["detail"]
+    st, job, _ = c.req("POST", f"/api/projects/{pid}/exports", {"filename": "j", "quality": "draft"})
+    job = c.wait_job(job["id"], timeout=300)
+    assert job["status"] == "succeeded" and job["result"]["validation"]["ok"]

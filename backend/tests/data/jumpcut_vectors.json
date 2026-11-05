@@ -1,0 +1,404 @@
+[
+ {
+  "name": "three jump cuts",
+  "timeline": {
+   "tracks": [
+    {
+     "id": "11111111111111111111111111111111",
+     "kind": "video",
+     "name": "V1",
+     "clips": [
+      {
+       "id": "00000000000000000000000000000001",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 0,
+       "source_in": 0,
+       "source_out": 2
+      },
+      {
+       "id": "00000000000000000000000000000002",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 2,
+       "source_in": 3,
+       "source_out": 5
+      },
+      {
+       "id": "00000000000000000000000000000003",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 4,
+       "source_in": 6,
+       "source_out": 8
+      },
+      {
+       "id": "00000000000000000000000000000004",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 6,
+       "source_in": 9,
+       "source_out": 11
+      }
+     ]
+    },
+    {
+     "id": "22222222222222222222222222222222",
+     "kind": "audio",
+     "name": "A1",
+     "clips": []
+    }
+   ]
+  },
+  "expect": {
+   "off": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 0
+   },
+   "punch": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      true,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      true,
+      null
+     ]
+    ],
+    "count": 2
+   },
+   "blend": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      "crossfade"
+     ],
+     [
+      false,
+      "crossfade"
+     ],
+     [
+      false,
+      "crossfade"
+     ]
+    ],
+    "count": 3
+   },
+   "whip": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      "whip_left"
+     ],
+     [
+      false,
+      "whip_right"
+     ],
+     [
+      false,
+      "whip_left"
+     ]
+    ],
+    "count": 3
+   }
+  }
+ },
+ {
+  "name": "mixed",
+  "timeline": {
+   "tracks": [
+    {
+     "id": "11111111111111111111111111111111",
+     "kind": "video",
+     "name": "V1",
+     "clips": [
+      {
+       "id": "00000000000000000000000000000001",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 0,
+       "source_in": 0,
+       "source_out": 2
+      },
+      {
+       "id": "00000000000000000000000000000002",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 2,
+       "source_in": 2,
+       "source_out": 4
+      },
+      {
+       "id": "00000000000000000000000000000003",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 4,
+       "source_in": 5,
+       "source_out": 7
+      },
+      {
+       "id": "00000000000000000000000000000004",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 8,
+       "source_in": 8,
+       "source_out": 10
+      },
+      {
+       "id": "00000000000000000000000000000005",
+       "media_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+       "start": 10,
+       "source_in": 0,
+       "source_out": 2
+      }
+     ]
+    },
+    {
+     "id": "22222222222222222222222222222222",
+     "kind": "audio",
+     "name": "A1",
+     "clips": []
+    }
+   ]
+  },
+  "expect": {
+   "off": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 0
+   },
+   "punch": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      true,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 1
+   },
+   "blend": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      "crossfade"
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 1
+   },
+   "whip": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      "whip_left"
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 1
+   }
+  }
+ },
+ {
+  "name": "too short",
+  "timeline": {
+   "tracks": [
+    {
+     "id": "11111111111111111111111111111111",
+     "kind": "video",
+     "name": "V1",
+     "clips": [
+      {
+       "id": "00000000000000000000000000000001",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 0,
+       "source_in": 0,
+       "source_out": 2
+      },
+      {
+       "id": "00000000000000000000000000000002",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 2,
+       "source_in": 3,
+       "source_out": 3.2
+      },
+      {
+       "id": "00000000000000000000000000000003",
+       "media_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "start": 2.2,
+       "source_in": 4,
+       "source_out": 6
+      }
+     ]
+    },
+    {
+     "id": "22222222222222222222222222222222",
+     "kind": "audio",
+     "name": "A1",
+     "clips": []
+    }
+   ]
+  },
+  "expect": {
+   "off": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 0
+   },
+   "punch": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      true,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 1
+   },
+   "blend": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      "crossfade"
+     ],
+     [
+      false,
+      "crossfade"
+     ]
+    ],
+    "count": 2
+   },
+   "whip": {
+    "summary": [
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ],
+     [
+      false,
+      null
+     ]
+    ],
+    "count": 0
+   }
+  }
+ }
+]

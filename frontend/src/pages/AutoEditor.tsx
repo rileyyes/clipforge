@@ -370,6 +370,11 @@ function Workspace({ projectId }: { projectId: string }) {
                   <option value="off">Off</option><option value="minimal">Minimal</option><option value="balanced">Balanced</option><option value="chaotic">Chaotic</option>
                 </select>
               </label>
+              <label className="row" style={{ fontSize: 12 }}>Smoother jump cuts
+                <select value={extras.jump_cuts ?? "off"} aria-label="Smoother jump cuts" onChange={(e) => setExtras({ jump_cuts: e.target.value as Extras["jump_cuts"] })}>
+                  <option value="off">Off (plain cuts)</option><option value="punch">Zoom punch-in</option><option value="blend">Quick blend</option><option value="whip">Whip pan</option>
+                </select>
+              </label>
               <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={extras.captions} onChange={(e) => setExtras({ captions: e.target.checked })} />Captions</label>
               <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={extras.audio_polish} onChange={(e) => setExtras({ audio_polish: e.target.checked })} />Audio polish (YouTube loudness + voice enhance)</label>
               {(extras.censor || extras.captions) && !hasTranscript && (
@@ -452,7 +457,7 @@ function Workspace({ projectId }: { projectId: string }) {
   );
 }
 
-const EXTRAS_DEFAULT: Extras = { censor: true, censor_sound: "beep", fun: "off", captions: false, audio_polish: true };
+const EXTRAS_DEFAULT: Extras = { censor: true, censor_sound: "beep", fun: "off", captions: false, audio_polish: true, jump_cuts: "off" };
 
 export default function AutoEditor({ projectId }: { projectId?: string }) {
   return projectId ? <Workspace key={projectId} projectId={projectId} /> : <ProjectPicker />;

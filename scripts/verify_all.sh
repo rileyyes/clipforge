@@ -28,6 +28,8 @@ echo "== browser E2E: Shorts (best moments, vertical, follows the subject)"
 python3 scripts/e2e_shorts.py 2>&1 | grep -E "OK|made:|Error"
 echo "== browser E2E: Publish (chapters/title/tags + YouTube upload vs a fake Google)"
 python3 scripts/e2e_publish.py 2>&1 | grep -E "OK|uploaded:|Error"
+echo "== browser E2E: face cam (sync by sound, corner circle, crop, background removal, hide) + smoother jump cuts"
+python3 scripts/e2e_facecam.py 2>&1 | grep -E "OK|lined up|export validated|Error"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

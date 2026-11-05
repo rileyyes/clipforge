@@ -128,7 +128,10 @@ class Transition(Strict):
     kind: Literal["crossfade", "dip_black", "dip_white", "wipe_left", "wipe_right", "wipe_up", "wipe_down",
                   "slide_left", "slide_right", "slide_up", "slide_down", "smooth_left", "smooth_right",
                   "circle_open", "circle_close", "radial", "zoom_in", "pixelize", "blur",
-                  "cover_left", "reveal_right"] = "crossfade"
+                  "cover_left", "reveal_right",
+                  # Phase 9
+                  "whip_left", "whip_right", "spin", "glitch", "rgb_split", "light_leak",
+                  "zoom_blur", "flash_cut", "shake_cut"] = "crossfade"
     duration: float = Field(default=0.5, ge=0.1, le=3.0)
 
 

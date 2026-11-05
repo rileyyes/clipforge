@@ -1,4 +1,4 @@
-import type { AudioSettings, CaptionSettings, Effect, MediaAsset, OutputSettings, Project, Timeline } from "./timeline/types";
+import type { AudioSettings, CaptionSettings, Crop, Effect, FaceCam, MediaAsset, OutputSettings, Project, Timeline } from "./timeline/types";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public data?: any) { super(message); }
@@ -50,8 +50,9 @@ export const api = {
   projects: () => call<{ projects: ProjectSummary[] }>("GET", "/api/projects").then((r) => r.projects),
   createProject: (name: string) => call<Project>("POST", "/api/projects", { name }),
   project: (id: string) => call<Project>("GET", `/api/projects/${id}`),
-  saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings, effects?: Effect[], captions?: CaptionSettings, audio?: AudioSettings) =>
-    call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output, effects, captions, audio }),
+  /** ``facecam``: left out = unchanged, null = remove it. */
+  saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings, effects?: Effect[], captions?: CaptionSettings, audio?: AudioSettings, facecam?: FaceCam | null) =>
+    call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output, effects, captions, audio, ...(facecam !== undefined ? { facecam } : {}) }),
   rename: (id: string, name: string) => call<Project>("POST", `/api/projects/${id}/rename`, { name }),
   duplicate: (id: string) => call<Project>("POST", `/api/projects/${id}/duplicate`),
   deleteProject: (id: string) => call<void>("DELETE", `/api/projects/${id}`),
@@ -104,7 +105,17 @@ export interface Extras {
   censor: boolean; censor_sound: "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "custom";
   censor_sound_asset?: string | null;
   fun: "off" | "minimal" | "balanced" | "chaotic"; captions: boolean; audio_polish: boolean;
+  jump_cuts?: "off" | "punch" | "blend" | "whip";
 }
+
+// ---------------------------------------------------------------- face cam
+export const facecamApi = {
+  sync: (pid: string, media_id: string, main_media_id: string) =>
+    call<Job>("POST", `/api/projects/${pid}/facecam/sync`, { media_id, main_media_id }),
+  faceCrop: (pid: string, media_id: string, shape: string) =>
+    call<{ crop: Crop; faces_seen: number; samples: number }>("POST", `/api/projects/${pid}/facecam/face-crop`, { media_id, shape }),
+  prepareCutout: (pid: string, media_id: string) => call<Job>("POST", `/api/projects/${pid}/facecam/matte`, { media_id }),
+};
 export interface ExtraNote { step: string; ok: boolean; detail: string }
 
 // ---------------------------------------------------------------- My library (your own sounds & images)

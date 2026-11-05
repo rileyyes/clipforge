@@ -237,14 +237,43 @@ def vertical_geometry(src_w: int, src_h: int, W: int = 1080, H: int = 1920) -> t
     return round(min(scale, 10.0), 4), fitted_w * min(scale, 10.0)
 
 
+STACK_CAM = 0.4  # stacked layout: the face cam takes the top 40%, the video the rest
+
+
+def stacked_geometry(src_w: int, src_h: int, W: int = 1080, H: int = 1920) -> tuple[float, float]:
+    """(clip scale, y offset px) so the main picture fills the area under the face cam."""
+    fit = min(W / src_w, H / src_h)
+    fw, fh = src_w * fit, src_h * fit
+    area = H * (1 - STACK_CAM)
+    scale = max(area / fh, W / fw)
+    return round(min(scale, 10.0), 4), round(H * STACK_CAM + area / 2 - H / 2, 2)
+
+
+def short_facecam(source: dict, media_id: str, layout: str) -> dict | None:
+    """The face cam for a Short: kept in its corner, stacked on top, or left out."""
+    fc = source.get("facecam")
+    if not fc or layout == "none" or fc.get("main_media_id") != media_id:
+        return None
+    if layout == "stacked":
+        return {**fc, "enabled": True, "corner": "custom", "shape": "rect", "border": 0, "shadow": False,
+                "box": {"x": 0, "y": 0, "w": 1, "h": STACK_CAM}}
+    return dict(fc)
+
+
 def build_short_project(source: dict, media: dict, start: float, end: float, x_keyframes: list[dict],
-                        scale: float, title: str, captions: bool, new_id) -> dict:
-    """The new project document (pure; ids from ``new_id``)."""
+                        scale: float, title: str, captions: bool, new_id, layout: str = "corner") -> dict:
+    """The new project document (pure; ids from ``new_id``). ``layout``: what happens to
+    the source's face cam (if it follows this recording): "corner", "stacked" or "none"."""
     from .schema import SCHEMA_VERSION
     link = new_id()
+    facecam = short_facecam(source, media["id"], layout)
+    y = 0.0
+    if facecam is not None and layout == "stacked" and media.get("width") and media.get("height"):
+        scale, y = stacked_geometry(media["width"], media["height"])
+        x_keyframes = []
     clip = {"id": new_id(), "media_id": media["id"], "start": 0, "source_in": round(start, 3),
             "source_out": round(min(end, media["duration"]), 3), "link_id": link,
-            "transform": {"x": x_keyframes[0]["v"] if x_keyframes else 0, "y": 0, "scale": scale, "rotation": 0, "opacity": 1},
+            "transform": {"x": x_keyframes[0]["v"] if x_keyframes else 0, "y": y, "scale": scale, "rotation": 0, "opacity": 1},
             "keyframes": {"x": x_keyframes} if len(x_keyframes) > 1 else {}}
     tracks = [{"id": new_id(), "kind": "video", "name": "V1", "clips": [clip]},
               {"id": new_id(), "kind": "video", "name": "V2", "clips": []},
@@ -252,6 +281,7 @@ def build_short_project(source: dict, media: dict, start: float, end: float, x_k
                "clips": [{**{k: v for k, v in clip.items() if k not in ("transform", "keyframes")}, "id": new_id()}]
                if media.get("has_audio") else []},
               {"id": new_id(), "kind": "audio", "name": "A2", "role": "music", "clips": []}]
+    # stacked: captions on the seam between face cam and video, like most vertical clips
     caps = {**(source.get("captions") or {}), "enabled": bool(captions), "position": "middle", "max_words": 3}
     return {
         "schema_version": SCHEMA_VERSION,
@@ -261,5 +291,6 @@ def build_short_project(source: dict, media: dict, start: float, end: float, x_k
         "effects": source.get("effects") or [],
         "captions": caps,
         "audio": {**(source.get("audio") or {}), "normalize": True},
+        "facecam": facecam,
         "_title": title,
     }

@@ -3,7 +3,8 @@ import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
 import { clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
-import type { Clip, Effect, MediaMap, OutputSettings, Timeline } from "../timeline/types";
+import { camAspect, camAt, layoutBox } from "../timeline/facecam";
+import type { Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
 import { Icon } from "./ui";
 
 /**
@@ -19,8 +20,8 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour is a CSS approximation and transitions show as cuts.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview }: {
-  projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[];
+  lightPreview = false, onLightPreview, facecam = null }: {
+  projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[]; facecam?: FaceCam | null;
   playhead: number; setPlayhead: (t: number) => void; playing: boolean; setPlaying: (p: boolean) => void;
   lightPreview?: boolean; onLightPreview?: (on: boolean) => void;
 }) {
@@ -50,6 +51,9 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   const videoTracks = timeline.tracks.filter((t) => t.kind === "video");
   const layers = videoTracks.map((t) => ({ track: t, clip: t.hidden ? null : clipAt(t, playhead) }));
   const hasPicture = layers.some((l) => l.clip);
+  const camAsset = facecam ? media[facecam.media_id] : undefined;
+  const cam = camAt(timeline, facecam, camAsset, playhead);
+  const camRef = useRef<HTMLVideoElement | null>(null);
 
   // ---- Web Audio: per-element gain -> master -> stereo analysers (meters)
   const audio = useRef<{ ctx: AudioContext; master: GainNode; an: [AnalyserNode, AnalyserNode]; gains: Map<HTMLMediaElement, GainNode> } | null>(null);
@@ -181,6 +185,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
       if (clip) syncEl(v, clip.media_id, sourceTimeAt(clip, playhead), clip.speed, null);
       else syncEl(v, null, 0, 1, null);
     }
+    if (camRef.current) {
+      if (cam && facecam) syncEl(camRef.current, facecam.media_id, cam.camTime, cam.speed, null);
+      else syncEl(camRef.current, null, 0, 1, null);
+    }
     const censoring = active.some(({ e }) => e.kind === "censor");
     for (const track of timeline.tracks) {
       if (track.kind !== "audio") continue;
@@ -203,7 +211,32 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     }
     for (const [id, a] of sounds.current) if (!ids.has(id) || !playing) { if (!a.paused && a.currentTime > 0.05 && !ids.has(id)) a.pause(); sounds.current.delete(id); }
     played.current = ids;
-  }, [playhead, playing, timeline, lightPreview]);
+  }, [playhead, playing, timeline, lightPreview, facecam]);
+
+  /** Face cam: same box, crop, shape and border as the export (background removal is export-only). */
+  const camLayer = () => {
+    if (!facecam || !camAsset) return null;
+    const full = !!cam?.full;
+    const box = full ? { x: 0, y: 0, w: 1, h: 1 } : layoutBox(facecam, output.width, output.height, camAspect(facecam, camAsset));
+    const k = scr.w / output.width;                       // same scale both ways, like the other layers
+    const oy = (scr.h - output.height * k) / 2;
+    const bw = box.w * output.width * k, bh = box.h * output.height * k;
+    const crop = full ? { left: 0, right: 0, top: 0, bottom: 0 } : facecam.crop;
+    const vw = camAsset.width || 16, vh = camAsset.height || 9;
+    const cw = vw * (1 - crop.left - crop.right), ch = vh * (1 - crop.top - crop.bottom);
+    const s = Math.max(bw / cw, bh / ch);
+    const shape = full ? "rect" : facecam.shape;
+    const border = full || facecam.remove_bg ? 0 : facecam.border * output.width * k;
+    const shadows = [border ? `0 0 0 ${border}px ${facecam.border_color}` : "", !full && facecam.shadow && !facecam.remove_bg ? `0 ${scr.w * 0.004}px ${scr.w * 0.012}px rgba(0,0,0,.55)` : ""].filter(Boolean);
+    return (
+      <div data-testid="facecam-layer" title="Face cam" style={{ position: "absolute", left: box.x * output.width * k, top: oy + box.y * output.height * k, width: bw, height: bh,
+        overflow: "hidden", borderRadius: shape === "circle" ? "50%" : shape === "rounded" ? Math.min(bw, bh) * 0.12 : 0,
+        boxShadow: shadows.join(", ") || undefined, opacity: cam ? cam.alpha : 0, visibility: cam ? "visible" : "hidden" }}>
+        <video ref={camRef} muted playsInline preload="auto" style={{ position: "absolute", maxWidth: "none", objectFit: "fill",
+          width: vw * s, height: vh * s, left: -crop.left * vw * s - (cw * s - bw) / 2, top: -crop.top * vh * s - (ch * s - bh) / 2 }} />
+      </div>
+    );
+  };
 
   const step = (frames: number) => { setPlaying(false); setPlayhead(Math.max(0, Math.min(duration, playhead + frames / output.fps))); };
   const ar = output.width / output.height;
@@ -237,6 +270,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
                 onError={() => setVideoError("This file can't play in the browser yet — a preview copy is being prepared. Export still uses the original.")}
                 onLoadedData={() => setVideoError(null)} />
             ))}
+            {camLayer()}
           </div>
           {flash && <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.8)" }} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (

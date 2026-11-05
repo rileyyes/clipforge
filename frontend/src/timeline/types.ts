@@ -43,6 +43,9 @@ export const TRANSITIONS = [
   ["smooth_left", "Smooth left"], ["smooth_right", "Smooth right"], ["cover_left", "Cover left"], ["reveal_right", "Reveal right"],
   ["circle_open", "Circle open"], ["circle_close", "Circle close"], ["radial", "Radial sweep"], ["zoom_in", "Zoom in"],
   ["pixelize", "Pixelize"], ["blur", "Blur"],
+  ["whip_left", "Whip pan left"], ["whip_right", "Whip pan right"], ["spin", "Spin"], ["glitch", "Glitch"],
+  ["rgb_split", "RGB split"], ["light_leak", "Light leak"], ["zoom_blur", "Zoom blur"],
+  ["flash_cut", "Flash cut"], ["shake_cut", "Shake cut"],
 ] as const;
 export type TransitionKind = (typeof TRANSITIONS)[number][0];
 export interface Transition { kind: TransitionKind; duration: number }
@@ -116,6 +119,16 @@ export interface AudioSettings {
   enhance_voice: boolean; ducking: "off" | "light" | "medium" | "strong";
 }
 
+export interface CamRange { start: number; end: number }   // main recording, source seconds
+export interface CamBox { x: number; y: number; w: number; h: number }  // fractions of the frame
+export type CamCorner = "top_left" | "top_right" | "bottom_left" | "bottom_right" | "custom";
+export interface FaceCam {
+  enabled: boolean; media_id: string; main_media_id: string; offset: number;
+  corner: CamCorner; size: number; margin: number; box: CamBox; crop: Crop;
+  shape: "rect" | "rounded" | "circle"; border: number; border_color: string; shadow: boolean;
+  remove_bg: boolean; hidden: CamRange[]; full: CamRange[];
+}
+
 export interface Project {
   schema_version: number;
   id: string;
@@ -130,7 +143,10 @@ export interface Project {
   effects: Effect[];
   captions: CaptionSettings;
   audio: AudioSettings;
+  facecam?: FaceCam | null;
   missing_media?: string[];
+  /** media ids whose background-removal mask is ready */
+  mattes?: string[];
 }
 
 export type MediaMap = Record<string, MediaAsset>;

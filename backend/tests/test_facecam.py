@@ -363,3 +363,37 @@ def test_api_face_cam_flow(server, tmp_path):
     assert st == 200 and saved["facecam"] is None
     assert server.req("DELETE", f"/api/projects/{p['id']}/media/{cam}")[0] == 204
     assert not (server.settings.projects_dir / p["id"] / "media" / "matte" / f"{cam}.mp4").exists()
+
+
+def test_layout_vectors_shared_with_the_editor():
+    """The Editor's preview (frontend/src/timeline/facecam.ts) is tested against this file too."""
+    cases = json.loads((Path(__file__).parent / "data" / "facecam_layout_vectors.json").read_text())
+    for c in cases:
+        b = FC.layout_box(FaceCam(**c["fc"]), c["W"], c["H"], c["aspect"])
+        assert b.model_dump() == c["box"]
+
+
+# ---------------------------------------------------------------- Shorts
+def test_short_with_stacked_face_cam(tmp_path):
+    from app import shorts as SH
+    s, p, pdir = make(tmp_path, [dict(start=0, source_in=0, source_out=6)], offset=0, corner="bottom_right")
+    src = p.model_dump(mode="json")
+    main = p.media[0].model_dump(mode="json")
+    n = iter(range(1000))
+    nid = lambda: f"{next(n):032x}"  # noqa: E731
+    doc = SH.build_short_project(src, main, 1, 5, [], 1.0, "", False, nid, "stacked")
+    st = ProjectStore(tmp_path / "projects")
+    short = st.create_from(p.id, "short", doc)
+    assert short.facecam.corner == "custom" and short.facecam.box.h == SH.STACK_CAM
+    out, _ = render(s, short, st.dir(short.id))
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", "1.5", "-i", str(out), "-frames:v", "1",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], check=True, capture_output=True).stdout
+    f = np.frombuffer(raw, np.uint8).reshape(1920, 1080, 3).astype(int)
+    assert near(f[300, 540], COLOURS["green"]) and near(f[20, 20], COLOURS["green"])  # cam: main 2.5 -> green, full width
+    assert near(f[1400, 540], (128, 128, 128)) and near(f[1900, 20], (128, 128, 128))  # game fills the rest
+    assert near(f[790, 540], (128, 128, 128))
+    # corner layout keeps the cam's corner; "none" drops it; another recording drops it
+    assert SH.build_short_project(src, main, 1, 5, [], 1.0, "", False, nid, "corner")["facecam"]["corner"] == "bottom_right"
+    assert SH.build_short_project(src, main, 1, 5, [], 1.0, "", False, nid, "none")["facecam"] is None
+    cam = p.media[1].model_dump(mode="json")
+    assert SH.build_short_project(src, cam, 1, 5, [], 1.0, "", False, nid, "stacked")["facecam"] is None

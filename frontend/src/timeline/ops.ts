@@ -2,7 +2,7 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
-import type { Clip, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Track, TrackKind } from "./types";
+import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Track, TrackKind } from "./types";
 import { KF_LIMITS } from "./keyframes";
 
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
@@ -501,4 +501,64 @@ export function setFades(tl: Timeline, id: string, fade_in: number, fade_out: nu
 
 export function setTrackRole(tl: Timeline, id: string, role: "dialogue" | "music"): OpResult {
   return { timeline: withTracks(tl, (t) => (t.id === id && t.kind === "audio" ? { ...t, role } : t)) };
+}
+
+// ---------------------------------------------------------------- smoother jump cuts
+// Same rules as backend/app/jumpcuts.py (both checked against tests/data/jumpcut_vectors.json).
+export type JumpCutMode = "off" | "punch" | "blend" | "whip";
+export const JUMP_PUNCH = 0.055;   // crop each side -> ~1.12x zoom
+const JUMP_BLEND = { kind: "crossfade", duration: 0.12 } as const;
+const JUMP_WHIP = 0.25;
+
+const isPunch = (c?: Crop) => !!c && (["left", "right", "top", "bottom"] as const).every((k) => Math.abs((c[k] ?? 0) - JUMP_PUNCH) < 1e-6);
+const isPlain = (c?: Crop) => !c || (["left", "right", "top", "bottom"] as const).every((k) => Math.abs(c[k] ?? 0) < 1e-6);
+const ourTransition = (t?: Clip["transition_in"]) => !!t && (
+  (t.kind === JUMP_BLEND.kind && Math.abs(t.duration - JUMP_BLEND.duration) < 1e-6) ||
+  ((t.kind === "whip_left" || t.kind === "whip_right") && Math.abs(t.duration - JUMP_WHIP) < 1e-6));
+const clipDur = (c: Clip) => (c.source_out - c.source_in) / (c.speed ?? 1);
+
+/** Back-to-back clips of the same footage with a stretch cut out between them (indexes into the start-sorted list). */
+export function jumpPairs(clips: Clip[]): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i + 1 < clips.length; i++) {
+    const a = clips[i], b = clips[i + 1];
+    if (a.media_id === b.media_id && Math.abs(b.start - (a.start + clipDur(a))) < 0.02 && b.source_in - a.source_out > 0.04) out.push([i, i + 1]);
+  }
+  return out;
+}
+
+export function smoothJumpCuts(tl: Timeline, mode: JumpCutMode): OpResult & { count?: number } {
+  const vi = tl.tracks.findIndex((t) => t.kind === "video");
+  if (vi < 0) return { error: "No video track" };
+  if (tl.tracks[vi].locked) return { error: `Track ${tl.tracks[vi].name} is locked` };
+  const clips = [...tl.tracks[vi].clips].sort((a, b) => a.start - b.start).map((c) => {
+    const n: Clip = { ...c };
+    if (isPunch(n.crop)) n.crop = { left: 0, right: 0, top: 0, bottom: 0 };
+    if (ourTransition(n.transition_in)) n.transition_in = null;
+    return n;
+  });
+  const pairs = jumpPairs(clips);
+  let count = 0;
+  if (mode === "punch") {
+    const pos = new Map<number, number>();
+    for (const [i, j] of pairs) { if (!pos.has(i)) pos.set(i, 0); pos.set(j, pos.get(i)! + 1); }
+    for (const [idx, p] of pos) {
+      if (p % 2 === 1 && isPlain(clips[idx].crop)) {
+        clips[idx] = { ...clips[idx], crop: { left: JUMP_PUNCH, right: JUMP_PUNCH, top: JUMP_PUNCH, bottom: JUMP_PUNCH } };
+        count++;
+      }
+    }
+  } else if (mode === "blend" || mode === "whip") {
+    let k = 0;
+    const d = mode === "blend" ? JUMP_BLEND.duration : JUMP_WHIP;
+    for (const [i, j] of pairs) {
+      const a = clips[i], b = clips[j];
+      if (b.transition_in || Math.min(clipDur(a), clipDur(b)) * 0.9 < d) continue;
+      const kind = mode === "blend" ? JUMP_BLEND.kind : (k % 2 === 0 ? "whip_left" : "whip_right");
+      clips[j] = { ...b, transition_in: { kind, duration: d } };
+      k++; count++;
+    }
+  }
+  const timeline = withTracks(tl, (t, i) => (i === vi ? { ...t, clips } : t));
+  return { timeline: sanitize(timeline), count };
 }

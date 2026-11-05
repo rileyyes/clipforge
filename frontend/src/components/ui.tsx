@@ -42,6 +42,7 @@ const P: Record<string, string> = {
   fit: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   phone: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
+  webcam: "M12 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8 21h8M12 17v4",
 };
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
@@ -124,7 +125,7 @@ export function useJobs(projectId?: string, enabled = true) {
   return { jobs, refresh };
 }
 
-const KIND_LABEL: Record<string, string> = { ai_rate: "AI rating", make_short: "Make Short", transcribe: "Transcribe speech", youtube_upload: "Upload to YouTube", derive_media: "Prepare media", render: "Export", analyze: "Analyse recording", thumb_analyze: "Analyse edit for thumbnail", thumb_generate: "Generate artwork" };
+const KIND_LABEL: Record<string, string> = { facecam_sync: "Line up face cam", facecam_matte: "Face cam background removal", ai_rate: "AI rating", make_short: "Make Short", transcribe: "Transcribe speech", youtube_upload: "Upload to YouTube", derive_media: "Prepare media", render: "Export", analyze: "Analyse recording", thumb_analyze: "Analyse edit for thumbnail", thumb_generate: "Generate artwork" };
 
 export function statusChip(s: Job["status"]) {
   const cls = s === "succeeded" ? "ok" : s === "running" || s === "queued" ? "run" : s === "cancelled" ? "" : "err";
