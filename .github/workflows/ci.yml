@@ -31,6 +31,7 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install FFmpeg (Ubuntu)
         if: runner.os == 'Linux'
+        timeout-minutes: 10  # a stuck apt mirror fails fast instead of hanging the job
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
       - name: Install FFmpeg (Windows)
         if: runner.os == 'Windows'
@@ -105,6 +106,7 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install FFmpeg
+        timeout-minutes: 10  # a stuck apt mirror fails fast instead of hanging the job
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
       - name: Install Python dependencies + Chromium
         run: |
