@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   MIN_CLIP, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
-  addBlur, addTitle, cutRanges, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
+  addBlur, addTitle, cutRanges, fitMusicToVideo, snapCutsToBeats, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
 import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
@@ -88,7 +88,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 22);
+      const op = Math.floor(r() * 23);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -138,6 +138,8 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
             mode: pick(["blur", "pixelate", "black"] as const), keys: Array.from({ length: Math.floor(r() * 5) + 1 }, () => ({ t: r() * dur, x: r(), y: r(), w: r(), h: r() })) })) : { error: "none" };
           break;
         }
+        case 22: res = r() < 0.7 ? snapCutsToBeats(tl, Array.from({ length: 40 }, (_, i) => i * (0.3 + r() * 0.4)), M, r() * 0.5)
+          : fitMusicToVideo(tl, r() * 4); break;
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

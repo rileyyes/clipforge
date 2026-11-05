@@ -6,6 +6,7 @@ responses. See ARCHITECTURE.md for the planned FastAPI migration.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -622,6 +623,7 @@ def build_routes(svc: Services) -> list[Route]:
         store.update(pid, lambda d: {**d, "media": [m for m in d["media"]
                                                      if m["id"] != asset.id]})
         (store.dir(pid) / "analysis" / f"{asset.id}.json").unlink(missing_ok=True)
+        (store.dir(pid) / "analysis" / f"beats-{asset.id}.json").unlink(missing_ok=True)
         base = store.dir(pid) / "media"
         stuck = []
         for sub, name in (("original", asset.stored_name), ("proxy", asset.proxy),
@@ -1103,6 +1105,30 @@ def build_routes(svc: Services) -> list[Route]:
             x, y, w, h = BL.to_output((sx, sy, sw_, sh_), rect, out.width, out.height)
             boxes.append({"x": round(x, 4), "y": round(y, 4), "w": round(min(w, 1), 4), "h": round(min(h, 1), 4)})
         return JSONResponse({"faces": boxes})
+
+    # -- phase 10: music beats ------------------------------------------------
+    class BeatsBody(BaseModel):
+        media_id: str
+
+    async def beats(request: Request):
+        """Tempo and beat times (source seconds) of a music file, for cutting on the beat"""
+        pid = pid_of(request)
+        body = await body_model(request, BeatsBody)
+        p = load(pid)
+        m = p.media_by_id().get(body.media_id)
+        if m is None or not m.has_audio:
+            return err(404, "That file has no sound.")
+        cache = store.dir(pid) / "analysis" / f"beats-{m.id}.json"
+        if cache.exists():
+            return JSONResponse(json.loads(cache.read_bytes()))
+        from . import beats as BT
+        from starlette.concurrency import run_in_threadpool
+        src = store.dir(pid) / "media" / "original" / m.stored_name
+        res = await run_in_threadpool(lambda: BT.detect(BT.decode(S.ffmpeg_bin, src)))
+        res["media_id"] = m.id
+        cache.parent.mkdir(exist_ok=True)
+        atomic_write_json(cache, res)
+        return JSONResponse(res)
 
     async def start_ai_rate(request: Request):
         pid = pid_of(request)
@@ -1683,6 +1709,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/facecam/matte", facecam_matte, methods=["POST"]),
         Route(P + "/blur/track", blur_track, methods=["POST"]),
         Route(P + "/blur/faces", blur_faces, methods=["POST"]),
+        Route(P + "/beats", beats, methods=["POST"]),
         Route(P + "/shorts", shorts_make, methods=["POST"]),
         Route(P + "/publish/suggest", publish_suggest, methods=["POST"]),
         Route(P + "/youtube/upload", youtube_upload, methods=["POST"]),

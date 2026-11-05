@@ -708,3 +708,77 @@ export function updateBlur(tl: Timeline, id: string, patch: Partial<Omit<Blur, "
 export function removeBlur(tl: Timeline, id: string): OpResult {
   return { timeline: { ...tl, blurs: (tl.blurs ?? []).filter((x) => x.id !== id) } };
 }
+
+// ---------------------------------------------------------------- music beats
+const isMusicTrack = (t: Track) => t.kind === "audio" && t.role === "music";
+
+/** Beat times on the timeline: each music clip's beats (source seconds) placed where it plays. */
+export function beatTimes(tl: Timeline, beatsByMedia: Record<string, number[]>): number[] {
+  const out: number[] = [];
+  for (const t of tl.tracks) {
+    if (!isMusicTrack(t) || t.muted) continue;
+    for (const c of t.clips) for (const b of beatsByMedia[c.media_id] ?? []) {
+      if (b >= c.source_in && b < c.source_out) out.push(round6(c.start + (b - c.source_in) / c.speed));
+    }
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** Move each cut between back-to-back V1 clips onto the nearest beat (within ``tolerance`` s)
+ * with a roll edit: the clip before gets longer/shorter and the one after starts
+ * earlier/later by the same amount, so nothing else moves. Linked sound moves with the
+ * picture. Cuts without room in the footage are left alone. */
+export function snapCutsToBeats(tl: Timeline, beats: number[], media: MediaMap, tolerance = 0.25): OpResult & { count?: number; skipped?: number } {
+  const vi = tl.tracks.findIndex((t) => t.kind === "video");
+  if (vi < 0 || !beats.length) return { error: "No beats to snap to — find the beat of your music first" };
+  const v = [...tl.tracks[vi].clips].sort((a, b) => a.start - b.start);
+  const changes = new Map<string, Partial<Clip>>();   // by link group (or clip id)
+  let count = 0, skipped = 0;
+  const groupOf = (c: Clip) => tl.tracks.flatMap((t) => t.clips.filter((x) => x.id === c.id || (c.link_id && x.link_id === c.link_id)).map((x) => ({ x, t })));
+  for (let i = 0; i + 1 < v.length; i++) {
+    const a = v[i], b = v[i + 1];
+    const cut = clipEnd(a);
+    if (Math.abs(b.start - cut) > 0.02) continue;
+    let near = beats[0];
+    for (const t of beats) if (Math.abs(t - cut) < Math.abs(near - cut)) near = t;
+    const d = near - cut;
+    if (Math.abs(d) < 0.01 || Math.abs(d) > tolerance) continue;
+    const ga = groupOf(a), gb = groupOf(b);
+    const eff = (x: Clip) => ({ ...x, ...(changes.get(x.id) ?? {}) });   // with earlier snaps applied
+    const okA = ga.every(({ x }) => { const e = eff(x), so = e.source_out + d * e.speed; return so <= (media[x.media_id]?.duration ?? 0) + 1e-6 && (so - e.source_in) / e.speed >= MIN_CLIP + 0.05; });
+    const okB = gb.every(({ x }) => { const e = eff(x), si = e.source_in + d * e.speed; return si >= -1e-6 && (e.source_out - si) / e.speed >= MIN_CLIP + 0.05; });
+    const locked = [...ga, ...gb].some(({ t }) => t.locked);
+    if (!okA || !okB || locked) { skipped++; continue; }
+    for (const { x } of ga) { const e = eff(x); changes.set(x.id, { ...(changes.get(x.id) ?? {}), source_out: round6(e.source_out + d * e.speed) }); }
+    for (const { x } of gb) { const e = eff(x); changes.set(x.id, { ...(changes.get(x.id) ?? {}), source_in: round6(e.source_in + d * e.speed), start: round6(e.start + d) }); }
+    v[i + 1] = { ...b, start: b.start + d, source_in: b.source_in + d * b.speed };  // later cuts see the new position
+    count++;
+  }
+  if (!count) return skipped ? { error: `No cut could move onto a beat (${skipped} had no spare footage)` } : { error: "No cuts are close to a beat" };
+  const timeline = withTracks(tl, (t) => ({ ...t, clips: sortClips(t.clips.map((c) => (changes.has(c.id) ? { ...c, ...changes.get(c.id) } : c))) }));
+  // a roll must never make neighbours overlap on any track
+  for (const t of timeline.tracks) {
+    const cs = [...t.clips].sort((x, y) => x.start - y.start);
+    for (let i = 0; i + 1 < cs.length; i++) if (clipEnd(cs[i]) > cs[i + 1].start + 1e-4) return { error: `Snapping would overlap clips on ${t.name}` };
+  }
+  return { timeline: sanitize(timeline), count, skipped };
+}
+
+/** Trim music that runs past the end of the video, with a fade-out (and fade in at its start if none). */
+export function fitMusicToVideo(tl: Timeline, fade = 2): OpResult {
+  const end = Math.max(0, ...tl.tracks.filter((t) => !isMusicTrack(t)).flatMap((t) => t.clips.map(clipEnd)));
+  if (end <= 0) return { error: "Put your video on the timeline first" };
+  let changed = false;
+  const timeline = withTracks(tl, (t) => {
+    if (!isMusicTrack(t)) return t;
+    const clips = t.clips.filter((c) => c.start < end - MIN_CLIP).map((c) => {
+      if (clipEnd(c) <= end + EPS) return c;
+      changed = true;
+      const d = end - c.start;
+      return { ...c, source_out: round6(c.source_in + d * c.speed), fade_out: round6(Math.min(fade, d / 2)), fade_in: Math.min(c.fade_in ?? 0, d / 2) };
+    });
+    if (clips.length !== t.clips.length) changed = true;
+    return { ...t, clips };
+  });
+  return changed ? { timeline: sanitize(timeline) } : { error: "The music already ends with the video" };
+}

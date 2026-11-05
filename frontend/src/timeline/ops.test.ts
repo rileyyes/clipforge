@@ -204,3 +204,36 @@ test("cutRanges removes stretches from picture + sound together and closes the g
   const locked = ok(toggleTrack(tl, tl.tracks[2].id, "locked"));
   assert.ok(cutRanges(locked, [[1, 2]]).error);
 });
+
+import { beatTimes, snapCutsToBeats, fitMusicToVideo } from "./ops";
+
+test("cuts snap to the nearest beat with roll edits; linked sound follows; music fits the video", () => {
+  let { tl } = withOne();                                   // linked V1+A1 0-10 s (media is 10 s long)
+  tl = ok(splitAt(tl, [tl.tracks[0].clips[0].id, tl.tracks[2].clips[0].id], 4));
+  tl = ok(cutRanges(tl, [[4, 5]]));                         // a jump cut at 4.0 (sources 0-4 | 5-10)
+  tl = ok(addTrack(tl, "audio"));
+  const mt = tl.tracks[3].id;
+  tl = ok(setTrackRole(tl, mt, "music"));
+  tl = { ...tl, tracks: tl.tracks.map((t) => t.id === mt ? { ...t, clips: [{ id: id(98), media_id: music.id, start: 0, source_in: 2, source_out: 30, speed: 1, volume: 1 }] } : t) };
+  const beats = beatTimes(tl, { [music.id]: [2.5, 3.0, 6.1, 6.6] });
+  assert.deepEqual(beats, [0.5, 1, 4.1, 4.6]);
+  const r = snapCutsToBeats(tl, beats, M);
+  const out = ok(r);
+  assert.equal(r.count, 1);
+  const v = out.tracks[0].clips, a = out.tracks[2].clips;
+  assert.ok(Math.abs(clipEnd(v[0]) - 4.1) < 1e-6 && Math.abs(v[1].start - 4.1) < 1e-6);
+  assert.ok(Math.abs(v[0].source_out - 4.1) < 1e-6 && Math.abs(v[1].source_in - 5.1) < 1e-6);
+  assert.deepEqual(a.map((c) => [c.start, c.source_in, c.source_out]), v.map((c) => [c.start, c.source_in, c.source_out]));
+  assert.ok(Math.abs(clipEnd(v[1]) - 9) < 1e-6);            // nothing else moved
+  assert.ok(snapCutsToBeats(out, beats, M).error);          // already on the beat
+  const fit = ok(fitMusicToVideo(out));
+  const m = fit.tracks[3].clips[0];
+  assert.ok(Math.abs(clipEnd(m) - 9) < 1e-6 && m.fade_out === 2);
+});
+
+test("snapping skips cuts with no spare footage", () => {
+  let { tl } = withOne();
+  tl = ok(splitAt(tl, [tl.tracks[0].clips[0].id, tl.tracks[2].clips[0].id], 9.9));
+  const r = snapCutsToBeats(tl, [9.95], M, 0.25);       // the second piece would be < 0.09 s
+  assert.ok(r.error && /spare footage/.test(r.error));
+});

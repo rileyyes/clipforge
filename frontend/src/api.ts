@@ -106,6 +106,7 @@ export interface Extras {
   censor_sound_asset?: string | null;
   fun: "off" | "minimal" | "balanced" | "chaotic"; captions: boolean; audio_polish: boolean;
   jump_cuts?: "off" | "punch" | "blend" | "whip";
+  remove_fillers?: boolean; remove_retakes?: boolean;
 }
 
 // ---------------------------------------------------------------- face cam

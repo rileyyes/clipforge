@@ -7,6 +7,7 @@ import FaceCamPanel from "../components/FaceCamPanel";
 import ScriptPanel from "../components/ScriptPanel";
 import TitlesPanel from "../components/TitlesPanel";
 import BlurPanel from "../components/BlurPanel";
+import BeatPanel from "../components/BeatPanel";
 import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
@@ -14,7 +15,7 @@ import TimelineView from "../components/TimelineView";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { History } from "../timeline/history";
 import {
-  addMedia, addTrack, cutRanges, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
+  addMedia, addTrack, beatTimes, cutRanges, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
   setTransition, smoothJumpCuts, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type JumpCutMode, type OpResult,
 } from "../timeline/ops";
 import type { AudioSettings, CaptionSettings, Effect, FaceCam, MediaMap, Project, Timeline } from "../timeline/types";
@@ -32,7 +33,9 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
   const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
-  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "script" | "cam" | "history">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "history">("clip");
+  const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
+  const [showBeats, setShowBeats] = useState(true);
   const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
@@ -332,11 +335,15 @@ export default function Editor({ projectId }: { projectId: string }) {
             <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} aria-label="Effects" title="Effects, bleeps, captions, audio" onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />FX{effects.length ? ` ${effects.length}` : ""}</button>
             <button className={"btn sm" + (rightTab === "text" ? " on" : " ghost")} title="Titles" onClick={() => setRightTab("text")}>Text</button>
             <button className={"btn sm" + (rightTab === "blur" ? " on" : " ghost")} title="Privacy blur" onClick={() => setRightTab("blur")}>Blur</button>
+            <button className={"btn sm" + (rightTab === "beat" ? " on" : " ghost")} title="Music beat" onClick={() => setRightTab("beat")}>Beat</button>
             <button className={"btn sm" + (rightTab === "script" ? " on" : " ghost")} title="Edit by transcript" onClick={() => setRightTab("script")}>Script</button>
             <button className={"btn sm" + (rightTab === "cam" ? " on" : " ghost")} aria-label="Face cam" title="Face cam" onClick={() => setRightTab("cam")}><Icon name="webcam" size={13} />Cam</button>
             <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} aria-label="History" title="History (versions)" onClick={() => setRightTab("history")}><Icon name="undo" size={13} /></button>
           </div>
-          {rightTab === "blur" ? (
+          {rightTab === "beat" ? (
+            <BeatPanel projectId={projectId} timeline={timeline} media={media} commit={commit} beats={beats} setBeats={setBeats}
+              showBeats={showBeats} setShowBeats={setShowBeats} />
+          ) : rightTab === "blur" ? (
             <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} />
           ) : rightTab === "text" ? (
@@ -378,7 +385,10 @@ export default function Editor({ projectId }: { projectId: string }) {
         onTrackToggle={(id, flag) => commit(toggleTrack(timeline, id, flag), `Toggle ${flag}`)}
         onTrackRole={(id, role) => commit(setTrackRole(timeline, id, role), role === "music" ? "Set music track" : "Set dialogue track")}
         onRemoveTrack={(id) => commit(removeTrack(timeline, id), "Remove track")}
-        markers={effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null) as any}
+        markers={[
+          ...effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null),
+          ...(showBeats ? beatTimes(timeline, Object.fromEntries(Object.entries(beats).map(([k, v]) => [k, v.beats]))).map((t) => ({ t, color: "#2bb38a", title: "beat" })) : []),
+        ] as any}
         toolbar={toolbar} />
     </div>
   );
