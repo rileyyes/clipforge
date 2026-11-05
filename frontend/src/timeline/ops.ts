@@ -233,14 +233,25 @@ export function deleteClips(tl: Timeline, ids: string[], ripple = false): OpResu
   const firstHole = holes[0][0];
   const blocked = removed.tracks.find((t) => t.locked && t.clips.some((c) => c.start >= firstHole - EPS && shiftAt(c.start) > EPS));
   if (blocked) return { error: `Ripple would move clips on locked track ${blocked.name}` };
+  // titles and blurs move with the picture (one that started in a closed gap starts where it was)
+  const newTime = (t: number) => {
+    const inHole = holes.find(([a, b]) => t > a + EPS && t < b - EPS);
+    const at = inHole ? inHole[0] : t;
+    return round6(Math.max(0, at - shiftAt(at)));
+  };
+  const moved = withTracks(removed, (track) => ({
+    ...track,
+    clips: track.clips.map((c) => {
+      const sh = shiftAt(c.start);
+      return sh > EPS ? { ...c, start: round6(Math.max(0, c.start - sh)) } : c;
+    }),
+  }));
   return {
-    timeline: withTracks(removed, (track) => ({
-      ...track,
-      clips: track.clips.map((c) => {
-        const sh = shiftAt(c.start);
-        return sh > EPS ? { ...c, start: round6(Math.max(0, c.start - sh)) } : c;
-      }),
-    })),
+    timeline: {
+      ...moved,
+      ...(removed.titles ? { titles: removed.titles.map((t) => ({ ...t, start: newTime(t.start) })) } : {}),
+      ...(removed.blurs ? { blurs: removed.blurs.map((b) => shiftBlur(b, newTime(b.start) - b.start)) } : {}),
+    },
   };
 }
 
@@ -781,4 +792,25 @@ export function fitMusicToVideo(tl: Timeline, fade = 2): OpResult {
     return { ...t, clips };
   });
   return changed ? { timeline: sanitize(timeline) } : { error: "The music already ends with the video" };
+}
+
+// ---------------------------------------------------------------- transition preview
+export interface TransitionState { a: Clip; b: Clip; kind: string; p: number; aTime: number; bTime: number }
+
+/** The transition playing at timeline time t on a track (same timing as the export:
+ *  centred on the cut, half from each clip; the outgoing clip runs past its out-point). */
+export function transitionAt(track: Track, t: number): TransitionState | null {
+  for (const b of track.clips) {
+    if (!b.transition_in) continue;
+    const h = b.transition_in.duration / 2;
+    if (t < b.start - h || t >= b.start + h) continue;
+    const a = track.clips.find((x) => x.id !== b.id && Math.abs(clipEnd(x) - b.start) < 0.02);
+    if (!a) return null;  // nothing before it: the export fades up from black instead
+    return {
+      a, b, kind: b.transition_in.kind, p: Math.max(0, Math.min(1, (t - (b.start - h)) / (2 * h))),
+      aTime: a.source_out + (t - b.start) * a.speed,
+      bTime: Math.max(0, b.source_in + (t - b.start) * b.speed),
+    };
+  }
+  return null;
 }

@@ -1,7 +1,7 @@
 import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { fmtTime, thumbUrl, waveformUrl } from "../api";
 import {
-  clipDuration, clipEnd, findClip, linkedGroup, moveClip, snap, snapPoints, timelineDuration, trimEdge, type OpResult,
+  clipDuration, clipEnd, findClip, linkedGroup, moveClip, snap, snapPoints, timelineDuration, trimEdge, updateBlur, updateTitle, type OpResult,
 } from "../timeline/ops";
 import { keyframeTimes } from "../timeline/keyframes";
 import { TRANSITIONS, type Clip, type MediaMap, type Timeline, type Track } from "../timeline/types";
@@ -82,7 +82,13 @@ export interface TimelineProps {
   onRemoveTrack: (trackId: string) => void;
   toolbar: React.ReactNode;
   markers?: { t: number; color: string; title: string }[];
+  /** titles + blurs lane: click selects, drag moves, edges resize */
+  overlaySel?: string | null;
+  onOverlaySelect?: (kind: "title" | "blur", id: string) => void;
 }
+
+const OV_H = 26;
+type OvDrag = { kind: "title" | "blur"; id: string; mode: "move" | "start" | "end"; x0: number; start: number; duration: number; moved: boolean };
 
 export default function TimelineView(p: TimelineProps) {
   const { timeline, media, pps, playhead } = p;
@@ -92,6 +98,8 @@ export default function TimelineView(p: TimelineProps) {
   const dragRef = useRef<Drag | null>(null);
   const [view, setView] = useState({ left: 0, width: 1000 });
   const [dropTrack, setDropTrack] = useState<string | null>(null);
+  const [ov, setOv] = useState<OvDrag | null>(null);
+  const [ovNow, setOvNow] = useState<{ start: number; duration: number } | null>(null);
   const zoomAnchor = useRef<{ t: number; px: number } | null>(null);
 
   const shown = drag?.preview?.timeline ?? timeline;
@@ -239,6 +247,7 @@ export default function TimelineView(p: TimelineProps) {
 
   const visible = (c: Clip) => clipEnd(c) * pps >= view.left - 200 && c.start * pps <= view.left + view.width + 200;
   const invalid = drag?.preview?.error;
+  const hasOverlays = (timeline.titles?.length ?? 0) + (timeline.blurs?.length ?? 0) > 0;
   const selected = new Set(p.selection);
 
   return (
@@ -250,6 +259,7 @@ export default function TimelineView(p: TimelineProps) {
       <div className="tl-body">
         <div className="tl-heads">
           <div className="ruler-spacer" />
+          {hasOverlays && <div className="tl-head ov-head" style={{ height: OV_H }} title="Titles and blurs (Text and Blur tabs)"><span className="name" style={{ color: "#c77dff" }}>T / Blur</span></div>}
           {timeline.tracks.map((t) => (
             <div key={t.id} className="tl-head" style={{ height: ROW_H[t.kind] }}>
               <span className="name" style={{ color: t.kind === "video" ? "var(--video-2)" : "var(--audio-2)" }}>{t.name}</span>
@@ -285,6 +295,54 @@ export default function TimelineView(p: TimelineProps) {
                 </div>
               ))}
             </div>
+            {hasOverlays && (
+              <div className="lane ov-lane" style={{ height: OV_H }} data-testid="overlay-lane"
+                onPointerDown={(e) => { if (e.button === 0 && e.target === e.currentTarget) p.seek(timeAt(e.clientX)); }}>
+                {[...(timeline.titles ?? []).map((x) => ({ kind: "title" as const, x, label: x.text || "Title" })),
+                  ...(timeline.blurs ?? []).map((x) => ({ kind: "blur" as const, x, label: { blur: "Blur", pixelate: "Pixelate", black: "Black box" }[x.mode] + (x.keys.length > 1 ? " · follows" : "") }))]
+                  .map(({ kind, x, label }) => {
+                    const cur = ov && ov.id === x.id && ovNow ? ovNow : { start: x.start, duration: x.duration };
+                    const w = Math.max(6, cur.duration * pps);
+                    const down = (e: React.PointerEvent, mode: OvDrag["mode"]) => {
+                      if (e.button !== 0) return;
+                      e.stopPropagation();
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      setOv({ kind, id: x.id, mode, x0: e.clientX, start: x.start, duration: x.duration, moved: false });
+                      setOvNow({ start: x.start, duration: x.duration });
+                    };
+                    return (
+                      <div key={x.id} className={`ov-item ${kind}${p.overlaySel === x.id ? " sel" : ""}`} data-testid={`ov-${kind}`}
+                        style={{ left: cur.start * pps, width: w }} title={`${label} · ${fmtTime(cur.start)} · ${cur.duration.toFixed(1)} s`}
+                        onPointerDown={(e) => down(e, "move")}
+                        onPointerMove={(e) => {
+                          if (!ov || ov.id !== x.id) return;
+                          const dt = (e.clientX - ov.x0) / pps;
+                          if (Math.abs(e.clientX - ov.x0) > 2) ov.moved = true;
+                          let start = ov.start, duration = ov.duration;
+                          if (ov.mode === "move") start = Math.max(0, ov.start + dt);
+                          else if (ov.mode === "end") duration = Math.max(kind === "title" ? 0.5 : 0.1, ov.duration + dt);
+                          else { const s2 = Math.min(ov.start + ov.duration - 0.5, Math.max(0, ov.start + dt)); duration = ov.duration - (s2 - ov.start); start = s2; }
+                          if (p.snapping && ov.mode !== "end") start = snap(start, snapPoints(timeline, new Set(), playhead), 8 / pps);
+                          setOvNow({ start, duration });
+                        }}
+                        onPointerUp={() => {
+                          const d = ov, now = ovNow;
+                          setOv(null); setOvNow(null);
+                          if (!d || !now) return;
+                          if (!d.moved) { p.onOverlaySelect?.(kind, x.id); return; }
+                          const patch = { start: now.start, duration: now.duration };
+                          p.commit(kind === "title" ? updateTitle(timeline, x.id, patch) : updateBlur(timeline, x.id, patch),
+                            d.mode === "move" ? `Move ${kind}` : `Resize ${kind}`);
+                          p.onOverlaySelect?.(kind, x.id);
+                        }}>
+                        {w > 14 && <div className="handle l" onPointerDown={(e) => down(e, "start")} />}
+                        {w > 30 && <span className="ov-label">{label}</span>}
+                        {w > 14 && <div className="handle r" onPointerDown={(e) => down(e, "end")} />}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
             {shown.tracks.map((t) => (
               <div key={t.id} ref={(el) => { laneRefs.current[t.id] = el; }}
                 className={"lane" + (t.locked ? " locked" : "") + (dropTrack === t.id ? " drop" : "")}
@@ -338,7 +396,7 @@ export default function TimelineView(p: TimelineProps) {
                 })}
               </div>
             ))}
-            <div className="playhead" style={{ left: playhead * pps, height: RULER_H + timeline.tracks.reduce((s, t) => s + ROW_H[t.kind] + 1, 0) }} />
+            <div className="playhead" style={{ left: playhead * pps, height: RULER_H + (hasOverlays ? OV_H + 1 : 0) + timeline.tracks.reduce((s, t) => s + ROW_H[t.kind] + 1, 0) }} />
             {drag?.snapAt != null && <div className="snapline" style={{ left: drag.snapAt * pps }} />}
           </div>
         </div>

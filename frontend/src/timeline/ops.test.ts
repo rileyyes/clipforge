@@ -237,3 +237,38 @@ test("snapping skips cuts with no spare footage", () => {
   const r = snapCutsToBeats(tl, [9.95], M, 0.25);       // the second piece would be < 0.09 s
   assert.ok(r.error && /spare footage/.test(r.error));
 });
+
+import { addTitle, addBlur } from "./ops";
+
+test("ripple delete moves titles and blurs along with the picture", () => {
+  let { tl } = withOne();
+  tl = ok(addMedia(tl, media));                                   // two linked pairs: 0-10, 10-20
+  let r = addTitle(tl, "lower_third", 12); tl = ok(r);
+  r = addBlur(tl, 15, { x: 0.1, y: 0.1, w: 0.2, h: 0.2 }); tl = ok(r);
+  r = addTitle(tl, "big_title", 3); tl = ok(r);                    // inside the deleted clip
+  const first = tl.tracks[0].clips[0].id;
+  const out = ok(deleteClips(tl, [first], true));
+  const ts = [...out.titles!].sort((a, b) => a.start - b.start);
+  assert.deepEqual(ts.map((t) => t.start), [0, 2]);               // 3 -> start of the gap (0), 12 -> 2
+  assert.equal(out.blurs![0].start, 5);
+  assert.equal(out.blurs![0].keys[0].t, 5);
+  const plain = ok(deleteClips(tl, [first], false));               // no ripple: nothing moves
+  assert.deepEqual([...plain.titles!].map((t) => t.start).sort((a, b) => a - b), [3, 12]);
+});
+
+import { transitionAt, setTransition } from "./ops";
+
+test("transitionAt: centred on the cut, both pictures at the right moments", () => {
+  let { tl } = withOne();
+  tl = ok(addMedia(tl, media));                                // 0-10, 10-20 (V1)
+  const b = tl.tracks[0].clips[1];
+  tl = ok(setTransition(tl, b.id, { kind: "wipe_left", duration: 1 }));
+  const v = tl.tracks[0];
+  assert.equal(transitionAt(v, 9.4), null);
+  const s = transitionAt(v, 9.75)!;
+  assert.equal(s.kind, "wipe_left");
+  assert.ok(Math.abs(s.p - 0.25) < 1e-9 && Math.abs(s.aTime - 9.75) < 1e-9 && Math.abs(s.bTime - 0) < 1e-9);
+  const m = transitionAt(v, 10.25)!;
+  assert.ok(Math.abs(m.p - 0.75) < 1e-9 && Math.abs(m.aTime - 10.25) < 1e-9 && Math.abs(m.bTime - 0.25) < 1e-9);
+  assert.equal(transitionAt(v, 10.5), null);
+});

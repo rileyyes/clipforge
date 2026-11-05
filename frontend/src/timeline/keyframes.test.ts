@@ -59,3 +59,18 @@ test("preview CSS for colour and crop", () => {
   assert.equal(cropCss({ left: 0.1, right: 0, top: 0.25, bottom: 0 }), "inset(25.000% 0.000% 0.000% 10.000%)");
   assert.equal(cropCss({ left: 0, right: 0, top: 0, bottom: 0 }), undefined);
 });
+
+import { transitionLook } from "./transitionCss";
+import { TRANSITIONS } from "./types";
+
+test("every transition has a preview look that starts on the old picture and ends on the new one", () => {
+  const shows = (s: any) => (s.opacity ?? 1) > 0.5 && !(s.clipPath && /inset\(0 100|inset\(0 0 0 100|inset\(100|inset\(0 0 100|circle\(0/.test(s.clipPath)) && !/(^|\s)-?100(\.0+)?%/.test(s.translate ?? "");
+  for (const [kind] of TRANSITIONS) {
+    const start = transitionLook(kind, 0), end = transitionLook(kind, 1);
+    // at the start the outgoing picture is what you see (on top and visible)
+    if (start.aOnTop) assert.ok(shows(start.a), `${kind} start`);
+    // at the end the outgoing picture is gone or underneath
+    assert.ok(!end.aOnTop || !shows(end.a), `${kind} end`);
+    for (const p of [0.1, 0.5, 0.9]) assert.ok(transitionLook(kind, p));
+  }
+});

@@ -1,16 +1,16 @@
-import React, { useState } from "react";
+import React from "react";
 import { fmtTime } from "../api";
 import { addTitle, removeTitle, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
 import type { Timeline, Title, TitleTemplate } from "../timeline/types";
 import { Icon } from "./ui";
 
 /** Editor → Text: titles on the timeline (lower thirds, big titles, banners, subscribe, chapter cards). */
-export default function TitlesPanel({ timeline, playhead, seek, commit }: {
+export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel }: {
   timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
+  sel: string | null; setSel: (id: string | null) => void;
 }) {
   const titles = [...(timeline.titles ?? [])].sort((a, b) => a.start - b.start);
-  const [sel, setSel] = useState<string | null>(null);
   const cur = titles.find((t) => t.id === sel) ?? null;
   const set = (patch: Partial<Title>, label: string) => cur && commit(updateTitle(timeline, cur.id, patch), label, true);
 

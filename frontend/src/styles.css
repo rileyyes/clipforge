@@ -274,3 +274,15 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .title-row { padding: 4px 6px; border-radius: 6px; }
 .title-row:hover { background: rgba(255, 255, 255, .05); }
 .title-row.on { background: rgba(255, 90, 60, .15); }
+
+/* ---- titles + blurs lane on the timeline */
+.ov-lane { position: relative; background: rgba(199, 125, 255, .04); border-bottom: 1px solid var(--line); }
+.ov-head { font-size: 11px; }
+.ov-item { position: absolute; top: 3px; bottom: 3px; border-radius: 5px; cursor: grab; overflow: hidden; display: flex; align-items: center;
+  font-size: 11px; color: #fff; border: 1px solid rgba(255, 255, 255, .2); user-select: none; }
+.ov-item.title { background: rgba(199, 125, 255, .55); }
+.ov-item.blur { background: rgba(76, 201, 240, .45); }
+.ov-item.sel { outline: 2px solid #fff; z-index: 2; }
+.ov-item .ov-label { padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.ov-item .handle { position: absolute; top: 0; bottom: 0; width: 6px; cursor: ew-resize; background: rgba(255, 255, 255, .25); }
+.ov-item .handle.l { left: 0; } .ov-item .handle.r { right: 0; }

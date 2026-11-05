@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
-import { blurAt, clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
+import { blurAt, clipAt, sourceTimeAt, timelineDuration, transitionAt } from "../timeline/ops";
+import { transitionLook } from "../timeline/transitionCss";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
 import { camAspect, camAt, layoutBox } from "../timeline/facecam";
@@ -18,7 +19,7 @@ import { Icon } from "./ui";
  * so volume above 100% previews too) into a stereo peak meter. Elements are re-seeked only
  * when they drift > 0.25 s, so playback stays smooth.
  *
- * Preview limitations (export is exact): colour is a CSS approximation and transitions show as cuts.
+ * Preview limitations (export is exact): colour and transitions are CSS look-alikes.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
   lightPreview = false, onLightPreview, facecam = null, drawBox }: {
@@ -52,7 +53,11 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   const flash = active.some(({ e }) => e.kind === "flash");
   playheadRef.current = playhead;
   const videoTracks = timeline.tracks.filter((t) => t.kind === "video");
-  const layers = videoTracks.map((t) => ({ track: t, clip: t.hidden ? null : clipAt(t, playhead) }));
+  const layers = videoTracks.map((t) => {
+    const tr = t.hidden ? null : transitionAt(t, playhead);
+    return { track: t, clip: tr ? tr.b : t.hidden ? null : clipAt(t, playhead), tr };
+  });
+  const outRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const hasPicture = layers.some((l) => l.clip);
   const camAsset = facecam ? media[facecam.media_id] : undefined;
   const cam = camAt(timeline, facecam, camAsset, playhead);
@@ -183,11 +188,17 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   };
 
   useEffect(() => {
-    for (const { track, clip } of layers) {
+    for (const { track, clip, tr } of layers) {
       const v = videoRefs.current[track.id];
       if (!v) continue;
-      if (clip) syncEl(v, clip.media_id, sourceTimeAt(clip, playhead), clip.speed, null);
+      if (tr) syncEl(v, tr.b.media_id, tr.bTime, tr.b.speed, null);
+      else if (clip) syncEl(v, clip.media_id, sourceTimeAt(clip, playhead), clip.speed, null);
       else syncEl(v, null, 0, 1, null);
+      const o = outRefs.current[track.id];       // the outgoing clip during a transition
+      if (o) {
+        if (tr) syncEl(o, tr.a.media_id, Math.min(tr.aTime, (media[tr.a.media_id]?.duration ?? tr.aTime) - 0.04), tr.a.speed, null);
+        else syncEl(o, null, 0, 1, null);
+      }
     }
     if (camRef.current) {
       if (cam && facecam) syncEl(camRef.current, facecam.media_id, cam.camTime, cam.speed, null);
@@ -233,7 +244,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     const border = full || facecam.remove_bg ? 0 : facecam.border * output.width * k;
     const shadows = [border ? `0 0 0 ${border}px ${facecam.border_color}` : "", !full && facecam.shadow && !facecam.remove_bg ? `0 ${scr.w * 0.004}px ${scr.w * 0.012}px rgba(0,0,0,.55)` : ""].filter(Boolean);
     return (
-      <div data-testid="facecam-layer" title="Face cam" style={{ position: "absolute", left: box.x * output.width * k, top: oy + box.y * output.height * k, width: bw, height: bh,
+      <div data-testid="facecam-layer" title="Face cam" style={{ position: "absolute", zIndex: 1000, left: box.x * output.width * k, top: oy + box.y * output.height * k, width: bw, height: bh,
         overflow: "hidden", borderRadius: shape === "circle" ? "50%" : shape === "rounded" ? Math.min(bw, bh) * 0.12 : 0,
         boxShadow: shadows.join(", ") || undefined, opacity: cam ? cam.alpha : 0, visibility: cam ? "visible" : "hidden" }}>
         <video ref={camRef} muted playsInline preload="auto" style={{ position: "absolute", maxWidth: "none", objectFit: "fill",
@@ -268,12 +279,26 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
           <div className="stage" style={{ position: "absolute", inset: 0,
             transform: `scale(${zoom}) translate(${shaking ? Math.sin(playhead * 61) * 1.2 : 0}%, ${shaking ? Math.cos(playhead * 47) * 1.2 : 0}%)`,
             transformOrigin: zoomFx ? `${zoomFx.x * 100}% ${zoomFx.y * 100}%` : "50% 50%" }}>
-            {layers.map(({ track, clip }) => (
-              <video key={track.id} ref={(el) => { videoRefs.current[track.id] = el; }} muted playsInline preload="auto" data-layer={track.name}
-                style={{ visibility: clip ? "visible" : "hidden", ...(clip ? layerStyle(clip) : {}) }}
-                onError={() => setVideoError("This file can't play in the browser yet — a preview copy is being prepared. Export still uses the original.")}
-                onLoadedData={() => setVideoError(null)} />
-            ))}
+            {layers.map(({ track, clip, tr }, li) => {
+              const z = li * 4;  // keep upper tracks above lower ones
+              const look = tr ? transitionLook(tr.kind, tr.p) : null;
+              const merge = (base: React.CSSProperties, extra: React.CSSProperties | undefined): React.CSSProperties => !extra ? base : {
+                ...base, ...extra,
+                opacity: ((base.opacity as number) ?? 1) * ((extra.opacity as number) ?? 1),
+                filter: [base.filter, extra.filter].filter(Boolean).join(" ") || undefined,
+              };
+              return (
+                <React.Fragment key={track.id}>
+                  <video ref={(el) => { outRefs.current[track.id] = el; }} muted playsInline preload="auto" data-layer={track.name + "-out"} data-testid="transition-out"
+                    style={{ visibility: tr ? "visible" : "hidden", zIndex: z + (look?.aOnTop ? 2 : 0), ...(tr ? merge(layerStyle(tr.a), look!.a) : {}) }} />
+                  <video ref={(el) => { videoRefs.current[track.id] = el; }} muted playsInline preload="auto" data-layer={track.name}
+                    style={{ visibility: clip ? "visible" : "hidden", zIndex: z + 1, ...(clip ? merge(layerStyle(clip), look?.b) : {}) }}
+                    onError={() => setVideoError("This file can't play in the browser yet — a preview copy is being prepared. Export still uses the original.")}
+                    onLoadedData={() => setVideoError(null)} />
+                  {look?.overlay && <div data-testid="transition-overlay" style={{ position: "absolute", inset: 0, zIndex: z + 3, pointerEvents: "none", ...look.overlay }} />}
+                </React.Fragment>
+              );
+            })}
             {camLayer()}
           </div>
           {flash && <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.8)" }} />}

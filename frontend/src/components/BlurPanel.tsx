@@ -13,16 +13,15 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** Editor → Blur: hide faces, licence plates, chat windows… optionally following them. */
-export default function BlurPanel({ projectId, timeline, playhead, seek, commit, drawing, setDrawing, jobs, onJobs }: {
+export default function BlurPanel({ projectId, timeline, playhead, seek, commit, drawing, setDrawing, jobs, onJobs, sel, setSel }: {
   projectId: string; timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
   drawing: null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void };
   setDrawing: (d: null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }) => void;
-  jobs: Job[]; onJobs: () => void;
+  jobs: Job[]; onJobs: () => void; sel: string | null; setSel: (id: string | null) => void;
 }) {
   const toast = useToast();
   const blurs = [...(timeline.blurs ?? [])].sort((a, b) => a.start - b.start);
-  const [sel, setSel] = useState<string | null>(null);
   const [trackJob, setTrackJob] = useState<{ job: string; blur: string } | null>(null);
   const cur = blurs.find((b) => b.id === sel) ?? null;
   const set = (patch: Partial<Blur>, label: string) => cur && commit(updateBlur(timeline, cur.id, patch), label, true);

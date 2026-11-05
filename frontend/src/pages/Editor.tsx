@@ -34,6 +34,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
   const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "history">("clip");
+  const [overlaySel, setOverlaySel] = useState<string | null>(null);
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
   const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
@@ -345,9 +346,9 @@ export default function Editor({ projectId }: { projectId: string }) {
               showBeats={showBeats} setShowBeats={setShowBeats} />
           ) : rightTab === "blur" ? (
             <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
-              commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} />
+              commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "text" ? (
-            <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} />
+            <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "script" ? (
             <ScriptPanel projectId={projectId} timeline={timeline} playhead={playhead} playing={playing} jobs={jobs}
               seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}
@@ -389,6 +390,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           ...effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null),
           ...(showBeats ? beatTimes(timeline, Object.fromEntries(Object.entries(beats).map(([k, v]) => [k, v.beats]))).map((t) => ({ t, color: "#2bb38a", title: "beat" })) : []),
         ] as any}
+        overlaySel={overlaySel} onOverlaySelect={(kind, id) => { setOverlaySel(id); setRightTab(kind === "title" ? "text" : "blur"); }}
         toolbar={toolbar} />
     </div>
   );
