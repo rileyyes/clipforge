@@ -234,7 +234,7 @@ function Workspace({ projectId }: { projectId: string }) {
         <a className="btn" href="#/auto/">Change project</a>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: "minmax(380px, 1fr) 1.25fr", alignItems: "start" }}>
+      <div className="grid auto-cols" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.25fr)", alignItems: "start" }}>
         {/* ---------------- left: source + settings */}
         <div className="grid">
           <div className="card grid" style={{ gap: 10 }}>
@@ -421,7 +421,7 @@ function Workspace({ projectId }: { projectId: string }) {
                   const ov = overrideOf(b.id);
                   return (
                     <div key={b.id} onClick={() => setActive(b.id)}
-                      style={{ display: "grid", gridTemplateColumns: "30px 120px 1fr 160px", gap: 10, alignItems: "center", padding: "8px 10px",
+                      style={{ display: "grid", gridTemplateColumns: "30px 110px minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "8px 10px",
                         borderBottom: "1px solid var(--line)", background: active === b.id ? "var(--panel-2)" : undefined, opacity: b.selected ? 1 : 0.6 }}>
                       <button className="btn icon ghost" title="Preview this moment" onClick={(e) => { e.stopPropagation(); setActive(b.id); playRange(b.start, b.end); }}><Icon name="play" size={13} /></button>
                       <div className="mono" style={{ fontSize: 11 }}>{fmtTime(b.start, false)}–{fmtTime(b.end, false)}<div className="muted">{b.kept.toFixed(1)}s kept</div></div>

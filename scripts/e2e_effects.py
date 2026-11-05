@@ -74,7 +74,7 @@ async def main(pid):
         pg.on("console", lambda m: errs.append(m.text) if m.type == "error" else None)
         pg.on("pageerror", lambda e: errs.append(str(e)))
         await pg.goto(f"{B}/#/editor/{pid}")
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         await pg.get_by_text("1 of 1 clip source(s) transcribed").wait_for(timeout=10000)
         await pg.get_by_role("button", name="Find & bleep swears").click()
         await pg.get_by_text("“shit”").wait_for(timeout=5000)
@@ -116,7 +116,7 @@ async def main(pid):
         assert "✗" not in checks, checks
         print("export validated:", checks.count("✓"), "checks")
         await pg.goto(f"{B}/#/editor/{pid}")
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         await pg.get_by_text("“shit”").wait_for(timeout=10000)
         assert await pg.locator("input[value='E2E POP']").count() == 1
         print("effects persisted after reopen")

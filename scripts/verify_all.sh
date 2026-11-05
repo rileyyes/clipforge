@@ -32,6 +32,8 @@ echo "== browser E2E: face cam (sync by sound, corner circle, crop, background r
 python3 scripts/e2e_facecam.py 2>&1 | grep -E "OK|lined up|export validated|Error"
 echo "== browser E2E: Phase 10 (edit by transcript, fillers/retakes, titles, privacy blur, beat sync)"
 python3 scripts/e2e_phase10.py 2>&1 | grep -E "OK|after cleanup|song:|export validated|Error"
+echo "== browser E2E: Phase 11 (fits 1280x720, timeline titles/blurs, transition preview, shortcuts, J/K/L, guides)"
+python3 scripts/e2e_phase11.py 2>&1 | grep -E "OK|overflow|transition preview|Error"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

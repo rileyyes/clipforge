@@ -105,7 +105,7 @@ async def main(pid, game_id, cam_id):
         pg.on("pageerror", lambda e: errs.append(str(e)))
         await pg.goto(B + f"/#/editor/{pid}")
         await pg.locator(".clip.video").first.wait_for()
-        await pg.get_by_role("button", name="Face cam").click()
+        await pg.get_by_role("tab", name="Face cam").click()
         await pg.get_by_label("Face cam video").select_option(cam_id)
         await pg.get_by_role("button", name="Add face cam").click()
         panel = pg.get_by_test_id("facecam-panel")
@@ -167,7 +167,7 @@ async def main(pid, game_id, cam_id):
         # reload: everything is still there
         await pg.reload()
         await pg.locator(".clip.video").first.wait_for()
-        await pg.get_by_role("button", name="Face cam").click()
+        await pg.get_by_role("tab", name="Face cam").click()
         await pg.get_by_test_id("facecam-panel").get_by_text("Hidden").wait_for()
         p = api("GET", f"/api/projects/{pid}")
         fc = p["facecam"]

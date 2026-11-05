@@ -83,8 +83,8 @@ async def main():
         print("finishing touches:", toasts)
         assert any("Audio polish" in t for t in toasts) and any("Bleep swears skipped" in t for t in toasts), toasts
         assert any("Comedy edits" in t for t in toasts), toasts
-        await pg.get_by_role("button", name=re.compile(r"^Effects")).click()
-        await pg.get_by_role("button", name="History").click()
+        await pg.get_by_role("tab", name=re.compile(r"^Effects")).click()
+        await pg.get_by_role("tab", name="History").click()
         assert await pg.get_by_test_id("version").count() == 0  # timeline was empty before: nothing to back up
         await pg.screenshot(path=str(TMP / "auto_editor.png"))
         await pg.get_by_role("button", name="Export").first.click()

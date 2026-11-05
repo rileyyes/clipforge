@@ -63,6 +63,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   const cam = camAt(timeline, facecam, camAsset, playhead);
   const camRef = useRef<HTMLVideoElement | null>(null);
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const [guides, setGuides] = useState(() => { try { return localStorage.getItem("cf:guides") === "1"; } catch { return false; } });
 
   // ---- Web Audio: per-element gain -> master -> stereo analysers (meters)
   const audio = useRef<{ ctx: AudioContext; master: GainNode; an: [AnalyserNode, AnalyserNode]; gains: Map<HTMLMediaElement, GainNode> } | null>(null);
@@ -332,6 +333,8 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
               </div>
             );
           })()}
+          {guides && <SafeGuides vertical={output.height > output.width} k={scr.w / output.width} W={output.width} H={output.height}
+            oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
             W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (
@@ -369,6 +372,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
         <span className="tc">{fmtTime(playhead)}</span>
         <span className="muted mono" style={{ fontSize: 12 }}>/ {fmtTime(duration)}</span>
         <span className="spacer" />
+        <button className={"btn sm" + (guides ? " on" : " ghost")} aria-label="Safe-area guides"
+          title={output.height > output.width ? "Show where YouTube Shorts puts its buttons and captions" : "Show title-safe and action-safe areas"}
+          onClick={() => { setGuides(!guides); try { localStorage.setItem("cf:guides", guides ? "0" : "1"); } catch { /* storage unavailable */ } }}>
+          <Icon name="guides" size={14} />Guides</button>
         {onLightPreview && (
           <button className={"btn sm" + (lightPreview ? " on" : " ghost")} onClick={() => onLightPreview(!lightPreview)}
             title="Play small 540p preview copies instead of the full files — smoother on slow computers. Exports always use the originals.">
@@ -377,6 +384,34 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
         )}
         <span className="muted" style={{ fontSize: 11 }}>{output.width}×{output.height} · {output.fps} fps</span>
       </div>
+    </div>
+  );
+}
+
+/** Safe areas: title-safe (90%) and action-safe (93%) for landscape; for vertical Shorts,
+ *  roughly where YouTube's own buttons and text sit (keep important things out of them). */
+function SafeGuides({ vertical, k, W, H, oy }: { vertical: boolean; k: number; W: number; H: number; oy: number }) {
+  const w = W * k, h = H * k;
+  const box = (f: number, style: React.CSSProperties) => (
+    <div style={{ position: "absolute", left: w * (1 - f) / 2, top: oy + h * (1 - f) / 2, width: w * f, height: h * f, pointerEvents: "none", ...style }} />
+  );
+  const zone = (x: number, y: number, zw: number, zh: number, label: string) => (
+    <div style={{ position: "absolute", left: x * w, top: oy + y * h, width: zw * w, height: zh * h, background: "rgba(255,60,60,.18)",
+      border: "1px dashed rgba(255,120,120,.8)", color: "#fff", fontSize: 10, padding: 3, boxSizing: "border-box", pointerEvents: "none",
+      textShadow: "0 0 3px #000" }}>{label}</div>
+  );
+  return (
+    <div data-testid="safe-guides" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 6 }}>
+      {vertical ? (<>
+        {zone(0, 0, 1, 0.07, "YouTube: search & menu")}
+        {zone(0.86, 0.42, 0.14, 0.42, "like · comment · share")}
+        {zone(0, 0.8, 0.86, 0.2, "channel, title, sound")}
+      </>) : (<>
+        {box(0.93, { border: "1px dashed rgba(255,255,255,.55)" })}
+        {box(0.9, { border: "1px dotted rgba(255,222,0,.7)" })}
+        <div style={{ position: "absolute", left: w / 2 - 8, top: oy + h / 2, width: 16, height: 1, background: "rgba(255,255,255,.6)" }} />
+        <div style={{ position: "absolute", left: w / 2, top: oy + h / 2 - 8, width: 1, height: 16, background: "rgba(255,255,255,.6)" }} />
+      </>)}
     </div>
   );
 }

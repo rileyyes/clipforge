@@ -35,6 +35,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
   const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "history">("clip");
   const [overlaySel, setOverlaySel] = useState<string | null>(null);
+  const [showKeys, setShowKeys] = useState(false);
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
   const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
@@ -227,6 +228,10 @@ export default function Editor({ projectId }: { projectId: string }) {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       if (k === " ") { e.preventDefault(); setPlaying((p) => !p); }
+      else if (e.key === "?") setShowKeys((v) => !v);
+      else if (k === "j" && !mod) seek(Math.max(0, playhead - 2));
+      else if (k === "k" && !mod) setPlaying(false);
+      else if (k === "l" && !mod) setPlaying(true);
       else if (mod && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
       else if (mod && k === "y") { e.preventDefault(); redo(); }
       else if (mod && k === "d") { e.preventDefault(); actions.duplicate(); }
@@ -238,7 +243,7 @@ export default function Editor({ projectId }: { projectId: string }) {
       else if (k === "arrowright") { setPlaying(false); seek(playhead + 1 / (project?.output.fps ?? 30)); }
       else if (k === "home") seek(0);
       else if (k === "end") seek(timelineDuration(timeline!));
-      else if (k === "escape") setSelection([]);
+      else if (k === "escape") { setSelection([]); setShowKeys(false); }
       else return;
     };
     window.addEventListener("keydown", onKey);
@@ -281,6 +286,7 @@ export default function Editor({ projectId }: { projectId: string }) {
       <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "video"), "Add video track")}><Icon name="plus" size={14} />Video track</button>
       <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "audio"), "Add audio track")}><Icon name="plus" size={14} />Audio track</button>
       <span className="spacer" />
+      <button className="btn icon ghost" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(true)}><Icon name="keyboard" size={15} /></button>
       <button className="btn icon ghost" title="Zoom out" onClick={() => setPps(Math.max(2, pps / 1.4))}><Icon name="zoomout" size={15} /></button>
       <input type="range" min={0} max={1} step={0.001} style={{ width: 110 }} title="Zoom (Ctrl + mouse wheel)"
         value={Math.log(pps / 2) / Math.log(400)} onChange={(e) => setPps(2 * Math.pow(400, +e.target.value))} />
@@ -331,15 +337,22 @@ export default function Editor({ projectId }: { projectId: string }) {
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
-          <div className="pane-head" style={{ gap: 2, flexWrap: "wrap" }}>
-            <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
-            <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} aria-label="Effects" title="Effects, bleeps, captions, audio" onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />FX{effects.length ? ` ${effects.length}` : ""}</button>
-            <button className={"btn sm" + (rightTab === "text" ? " on" : " ghost")} title="Titles" onClick={() => setRightTab("text")}>Text</button>
-            <button className={"btn sm" + (rightTab === "blur" ? " on" : " ghost")} title="Privacy blur" onClick={() => setRightTab("blur")}>Blur</button>
-            <button className={"btn sm" + (rightTab === "beat" ? " on" : " ghost")} title="Music beat" onClick={() => setRightTab("beat")}>Beat</button>
-            <button className={"btn sm" + (rightTab === "script" ? " on" : " ghost")} title="Edit by transcript" onClick={() => setRightTab("script")}>Script</button>
-            <button className={"btn sm" + (rightTab === "cam" ? " on" : " ghost")} aria-label="Face cam" title="Face cam" onClick={() => setRightTab("cam")}><Icon name="webcam" size={13} />Cam</button>
-            <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} aria-label="History" title="History (versions)" onClick={() => setRightTab("history")}><Icon name="undo" size={13} /></button>
+          <div className="pane-head side-tabs" role="tablist">
+            {([
+              ["clip", "sliders", "Clip", "Selected clip: speed, volume, position, colour, keyframes, transition"],
+              ["fx", "wand", "FX", "Effects, bleeps, captions, audio"],
+              ["text", "text", "Text", "Titles"],
+              ["script", "script", "Script", "Edit by transcript; remove filler words and retakes"],
+              ["blur", "blur", "Blur", "Privacy blur"],
+              ["beat", "music", "Beat", "Music beat sync"],
+              ["cam", "webcam", "Cam", "Face cam"],
+              ["history", "undo", "History", "Saved versions"],
+            ] as const).map(([id, icon, label, tip]) => (
+              <button key={id} role="tab" aria-selected={rightTab === id} aria-label={id === "fx" ? "Effects" : id === "cam" ? "Face cam" : label}
+                className={"side-tab" + (rightTab === id ? " on" : "")} title={tip} onClick={() => setRightTab(id)}>
+                <Icon name={icon} size={15} /><span>{label}{id === "fx" && effects.length ? ` ${effects.length}` : ""}</span>
+              </button>
+            ))}
           </div>
           {rightTab === "beat" ? (
             <BeatPanel projectId={projectId} timeline={timeline} media={media} commit={commit} beats={beats} setBeats={setBeats}
@@ -373,6 +386,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           )}
         </div>
       </div>
+      {showKeys && <ShortcutSheet onClose={() => setShowKeys(false)} />}
       <div className="splitter" onPointerDown={startResize} />
       <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection} setSelection={setSelection}
         playhead={playhead} seek={(t) => { seek(t); }} playing={playing} pps={pps} setPps={setPps} snapping={snapping}
@@ -392,6 +406,31 @@ export default function Editor({ projectId }: { projectId: string }) {
         ] as any}
         overlaySel={overlaySel} onOverlaySelect={(kind, id) => { setOverlaySel(id); setRightTab(kind === "title" ? "text" : "blur"); }}
         toolbar={toolbar} />
+    </div>
+  );
+}
+
+const SHORTCUTS: [string, string][] = [
+  ["Space", "Play / pause"], ["J / K / L", "Back 2 s / pause / play"], ["← / →", "Previous / next frame"],
+  ["Home / End", "Go to start / end"], ["S", "Split at the playhead"], ["Delete", "Delete selected clip(s)"],
+  ["Shift + Delete", "Ripple delete (close the gap)"], ["Ctrl + D", "Duplicate clip"], ["Ctrl + Z", "Undo"],
+  ["Ctrl + Shift + Z / Ctrl + Y", "Redo"], ["Ctrl + S", "Save now"], ["N", "Snapping on / off"],
+  ["Ctrl + mouse wheel", "Zoom the timeline"], ["Alt while dragging", "Drag without snapping"],
+  ["Script tab: Delete", "Cut the selected words"], ["Esc", "Clear selection / close this"], ["?", "Show this list"],
+];
+
+function ShortcutSheet({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-bg" onClick={onClose} data-testid="shortcuts">
+      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 460 }}>
+        <div className="row"><h2 style={{ margin: 0 }}>Keyboard shortcuts</h2><span className="spacer" />
+          <button className="btn icon ghost" aria-label="Close" onClick={onClose}><Icon name="x" /></button></div>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 16px", marginTop: 12, fontSize: 13 }}>
+          {SHORTCUTS.map(([k, what]) => (
+            <React.Fragment key={k}><span className="kbd">{k}</span><span>{what}</span></React.Fragment>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

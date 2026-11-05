@@ -102,7 +102,7 @@ async def main(pid):
         await pg.locator(".clip.video").first.wait_for()
 
         # ---- Script: fillers, retakes, cut a word
-        await pg.get_by_role("button", name="Script").click()
+        await pg.get_by_role("tab", name="Script").click()
         panel = pg.get_by_test_id("script-panel")
         await panel.wait_for()
         n_words = await panel.locator(".script-word").count()
@@ -125,7 +125,7 @@ async def main(pid):
         assert clips == 4
 
         # ---- Text: lower third
-        await pg.get_by_role("button", name="Text", exact=True).click()
+        await pg.get_by_role("tab", name="Text", exact=True).click()
         await pg.keyboard.press("Home")
         await pg.get_by_test_id("titles-panel").get_by_role("button", name="Lower third").click()
         await pg.get_by_label("Title text").fill("RileyPlays")
@@ -136,7 +136,7 @@ async def main(pid):
         assert "RileyPlays" in await prev.inner_text()
 
         # ---- Blur: draw a box on the preview, follow it
-        await pg.get_by_role("button", name="Blur", exact=True).click()
+        await pg.get_by_role("tab", name="Blur", exact=True).click()
         await pg.get_by_test_id("blur-panel").get_by_role("button", name="Draw a blur").click()
         layer = pg.get_by_test_id("draw-layer")
         box = await layer.bounding_box()
@@ -151,7 +151,7 @@ async def main(pid):
         await toast("Following it now")
 
         # ---- Beat: find it, snap cuts
-        await pg.get_by_role("button", name="Beat", exact=True).click()
+        await pg.get_by_role("tab", name="Beat", exact=True).click()
         bp = pg.get_by_test_id("beat-panel")
         await bp.get_by_role("button", name="Find the beat").click()
         await bp.get_by_text("BPM").wait_for(timeout=60000)

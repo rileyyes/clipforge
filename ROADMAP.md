@@ -143,7 +143,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **Stacked Shorts**: face cam on top, video below (or keep it in its corner, or leave it out)
 - ✅ **Smoother jump cuts**: zoom punch-in (alternating close/wide, like a second camera), quick blend, or whip pan. In the Editor toolbar and in the AI's finishing touches. Only undoes changes it made itself
 - ✅ **9 new transitions**: whip pan left/right, spin, glitch, RGB split, light leak, zoom blur, flash cut, shake cut (30 in total)
-- ⬜ Previewing transitions in the monitor (they still show as cuts there; the export is exact)
+- ✅ Previewing transitions in the monitor: done in Phase 11
 
 ## Phase 10 — Modern editing essentials 🟡 (built and tested automatically; waiting for your hands-on test)
 
@@ -152,7 +152,16 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **Titles** (Editor → **Text**): lower third, big title, top banner, subscribe button, chapter card; text, second line, colours, position, size; animated in and out. Rendered sharply by the same subtitle engine as captions; previewed in the monitor
 - ✅ **Privacy blur** (Editor → **Blur**): blur, pixelate or black box; box or oval; **draw it on the preview**, or **Blur faces here** in one click; **Follow it** tracks what moves (and finds it again after a cut). Works best on things with clear detail; check the preview
 - ✅ **Music beat sync** (Editor → **Beat**): finds the tempo and beats of the song on your music track (within about a frame in tests), shows them on the timeline, **snaps nearby cuts onto the beat** (roll edits: nothing else shifts, linked sound follows), and ends the music with the video. No built-in music library (licences); YouTube Studio's Audio Library has free music you can import
-- ⬜ Previewing transitions in the monitor (still cuts there)
+
+## Phase 11 — Polish 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Titles and blurs on the timeline**: their own lane above V1. Click one to open it (Text or Blur tab), drag to move it, drag an edge to change its length
+- ✅ **Ripple delete moves titles and blurs** along with the picture (before, only Script-tab cuts did)
+- ✅ **Transitions preview in the monitor**: all 30, as look-alikes of the export (both pictures, with the export's timing)
+- ✅ **Side panel**: one row of icon tabs (Clip, FX, Text, Script, Blur, Beat, Cam, History) instead of two rows of buttons
+- ✅ **Keyboard**: press **?** for all shortcuts; **J / K / L** = back 2 s / pause / play
+- ✅ **Safe-area guides** on the preview: title-safe and action-safe boxes, or, for vertical Shorts, where YouTube puts its own buttons and text (approximate)
+- ✅ **Fits laptop screens**: the Editor and the AI Auto Editor no longer run off a 1280×720 screen (the Export button and the side tabs were cut off; the Auto Editor's columns overlapped)
 
 ## Known limitations / bugs
 
@@ -160,8 +169,8 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 - Block rendering (fast re-exports) is used with the software H.264 encoder. With a GPU encoder the final video is still encoded in one pass (fast already, but not cached).
 
-- Preview colour is a CSS approximation, transitions preview as cuts, face cam background removal only shows in the export, and titles/blur preview with browser styling (close, not pixel-identical). Export is exact.
-- Titles and blurs sit at timeline times: cutting with the Script tab moves them, but moving or ripple-deleting clips by hand doesn't.
+- Preview colour and transitions are CSS look-alikes, face cam background removal only shows in the export, and titles/blur preview with browser styling (close, not pixel-identical). Export is exact.
+- Titles and blurs sit at timeline times: Script-tab cuts and ripple delete move them; moving a single clip by hand doesn't.
 - Face cam background removal runs per frame on the CPU: preparing it took 0.43× the cam's length on a 2-core VM (a 1-hour webcam recording ≈ 26 minutes), once per recording.
 - Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.
 - Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).

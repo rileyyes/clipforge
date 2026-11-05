@@ -259,7 +259,7 @@ export default function TimelineView(p: TimelineProps) {
       <div className="tl-body">
         <div className="tl-heads">
           <div className="ruler-spacer" />
-          {hasOverlays && <div className="tl-head ov-head" style={{ height: OV_H }} title="Titles and blurs (Text and Blur tabs)"><span className="name" style={{ color: "#c77dff" }}>T / Blur</span></div>}
+          {hasOverlays && <div className="tl-head ov-head" style={{ height: OV_H }} title="Titles and blurs (Text and Blur tabs)"><span className="name" style={{ color: "#c77dff" }}>Text·Blur</span></div>}
           {timeline.tracks.map((t) => (
             <div key={t.id} className="tl-head" style={{ height: ROW_H[t.kind] }}>
               <span className="name" style={{ color: t.kind === "video" ? "var(--video-2)" : "var(--audio-2)" }}>{t.name}</span>

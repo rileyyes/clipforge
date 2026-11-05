@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–10
+# Hands-on test guide: Phases 4–11
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -138,4 +138,17 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 10.13 | Make a few cuts → **Snap cuts to the beat** | The cuts move onto the green marks; play it: the cuts land on the beat |
 | 10.14 | **End the music with the video** | The song ends with the video with a fade |
 
-**Known preview limits (the export is always exact):** colour is approximate, transitions show as cuts, face cam background removal only appears in the export, and titles/blur are drawn by the browser in the preview (close, not identical).
+## Phase 11: polish
+
+| # | Do this | You should see |
+|---|---|---|
+| 11.1 | Add a title and a blur | A **Text·Blur** lane above V1 with a purple and a blue bar |
+| 11.2 | Click a bar; drag it; drag its right edge | The right tab opens with it selected; it moves; it gets longer |
+| 11.3 | Ripple delete (Shift+Delete) a clip before a title | The title moves left with the video; Ctrl+Z puts it back |
+| 11.4 | Add a transition (Clip tab) and play over the cut | The preview shows the transition (not a plain cut) |
+| 11.5 | Press **?** | A list of keyboard shortcuts |
+| 11.6 | Press **L**, then **K**, then **J** | Plays, pauses, jumps back 2 s |
+| 11.7 | **Guides** under the preview (try a 9:16 Short too) | Safe-area boxes; on a Short, where YouTube's buttons and text go |
+| 11.8 | Make the window smaller (or try a 1280×720 laptop) | Everything still fits: Export button, all side tabs, no overlapping |
+
+**Known preview limits (the export is always exact):** colour and transitions are look-alikes, face cam background removal only appears in the export, and titles/blur are drawn by the browser in the preview (close, not identical).

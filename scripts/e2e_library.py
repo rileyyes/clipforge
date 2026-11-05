@@ -89,7 +89,7 @@ async def main(pid: str):
         pg.on("dialog", lambda d: asyncio.ensure_future(d.accept()))
         await pg.goto(f"{B}/#/editor/{pid}")
         await pg.locator(".clip.video").first.wait_for()
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         lib = pg.get_by_test_id("library")
         await lib.scroll_into_view_if_needed()
         # ---- record from the (fake) microphone
@@ -173,7 +173,7 @@ async def main(pid: str):
         # ---- the library is shared: a new project sees the same sound
         p2 = api("POST", "/api/projects", {"name": "Another"})
         await pg.goto(f"{B}/#/editor/{p2['id']}")
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         await pg.get_by_test_id("lib-sound").filter(has_text="My bruh").wait_for()
         assert not errs, errs
         await b.close()

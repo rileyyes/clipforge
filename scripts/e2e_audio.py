@@ -86,7 +86,7 @@ async def main(pid):
         await role.click()
         await pg.locator(".tl-head").nth(3).locator("button[title^='Dialogue track']").click()
         # audio settings
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         await pg.get_by_label("Background noise removal").select_option("light")
         await pg.get_by_label("Enhance voice (cut rumble, add clarity, even out levels)").check()
         await pg.get_by_label("Duck music under voice").select_option("strong")
@@ -104,7 +104,7 @@ async def main(pid):
         assert "✗" not in checks and "loudness" in checks, checks
         print("export checks:", checks.count("✓"), "incl. loudness:", [l for l in checks.splitlines() if "LUFS" in l])
         await pg.goto(f"{B}/#/editor/{pid}")
-        await pg.get_by_role("button", name="Effects").click()
+        await pg.get_by_role("tab", name="Effects").click()
         assert await pg.get_by_label("Duck music under voice").input_value() == "strong"
         assert await pg.locator(".clip.video [title='Crossfade in']").count() == 1
         print("settings persisted after reopen")

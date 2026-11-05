@@ -43,6 +43,12 @@ const P: Record<string, string> = {
   pencil: "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
   phone: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2",
   webcam: "M12 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM8 21h8M12 17v4",
+  sliders: "M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M14 4v4M8 10v4M16 16v4",
+  text: "M4 6V4h16v2M12 4v16M9 20h6",
+  blur: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M5 7h14M5 17h14",
+  script: "M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7M9 19h4",
+  keyboard: "M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M7 14h10",
+  guides: "M3 5h18v14H3zM6 8h12v8H6z",
 };
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {

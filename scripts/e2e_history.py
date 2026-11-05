@@ -67,7 +67,7 @@ async def main(pid: str):
         await pg.goto(f"{B}/#/editor/{pid}")
         await pg.locator(".clip").first.wait_for()
         assert await pg.locator(".clip").count() == 6
-        await pg.get_by_role("button", name="History").click()
+        await pg.get_by_role("tab", name="History").click()
         panel = pg.get_by_test_id("history-panel")
         await panel.get_by_test_id("version").first.wait_for()  # the first save made an autosave checkpoint
         await panel.get_by_role("button", name="Save this version").click()
