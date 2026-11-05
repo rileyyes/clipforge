@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -311,6 +311,58 @@ class AudioSettings(Strict):
     ducking: Literal["off", "light", "medium", "strong"] = "medium"  # music under dialogue
 
 
+class CamRange(Strict):
+    """A stretch of the MAIN recording (source seconds), so it stays put through cuts."""
+    start: float = Field(ge=0, le=86400)
+    end: float = Field(gt=0, le=86400)
+
+    @model_validator(mode="after")
+    def _order(self) -> "CamRange":
+        if self.end - self.start < 0.05:
+            raise ValueError("a face cam range must be at least 0.05 s long")
+        return self
+
+
+class CamBox(Strict):
+    """Where the face cam sits, as fractions of the output frame (left, top, width, height)."""
+    x: float = Field(default=0.69, ge=-0.5, le=1)
+    y: float = Field(default=0.6, ge=-0.5, le=1)
+    w: float = Field(default=0.28, ge=0.03, le=1)
+    h: float = Field(default=0.3, ge=0.03, le=1)
+
+
+CAM_CORNERS = ("top_left", "top_right", "bottom_left", "bottom_right")
+
+
+class FaceCam(Strict):
+    """A webcam recording that follows the main recording.
+
+    It isn't a timeline clip: wherever the main recording is on a video track, the
+    matching moment of the face cam is laid on top (cam time = main time + ``offset``).
+    So every cut — yours or the AI's — applies to the face cam too."""
+    enabled: bool = True
+    media_id: str
+    main_media_id: str
+    offset: float = Field(default=0, ge=-86400, le=86400)
+    corner: Literal["top_left", "top_right", "bottom_left", "bottom_right", "custom"] = "bottom_right"
+    size: float = Field(default=0.28, ge=0.08, le=0.9)    # width, fraction of the frame width
+    margin: float = Field(default=0.03, ge=0, le=0.2)    # gap to the frame edge, fraction of width
+    box: CamBox = Field(default_factory=CamBox)          # used as-is when corner == "custom"
+    crop: Crop = Field(default_factory=Crop)             # trim the cam picture (e.g. down to the face)
+    shape: Literal["rect", "rounded", "circle"] = "rounded"
+    border: float = Field(default=0.004, ge=0, le=0.03)  # fraction of the frame width
+    border_color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+    shadow: bool = True
+    remove_bg: bool = False
+    hidden: list[CamRange] = Field(default_factory=list, max_length=500)
+    full: list[CamRange] = Field(default_factory=list, max_length=500)  # cam fills the screen here
+
+    @field_validator("media_id", "main_media_id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+
 class Project(Strict):
     schema_version: int = SCHEMA_VERSION
     id: str
@@ -325,6 +377,7 @@ class Project(Strict):
     effects: list[Effect] = Field(default_factory=list, max_length=5000)
     captions: CaptionSettings = Field(default_factory=CaptionSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
+    facecam: Optional[FaceCam] = None
 
     @field_validator("id")
     @classmethod
@@ -343,6 +396,15 @@ class Project(Strict):
 def validate_timeline(project: Project) -> None:
     """Cross-object rules Pydantic field validation can't express."""
     media = project.media_by_id()
+    fc = project.facecam
+    if fc is not None:
+        cam, main = media.get(fc.media_id), media.get(fc.main_media_id)
+        if cam is None or main is None:
+            raise ValueError("the face cam references unknown media")
+        if not cam.has_video:
+            raise ValueError("the face cam needs a video file")
+        if fc.media_id == fc.main_media_id:
+            raise ValueError("the face cam must be a different recording from the main one")
     eids: set[str] = set()
     for e in project.effects:
         if e.id in eids:
@@ -425,6 +487,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "audio": {"normalize": False, "ducking": "off"}, "schema_version": 3}
     if data.get("schema_version", 3) < 4:  # v3 -> v4: crop, colour, rotation, opacity, keyframes (defaulted)
         data = {**data, "schema_version": 4}
+    if data.get("schema_version", 4) < 5:  # v4 -> v5: face cam (none) and new transitions
+        data = {**data, "schema_version": 5}
     return data
 
 

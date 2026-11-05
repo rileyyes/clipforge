@@ -26,7 +26,7 @@ from . import analysis as analysis_svc
 from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
 from .transcription import available_transcriber
-from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, OutputSettings, Project, Timeline, now_iso
+from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, FaceCam, OutputSettings, Project, Timeline, now_iso
 from . import rcache
 from .library import Library, LibraryError, project_sound
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
@@ -72,6 +72,7 @@ class TimelineSave(BaseModel):
     effects: Optional[list[Effect]] = None
     captions: Optional[CaptionSettings] = None
     audio: Optional[AudioSettings] = None
+    facecam: Optional[FaceCam] = None  # sent as null: remove the face cam; left out: unchanged
 
 
 class ExportRequest(BaseModel):
@@ -93,6 +94,8 @@ class Services:
         self.jobs.register("ai_rate", self._ai_rate)
         self.jobs.register("make_short", self._make_short)
         self.jobs.register("youtube_upload", self._youtube_upload)
+        self.jobs.register("facecam_sync", self._facecam_sync)
+        self.jobs.register("facecam_matte", self._facecam_matte)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -216,6 +219,32 @@ class Services:
         return {"project_id": new.id, "name": new.name, "follow": follow,
                 "captions": doc["captions"]["enabled"], "duration": round(end - start, 2)}
 
+    def _facecam_sync(self, ctx: JobContext) -> dict:
+        """Find how far apart the face cam and the main recording are, by their sound."""
+        from . import sync
+        pid, prm = ctx.job.project_id, ctx.job.params
+        p = self.store.load(pid)
+        media = p.media_by_id()
+        main, cam = media[prm["main_media_id"]], media[prm["media_id"]]
+        orig = self.store.dir(pid) / "media" / "original"
+        ctx.stage(1, 2, "Listening to the main recording")
+        a = sync.decode(self.settings.ffmpeg_bin, orig / main.stored_name)
+        ctx.check_cancel()
+        ctx.stage(2, 2, "Listening to the face cam")
+        b = sync.decode(self.settings.ffmpeg_bin, orig / cam.stored_name)
+        ctx.check_cancel()
+        r = sync.find_offset(a, b)
+        return {"offset": r.offset, "confidence": r.confidence, "media_id": cam.id, "main_media_id": main.id}
+
+    def _facecam_matte(self, ctx: JobContext) -> dict:
+        """Prepare background removal for a face cam recording ahead of exporting."""
+        from . import matte
+        pid, prm = ctx.job.project_id, ctx.job.params
+        asset = self.store.load(pid).media_by_id()[prm["media_id"]]
+        ctx.stage(1, 1, "Finding you in every frame")
+        path = matte.ensure(self.settings, self.store.dir(pid), asset, ctx.cancel_event, ctx.progress)
+        return {"media_id": asset.id, "bytes": path.stat().st_size}
+
     def _youtube_upload(self, ctx: JobContext) -> dict:
         """Upload an export to YouTube with the saved publish draft (resumable)."""
         from . import youtube as YT
@@ -268,6 +297,8 @@ def build_routes(svc: Services) -> list[Route]:
         d = p.model_dump(mode="json")
         orig = store.dir(p.id) / "media" / "original"
         d["missing_media"] = [m.id for m in p.media if not (orig / m.stored_name).exists()]
+        from . import matte as matte_svc
+        d["mattes"] = [m.id for m in p.media if matte_svc.matte_path(store.dir(p.id), m).is_file()]
         return d
 
     # -- system ---------------------------------------------------------
@@ -362,6 +393,8 @@ def build_routes(svc: Services) -> list[Route]:
                 data["captions"] = body.captions.model_dump(mode="json")
             if body.audio is not None:
                 data["audio"] = body.audio.model_dump(mode="json")
+            if "facecam" in body.model_fields_set:
+                data["facecam"] = body.facecam.model_dump(mode="json") if body.facecam else None
             data["edit_revision"] = cur.edit_revision + 1
             try:
                 candidate = Project.model_validate(data)
@@ -375,7 +408,8 @@ def build_routes(svc: Services) -> list[Route]:
             latest = store.load(pid)
             d = latest.model_dump(mode="json")
             d.update(timeline=data["timeline"], output=data["output"], effects=data["effects"],
-                     captions=data["captions"], audio=data["audio"], edit_revision=latest.edit_revision + 1)
+                     captions=data["captions"], audio=data["audio"], facecam=data.get("facecam"),
+                     edit_revision=latest.edit_revision + 1)
             saved = store.save(Project.model_validate(d), expected_revision=latest.revision)
         try:
             HistoryStore(store.dir(pid)).maybe_checkpoint(saved.model_dump(mode="json"))
@@ -520,9 +554,12 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         if any(c.media_id == asset.id for t in p.timeline.tracks for c in t.clips):
             return err(409, "This media is used on the timeline. Remove its clips first.")
+        if p.facecam and asset.id in (p.facecam.media_id, p.facecam.main_media_id):
+            return err(409, "This media is used by the face cam. Remove the face cam first (Editor → Face cam).")
         # background jobs still reading this file would block deletion on Windows
         busy = [j for j in svc.jobs.active_for_project(pid)
-                if j.params.get("media_id") == asset.id and j.kind in ("derive_media", "analyze", "transcribe")]
+                if j.params.get("media_id") == asset.id
+                and j.kind in ("derive_media", "analyze", "transcribe", "facecam_matte", "facecam_sync")]
         for j in busy:
             svc.jobs.cancel(j.id)
         import asyncio
@@ -536,7 +573,8 @@ def build_routes(svc: Services) -> list[Route]:
         base = store.dir(pid) / "media"
         stuck = []
         for sub, name in (("original", asset.stored_name), ("proxy", asset.proxy),
-                          ("thumbs", asset.thumbnail), ("waveforms", asset.waveform)):
+                          ("thumbs", asset.thumbnail), ("waveforms", asset.waveform),
+                          ("matte", f"{asset.id}.mp4")):
             if name:
                 f = base / sub / name
                 if f.exists():
@@ -868,6 +906,66 @@ def build_routes(svc: Services) -> list[Route]:
         if not (0 <= body.start < body.end <= m.duration + 0.01) or not (3 <= body.end - body.start <= 180):
             return err(422, "A Short must be 3 s to 3 min long and inside the recording.")
         job = svc.jobs.submit("make_short", pid, body.model_dump())
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    # -- phase 9: face cam ---------------------------------------------------
+    class CamMediaBody(BaseModel):
+        media_id: str
+        main_media_id: Optional[str] = None
+        shape: Literal["rect", "rounded", "circle"] = "rounded"
+
+    def _cam_media(p: Project, body: "CamMediaBody"):
+        m = p.media_by_id().get(body.media_id)
+        if m is None:
+            raise HTTPException(404, "media not found")
+        return m
+
+    async def facecam_sync(request: Request):
+        """Line the face cam up with the main recording by their sound (background job)"""
+        pid = pid_of(request)
+        body = await body_model(request, CamMediaBody)
+        p = load(pid)
+        cam = _cam_media(p, body)
+        main = p.media_by_id().get(body.main_media_id or "")
+        if main is None:
+            return err(404, "main recording not found")
+        if not (cam.has_audio and main.has_audio):
+            return err(409, "Both recordings need sound to be lined up automatically. Set the offset by hand instead.")
+        job = svc.jobs.submit("facecam_sync", pid, {"media_id": cam.id, "main_media_id": main.id})
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    async def facecam_face_crop(request: Request):
+        """Suggest a crop of the face cam around your face (head and shoulders)"""
+        pid = pid_of(request)
+        body = await body_model(request, CamMediaBody)
+        p = load(pid)
+        cam = _cam_media(p, body)
+        if not (cam.has_video and cam.width and cam.height):
+            return err(409, "The face cam needs a video picture.")
+        from . import sync
+        from starlette.concurrency import run_in_threadpool
+        src = store.dir(pid) / "media" / "original" / cam.stored_name
+        res = await run_in_threadpool(sync.face_crop, S.ffmpeg_bin, src, cam.duration, cam.width, cam.height,
+                                      1.0 if body.shape == "circle" else 4 / 3)
+        if res is None:
+            return err(422, "Couldn't find a face in the face cam. Crop it by hand with the sliders.")
+        crop, info = res
+        return JSONResponse({"crop": crop.model_dump(), **info})
+
+    async def facecam_matte(request: Request):
+        """Prepare background removal for the face cam now, so exports start faster"""
+        pid = pid_of(request)
+        body = await body_model(request, CamMediaBody)
+        p = load(pid)
+        cam = _cam_media(p, body)
+        from . import matte
+        if not matte.available():
+            return err(409, "Background removal isn't available in this installation.")
+        running = [j for j in svc.jobs.active_for_project(pid)
+                   if j.kind == "facecam_matte" and j.params.get("media_id") == cam.id]
+        if running:
+            return JSONResponse(running[0].model_dump(), status_code=202)
+        job = svc.jobs.submit("facecam_matte", pid, {"media_id": cam.id})
         return JSONResponse(job.model_dump(), status_code=202)
 
     async def start_ai_rate(request: Request):
@@ -1290,7 +1388,9 @@ def build_routes(svc: Services) -> list[Route]:
         cur = load(pid)
         media_ids = {m.id for m in cur.media}
         used = {c["media_id"] for t in snap["doc"]["timeline"]["tracks"] for c in t["clips"]} | \
-            {e["media_id"] for e in snap["doc"].get("effects") or []}
+            {e["media_id"] for e in snap["doc"].get("effects") or []} | \
+            ({snap["doc"]["facecam"]["media_id"], snap["doc"]["facecam"]["main_media_id"]}
+             if snap["doc"].get("facecam") else set())
         if used - media_ids:
             return err(409, "This version uses media that has since been removed from the project, so it "
                             "can't be restored.")
@@ -1298,7 +1398,7 @@ def build_routes(svc: Services) -> list[Route]:
 
         def apply(d: dict) -> dict:
             for k, v in snap["doc"].items():
-                if v is not None:
+                if v is not None or k == "facecam":  # versions saved with a face cam key restore "none" too
                     d[k] = v
             d["edit_revision"] = d.get("edit_revision", 0) + 1
             return d
@@ -1402,6 +1502,9 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/analyze", start_analysis, methods=["POST"]),
         Route(P + "/autoedit/ai-rate", start_ai_rate, methods=["POST"]),
         Route(P + "/shorts/suggest", shorts_suggest, methods=["POST"]),
+        Route(P + "/facecam/sync", facecam_sync, methods=["POST"]),
+        Route(P + "/facecam/face-crop", facecam_face_crop, methods=["POST"]),
+        Route(P + "/facecam/matte", facecam_matte, methods=["POST"]),
         Route(P + "/shorts", shorts_make, methods=["POST"]),
         Route(P + "/publish/suggest", publish_suggest, methods=["POST"]),
         Route(P + "/youtube/upload", youtube_upload, methods=["POST"]),

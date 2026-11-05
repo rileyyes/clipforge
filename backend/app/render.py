@@ -33,6 +33,7 @@ from .schema import Clip, MediaAsset, OutputSettings, Project, Track
 from . import effects as fx
 from .effects import mutes_for_clip
 from . import look
+from . import facecam, matte
 from .rcache import RenderCache
 from .library import project_sound
 from .storage import PathSecurityError
@@ -65,6 +66,7 @@ class Seg:
     half: float = 0.0             # transition half-length in seconds
     fade_in_color: str = "black"
     fade_out_color: str = "black"
+    cam: Optional[object] = None  # facecam.CamPart for face cam overlays
 
 
 @dataclass
@@ -174,6 +176,17 @@ def plan_render(project: Project, out: OutputSettings) -> RenderPlan:
                               if s.kind == "clip"]
     else:
         plan.base = [Seg("gap", total_frames)]
+    # face cam: on top of every other video layer, following the main recording's clips
+    parts = facecam.cam_parts(project)
+    if parts:
+        cam_asset = project.media_by_id()[project.facecam.media_id]
+        for part in parts:
+            facecam.place(part, project.facecam, cam_asset, out)
+        by_id = {p.clip.id: p for p in parts}
+        for s in _track_segments([p.clip for p in parts], to_f, total_frames):
+            if s.kind == "clip":
+                s.cam = by_id[s.clip.id]
+                plan.overlays.append(s)
     for t in project.timeline.tracks:
         if t.kind == "audio" and not t.muted and t.clips:
             plan.audio_tracks.append(apply_transitions(_track_segments(t.clips, to_s, total_samples),
@@ -405,7 +418,19 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                     if s.kind == "clip" else gap_video_args(s, out, plan.fps, work / name))
             jobs.append((args, secs, name))
         overlay_names = []
+        cam_matte = None
+        if any(s.cam for s in plan.overlays) and project.facecam.remove_bg:
+            ctx.stage(1, 3, "Preparing the face cam cut-out")
+            cam_matte = matte.ensure(settings, project_dir, media[project.facecam.media_id],
+                                     ctx.cancel_event, ctx.progress)
         for i, s in enumerate(plan.overlays):
+            if s.cam is not None:
+                name = f"o{i:05d}.mkv"
+                overlay_names.append(name)
+                jobs.append((facecam.segment_args(src_of(s.clip), cam_matte, s, s.cam, project.facecam,
+                                                  media[project.facecam.media_id], out, plan.fps, work, work / name),
+                             float(s.count / plan.fps), name))
+                continue
             warp = look.needs_warp(s.clip)
             name = f"o{i:05d}.{'mkv' if warp else 'mp4'}"
             overlay_names.append(name)

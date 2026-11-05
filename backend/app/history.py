@@ -1,6 +1,6 @@
 """Project version history: named snapshots, automatic checkpoints, restore, compare.
 
-    <project>/history/snapshots/<id>.json   {meta..., "doc": {timeline, effects, captions, audio, output}}
+    <project>/history/snapshots/<id>.json   {meta..., "doc": {timeline, effects, captions, audio, output, facecam}}
 
 * **Manual** snapshots ("Save version") are kept until you delete them.
 * **Automatic** checkpoints are taken while you edit (at most one every 10 minutes,
@@ -24,7 +24,7 @@ from .schema import now_iso
 from .storage import atomic_write_json, new_id, safe_join, validate_id
 
 Origin = Literal["manual", "auto", "before_ai", "before_restore", "imported"]
-DOC_KEYS = ("timeline", "effects", "captions", "audio", "output")
+DOC_KEYS = ("timeline", "effects", "captions", "audio", "output", "facecam")
 AUTO_KEEP = 30
 MANUAL_MAX = 200
 AUTO_EVERY_S = 600
@@ -49,7 +49,7 @@ class HistoryNotFound(KeyError):
 
 
 def doc_of(project_data: dict) -> dict:
-    return {k: project_data.get(k) for k in DOC_KEYS}
+    return {k: project_data.get(k) for k in DOC_KEYS}  # facecam: None = no face cam
 
 
 def fingerprint(doc: dict) -> str:
@@ -220,7 +220,7 @@ def compare(a: dict, b: dict, media: dict[str, dict]) -> dict:
         return out
     changed_fx = [i for i in set(ea) & set(eb) if ea[i] != eb[i]]
     settings = []
-    for key in ("captions", "audio", "output"):
+    for key in ("captions", "audio", "output", "facecam"):
         va, vb = a.get(key) or {}, b.get(key) or {}
         for k in sorted(set(va) | set(vb)):
             if va.get(k) != vb.get(k):
