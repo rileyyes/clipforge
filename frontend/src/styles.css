@@ -296,7 +296,13 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .side-tab.on { color: var(--text); border-bottom-color: var(--accent, #ff5a3c); }
 
 /* ---- fit laptop screens (1280×720 and up) */
-.editor { min-width: 0; overflow: hidden; }
+.editor { min-width: 0; overflow: hidden; grid-template-columns: minmax(0, 1fr); }
+.ed-top, .ed-mid, .ed-mid > * { min-width: 0; }
+.ed-top { overflow: hidden; }
+.ed-top > * { flex-shrink: 0; }
+.ed-top > .ed-title { flex-shrink: 1; min-width: 90px; text-overflow: ellipsis; }
+.side-tabs { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+.side-tab { min-width: 0; }
 .ed-mid { grid-template-columns: 280px minmax(0, 1fr) 290px; }
 .tl-tools { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 .tl-tools > * { flex-shrink: 0; }

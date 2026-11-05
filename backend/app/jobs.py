@@ -50,13 +50,20 @@ class JobContext:
         self._m = manager
         self.job = job
         self.cancel_event = threading.Event()
+        self._best = 0.0  # overall progress never goes backwards
 
     def stage(self, index: int, count: int, label: str) -> None:
         self._m._update(self.job.id, stage=label, stage_index=index, stage_count=count)
 
     def progress(self, overall: Optional[float]) -> None:
-        self._m._update(self.job.id, progress=None if overall is None
-                        else round(max(0.0, min(1.0, overall)), 4), throttle=True)
+        if overall is None:
+            self._m._update(self.job.id, progress=None, throttle=True)
+            return
+        # FFmpeg's time reports can wobble back a little between lines, so
+        # keep the highest value seen: the bar must only ever move forward.
+        value = round(max(self._best, 0.0, min(1.0, overall)), 4)
+        self._best = value
+        self._m._update(self.job.id, progress=value, throttle=True)
 
     def check_cancel(self) -> None:
         if self.cancel_event.is_set():

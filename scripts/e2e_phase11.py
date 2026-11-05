@@ -66,13 +66,23 @@ async def main(pid):
         toast = lambda text: pg.get_by_text(text, exact=False).first.wait_for(timeout=20000)  # noqa: E731
 
         # ---- fits a 1280×720 screen
-        for url in (f"/#/editor/{pid}", f"/#/auto/{pid}"):
+        # checked twice: as drawn here, and with wider text (other machines'
+        # fonts can be a few % wider, which once pushed the Editor off-screen)
+        for url, wide in [(u, w) for w in (False, True) for u in (f"/#/editor/{pid}", f"/#/auto/{pid}")]:
             await pg.goto(B + url)
+            if wide:
+                await pg.evaluate("""() => { const st = document.createElement('style'); st.id = 'e2e-wide';
+                    st.textContent = '* { letter-spacing: 0.6px !important }'; document.head.appendChild(st) }""")
             await pg.wait_for_timeout(1500)
             over = await pg.evaluate("""() => [...document.querySelectorAll('.editor, .main > *')].map(e => e.scrollWidth - e.clientWidth)
                 .concat([document.documentElement.scrollWidth - window.innerWidth])""")
-            print(url, "overflow px:", over)
-            assert max(over) <= 1, (url, over)
+            print(url, "wide text" if wide else "", "overflow px:", over)
+            if max(over) > 1:  # name the culprits so a CI failure is easy to fix
+                print(await pg.evaluate("""() => { const W = innerWidth; return [...document.querySelectorAll('.editor *, .main *')]
+                    .filter(e => e.getBoundingClientRect().right > W + 1 || e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX === 'visible')
+                    .slice(0, 12).map(e => e.tagName + '.' + e.className + ' ' + Math.round(e.getBoundingClientRect().right) + ' sw' + e.scrollWidth + ' cw' + e.clientWidth) }"""))
+            assert max(over) <= 1, (url, wide, over)
+            await pg.evaluate("() => document.getElementById('e2e-wide')?.remove()")
         await pg.goto(B + f"/#/editor/{pid}")
         await pg.locator(".clip.video").first.wait_for()
         exp = await pg.get_by_role("button", name="Export").bounding_box()
