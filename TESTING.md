@@ -11,7 +11,7 @@ cd frontend && npm run typecheck           # strict TypeScript on the engine
 python scripts/e2e_browser.py              # headless Chromium end-to-end (needs Playwright + built frontend)
 ```
 
-## Current results (2026-11-04, Phase 8) — full suite (`scripts/verify_all.sh`) run 3× in a row locally and green in CI on Ubuntu + Windows
+## Current results (2026-11-05, Phase 9) — full suite (`scripts/verify_all.sh`) run 3× in a row locally and green in CI on Ubuntu + Windows
 
 | Suite | Tests | Result |
 |---|---|---|
@@ -23,6 +23,11 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Look & animation (`tests/test_look.py`) | 51 (keyframe maths vs FFmpeg expressions, pixel-measured rotation, crop, opacity, colour/looks, volume keyframes, all 21 transitions) | ✅ |
 | Render cache & previews (`tests/test_perf.py`) | 6 (full reuse, only changed clip re-renders, off switch, eviction, proxy + 100 peaks/s waveform) | ✅ |
 | Block rendering (`tests/test_blocks.py`) | 6 (block windows; block render vs one-pass render **frame by frame** with zoom, shake, flash, pop-up, keyframed overlay, wipe and captions across 1 s block edges; audio matches; exact frame counts at 25/30 fps over 0.4 s blocks; a small edit re-encodes one block and the copied blocks are bit-identical; a caption word change only touches nearby blocks) | ✅ |
+| Face cam (`tests/test_facecam.py`) | 20 (corner maths, tall cams stay on screen, following cuts with offset/hidden/full ranges, renders checked by pixel: follows the cuts (colour-coded cam), circle + border + shadow, hide fades + full screen, block render = one-pass render, background removal on a real photo of a person (background replaced, person kept, mask reused), off by default, stacked Shorts, API flow incl. sync job, delete guard, null removes; layout vectors shared with the Editor) | ✅ |
+| Sync by sound & crop to face (`tests/test_sync.py`) | 9 (offsets +2.37/−1.23/0/+11.5 s found within 3 ms with a duller, quieter, noisy second mic; unrelated audio = low confidence; real AAC files; face crop finds the face; no face = no crop) | ✅ |
+| New transitions (`tests/test_transitions9.py`) | 18 (all 9 render and land on both clips; whip moves sideways, flash goes white, shake moves, light leak is warm top-right, glitch mixes bands, spin rotates and ends upright on the right frames, zoom blur zooms) | ✅ |
+| Smoother jump cuts (`tests/test_jumpcuts.py`, `jumpcuts.test.ts`) | shared vectors run by both Python and TypeScript (punch alternates, splits/gaps/other files skipped, too-short pieces skipped, idempotent, fully reversible, your own crops/transitions kept) + the AI finishing touch end to end | ✅ |
+| Browser E2E: face cam | add → lined up by sound (−1.000 s) → top-left circle (preview checked: position, size, round) → crop to face → background removal prepared → hide 2–3 s (preview hides it) → jump-cut punch-in → undo/redo → reload → export shows the cam (and not while hidden) | ✅ no console errors |
 | Phase 8 creator tools | Shorts 10 (moment picking, face + motion tracking, steady camera path, vertical render that follows the subject), language/AI 9, Publish 7 (chapter rules, tags limits, API), YouTube 5 (client file checks, one-time sign-in state + PKCE, resumable upload surviving partial writes and a 503, scheduling forces private, quota message, full API flow; all against a fake Google), library suggestions 4, cut-out 4 | ✅ |
 | My library (`tests/test_library.py`) | 14 (mic-style WebM/Ogg/MP3/WAV import, silence trim, −1 dBFS levelling, 30 s cap, bad/silent files, images re-encoded/downscaled, custom bleeps & sound effects verified by FFT, library deletion vs. project copies, duplicate keeps assets, API + path safety) | ✅ |
 | OpenAPI (`tests/test_openapi.py`) | 2 (every route documented, bodies resolved, CSRF header on every write, script-free docs page) | ✅ |
@@ -52,6 +57,10 @@ Run everything: `scripts/verify_all.sh`.
 
 | Found by | Bug |
 |---|---|
+| transition tests | New transitions came out noisy or solid green: FFmpeg runs custom transition expressions on several threads that share their variables, and `a0()` reads plane 0 only. Now single-threaded with per-plane sampling |
+| transition tests | Spin: the incoming clip started on the wrong frame and stayed rotated |
+| face cam tests | A very tall (phone) face cam could reach past the top edge |
+| browser E2E | Face cam panel couldn't scroll (it slid under the timeline); preview circle was oval when the monitor's shape differed from the video's; the side tabs no longer fit |
 | block-render tests | FFmpeg's accurate seek kept one frame too many when several inputs feed a `concat` filter (picture one frame late inside a block). Now: coarse seek with timestamps kept, exact trim in the graph |
 | block-render tests | The concat demuxer can't seek accurately at all (blocks came out empty). Now each segment is its own input |
 | CI (Ubuntu + Windows) | OpenCV 5.x wheels have no Haar face detector, so Shorts and thumbnail face finding crashed. Pinned OpenCV < 5, and both now fall back to motion if a build lacks it |

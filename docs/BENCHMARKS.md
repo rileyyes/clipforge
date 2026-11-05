@@ -33,6 +33,10 @@ Measured 2026-11-04 on the same 2-core VM: a 10-minute 720p source cut to a **3-
 - What's left in a re-export is the audio mix (noise removal, ducking, two-pass loudness), copying, and the full-decode validation of the result. Those run every time because they're quick to redo and need the whole timeline.
 - The 2-hour table above was measured before block rendering, so its re-export line is the old behaviour.
 
+## Face cam background removal (Phase 9)
+
+Measured 2026-11-05 on the same 2-core VM: preparing background removal for a 60-second 1280×720 webcam video took **26.0 s (0.43× its length)**. It runs once per face cam recording, in the background; exports reuse it. The mask file is tiny (about 70 KB per minute).
+
 ## What this means for you
 
 - Memory is not a concern: even the 2-hour run stayed under half a gigabyte.

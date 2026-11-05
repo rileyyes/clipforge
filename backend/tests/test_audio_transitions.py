@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from app.schema import SCHEMA_VERSION
 from app.config import Settings
 from app.media import build_asset
 from app.projects import ProjectStore
@@ -238,7 +239,7 @@ def test_silent_project_skips_normalisation(tmp_path):
 
 def test_old_projects_keep_their_sound():
     d = migrate({"schema_version": 2, "effects": [], "captions": {}})
-    assert d["audio"] == {"normalize": False, "ducking": "off"} and d["schema_version"] == 4
+    assert d["audio"] == {"normalize": False, "ducking": "off"} and d["schema_version"] == SCHEMA_VERSION
 
 
 def test_noise_reduction_survives_a_crashing_denoiser(tmp_path, monkeypatch):

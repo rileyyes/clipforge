@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–8
+# Hands-on test guide: Phases 4–9
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -95,4 +95,26 @@ Use a project whose recording has been **analysed** (AI Auto Editor → Analyse)
 | 8.13 | Add one flash in the middle, export again | Faster than the first export; the report says most blocks were reused; the flash is in the video |
 | 8.14 | *(Portable package)* GitHub → Actions → latest green **CI** run → *Artifacts* → download **ClipForge-portable-win64**, unzip, double-click `ClipForge.bat` | ClipForge opens without using your installed Python/FFmpeg (Windows may warn first: *More info → Run anyway*). Your projects are there (same workspace) |
 
-**Known preview limits (the export is always exact):** colour is approximate and transitions show as cuts in the preview.
+## Phase 9: face cam, smoother jump cuts, new transitions
+
+You need a game/screen recording and a webcam video of the same session (OBS + the Windows Camera app at the same time works; see the chat notes). Both should have sound.
+
+| # | Do this | You should see |
+|---|---|---|
+| 9.1 | Import both videos into one project; put the game on the timeline | Both in Media |
+| 9.2 | Editor → **Cam** → pick the webcam video → **Add face cam** | A job "Line up face cam", then a message saying how far apart they were. Play it: your lips match your voice |
+| 9.3 | If it's slightly off, press **−1 frame** / **+1 frame** | It moves by one frame each time |
+| 9.4 | Try each corner, the **Size** slider, **Circle**, a border colour | The preview follows every change |
+| 9.5 | **Crop to my face** | The cam zooms in on your head and shoulders |
+| 9.6 | Cut the game clip in a few places (or run the AI Auto Editor) and play | The face cam always shows the matching moment |
+| 9.7 | Put the playhead somewhere, **Hide from here**, move on 5 s, press again | The cam fades out there and back in after |
+| 9.8 | **Full screen on my biggest reactions** (needs the recording analysed) | On loud reactions the cam fills the screen briefly |
+| 9.9 | Tick **Remove my background** | A job prepares it (under half the length of the cam video on a 2-core PC; faster on yours); then "Ready for export" |
+| 9.10 | Export | The cam is where you put it; with background removal, just you over the game |
+| 9.11 | Toolbar → **Smooth jump cuts…** → *Zoom punch-in*, then export | Every other piece after a jump cut is slightly zoomed in, like a second camera |
+| 9.12 | Try *Quick blend* and *Whip pan*; then *Plain cuts* | Short blends / whip pans at the jump cuts; *Plain cuts* removes them again |
+| 9.13 | AI Auto Editor → Finishing touches → **Smoother jump cuts** → *Zoom punch-in* → Send to Manual Editor | The report says how many jump cuts were smoothed |
+| 9.14 | Clip tab → Transition → try **Spin**, **Glitch**, **Light leak**, **Whip pan**, **Flash cut** and export | Each one shows in the export (the preview still shows a plain cut) |
+| 9.15 | Shorts → a moment → Face cam: **Stacked** → Make Short → export | Face cam on the top 40%, the game below |
+
+**Known preview limits (the export is always exact):** colour is approximate, transitions show as cuts, and face cam background removal only appears in the export.

@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–6 working and tested; Phase 7 done except two items this dev environment blocks (see ROADMAP); Phase 8 built and tested automatically, waiting for hands-on testing** (Shorts maker, Publish page with chapters/titles/tags, YouTube upload, library suggestions, Thumbnail Maker cut-outs, fast re-exports, Windows portable package). Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–6 working and tested; Phase 7 done except two items this dev environment blocks (see ROADMAP); Phases 8–9 built and tested automatically, waiting for hands-on testing** (Shorts maker, Publish page, YouTube upload, library suggestions, Thumbnail Maker cut-outs, fast re-exports, Windows portable package; face cam with sync by sound and optional background removal, smoother jump cuts, 9 new transitions). Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -21,9 +21,17 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Comedy edits** auto-placed on reactions (zooms, shakes, pop-up text, sound effects) or added at the playhead, plus your own images.
 - **Animated captions** (bold pop / word highlight / clean) burned in, plus `.srt` export. Censored words are masked.
 - **Audio polish**: loudness normalised to YouTube's −14 LUFS (verified in the export report), background-noise removal, voice enhancement, music that ducks under your voice.
-- **Transitions & fades**: 21 transitions between clips (crossfade, dips, wipes, slides, circle, zoom, pixelize, blur…; audio follows), fades from/to black, volume fades for music.
+- **Transitions & fades**: 30 transitions between clips (crossfade, dips, wipes, slides, circle, zoom, pixelize, blur, whip pan, spin, glitch, RGB split, light leak, flash cut, shake cut…; audio follows), fades from/to black, volume fades for music.
+- **Smoother jump cuts**: zoom punch-ins, quick blends or whip pans wherever talking was cut out of one shot.
 - **My sounds & images**: record your own sounds with the mic (or import MP3/WAV/M4A/OGG, or a video's audio) and your own images. Use them as the bleep sound, as sound effects, or as pop-ups, in every project.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
+
+### Face cam
+- Import your webcam video: it sits in a corner and **follows every cut** of the main recording, so it stays in sync.
+- **Line up by sound** when it was recorded separately; corner, size, square/rounded/circle, border, shadow; **crop to your face**.
+- Hide it for a stretch, or let it fill the screen on your biggest reactions.
+- Optional **AI background removal** (just you over the video, no green screen; on your computer, off by default).
+- Shorts can stack it on top of the video.
 
 ### Shorts & publishing
 - **Shorts maker**: finds the best 15–60 s moments and turns each into a 9:16 project whose crop follows you (face detection, or movement), with captions.

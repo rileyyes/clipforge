@@ -130,13 +130,29 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **8.7 Windows portable package**: a zip with Python, FFmpeg, the UI and speech-to-text inside. Nothing to install: unzip, double-click `ClipForge.bat`. Built on every push by CI, then unzipped on a clean runner with **nothing on PATH** and used to import, export and re-export a video. Unsigned, so Windows SmartScreen will warn the first time ("More info → Run anyway"). See [docs/PACKAGING.md](docs/PACKAGING.md)
 - ⬜ Code-signed installer (needs a signing certificate)
 
+## Phase 9 — Face cam & transitions 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Face cam** (Editor → **Cam**): import your webcam video and it sits over the main recording, **following every cut** (yours and the AI's), so it never drifts out of sync
+  - **Line up by sound**: if the cam was recorded separately, ClipForge matches the two microphones (accurate to a few ms in tests) and says how sure it is; nudge by a frame or type an offset
+  - corner presets (top/bottom, left/right), size, gap to the edge
+  - square corners, rounded or **circle**; border colour/width; soft shadow
+  - **Crop to my face** (head and shoulders, found with the bundled face detector)
+  - **Hide** stretches (it fades out and back in) or make it **fill the screen** for a moment, by hand or on your **biggest reactions**
+  - preview in the monitor matches the export (same layout maths, tested against each other)
+- ✅ **Optional AI background removal** for the face cam (off by default): shows just you over the video, no green screen. Runs on your computer with a small bundled model (PP-HumanSeg, Apache-2.0, 6 MB); prepared once per recording in the background. Good, not perfect: edges around hair can be rough. Export only (the preview shows the full picture)
+- ✅ **Stacked Shorts**: face cam on top, video below (or keep it in its corner, or leave it out)
+- ✅ **Smoother jump cuts**: zoom punch-in (alternating close/wide, like a second camera), quick blend, or whip pan. In the Editor toolbar and in the AI's finishing touches. Only undoes changes it made itself
+- ✅ **9 new transitions**: whip pan left/right, spin, glitch, RGB split, light leak, zoom blur, flash cut, shake cut (30 in total)
+- ⬜ Previewing transitions in the monitor (they still show as cuts there; the export is exact)
+
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 - Block rendering (fast re-exports) is used with the software H.264 encoder. With a GPU encoder the final video is still encoded in one pass (fast already, but not cached).
 
-- Preview colour is a CSS approximation, and transitions preview as cuts. Export is exact.
+- Preview colour is a CSS approximation, transitions preview as cuts, and face cam background removal only shows in the export. Export is exact.
+- Face cam background removal runs per frame on the CPU: preparing it took 0.43× the cam's length on a 2-core VM (a 1-hour webcam recording ≈ 26 minutes), once per recording.
 - Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.
 - Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).
 - Upload copies the file into the workspace (2× disk use for huge recordings). "Import by reference" is planned with a safe folder allow-list.

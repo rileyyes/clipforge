@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from app.schema import SCHEMA_VERSION
 from app import effects as fx
 from app.config import Settings
 from app.media import build_asset
@@ -313,7 +314,7 @@ def test_api_phase4_flow(server, tmp_path, monkeypatch):
     p["timeline"]["tracks"][2]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 5, "link_id": link}]
     st, p, _ = c.req("PUT", f"/api/projects/{pid}/timeline", {"base_edit_revision": p["edit_revision"],
                                                                "timeline": p["timeline"], "output": p["output"]})
-    assert st == 200 and p["schema_version"] == 4 and p["effects"] == []
+    assert st == 200 and p["schema_version"] == SCHEMA_VERSION and p["effects"] == []
     monkeypatch.setattr("app.api.available_transcriber", lambda: None)
     st, r, _ = c.req("POST", f"/api/projects/{pid}/transcribe", {})
     assert st == 409 and "requirements-ai.txt" in r["error"]

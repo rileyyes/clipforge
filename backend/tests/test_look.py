@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
+from app.schema import SCHEMA_VERSION
 from app import look
 from app.config import Settings
 from app.media import build_asset
@@ -146,7 +147,7 @@ def test_video_keyframes_not_allowed_on_audio_clips(tmp_path):
 
 
 def test_v3_projects_migrate_to_v4():
-    assert migrate({"schema_version": 3})["schema_version"] == 4
+    assert migrate({"schema_version": 3})["schema_version"] == SCHEMA_VERSION
 
 
 # ---------------------------------------------------------------- renders
