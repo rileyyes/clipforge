@@ -61,8 +61,15 @@ export interface Track {
   clips: Clip[];
 }
 
+export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter";
+export interface Title {
+  id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
+  color: string; accent: string; align: "left" | "center" | "right"; size: number;
+}
+
 export interface Timeline {
   tracks: Track[];
+  titles?: Title[];
 }
 
 export interface MediaAsset {

@@ -4,6 +4,7 @@ import { clipAt, sourceTimeAt, timelineDuration } from "../timeline/ops";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
 import { camAspect, camAt, layoutBox } from "../timeline/facecam";
+import TitlesPreview from "./TitlesPreview";
 import type { Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
 import { Icon } from "./ui";
 
@@ -273,6 +274,8 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
             {camLayer()}
           </div>
           {flash && <div style={{ position: "absolute", inset: 0, background: "rgba(255,255,255,0.8)" }} />}
+          {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
+            W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (
             <div key={e.id} style={{ position: "absolute", left: `${e.x * 100}%`, top: `${e.y * 100}%`, transform: "translate(-50%,-50%)", pointerEvents: "none" }}>
               {e.kind === "text" ? (

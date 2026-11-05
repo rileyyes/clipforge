@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, findClip, moveClip,
-  removeTrack, snap, splitAt, timelineDuration, toggleTrack, topVideoClipAt, trimEdge, updateClip,
+  removeTrack, snap, splitAt, timelineDuration, toggleTrack, topVideoClipAt, trimEdge, updateClip, cutRanges, setTrackRole,
 } from "./ops";
 import { History } from "./history";
 import type { MediaAsset, Timeline } from "./types";
@@ -181,4 +181,26 @@ test("history undo/redo", () => {
   assert.equal(h.redo(1)!.state, 2);
   h.push(9, "c");
   assert.equal(h.canRedo, false);
+});
+
+
+test("cutRanges removes stretches from picture + sound together and closes the gaps", () => {
+  let { tl } = withOne();                                  // 0-10 s, linked V1 + A1
+  tl = ok(addTrack(tl, "audio"));
+  const mt = tl.tracks[3].id;
+  tl = ok(setTrackRole(tl, mt, "music"));
+  tl = { ...tl, tracks: tl.tracks.map((t) => t.id === mt ? { ...t, clips: [{ id: id(99), media_id: music.id, start: 0, source_in: 0, source_out: 30, speed: 1, volume: 1 }] } : t) };
+  tl = ok(cutRanges(tl, [[2, 3], [6, 6.5], [2.5, 3.2]]));   // overlapping ranges merge: 2-3.2 and 6-6.5
+  const v = tl.tracks[0].clips, a = tl.tracks[2].clips;
+  assert.deepEqual(v.map((c) => [c.start, c.source_in, c.source_out]), [[0, 0, 2], [2, 3.2, 6], [4.8, 6.5, 10]]);
+  assert.deepEqual(a.map((c) => [c.start, c.source_in, c.source_out]), v.map((c) => [c.start, c.source_in, c.source_out]));
+  // each piece of picture stays linked to its own piece of sound, and only to it
+  for (let i = 0; i < 3; i++) assert.equal(v[i].link_id, a[i].link_id);
+  assert.equal(new Set(v.map((c) => c.link_id)).size, 3);
+  // the music isn't cut, just trimmed to the new end with a fade-out
+  const m = tl.tracks[3].clips[0];
+  assert.equal(m.start, 0); assert.ok(Math.abs(clipEnd(m) - 8.3) < 1e-6); assert.equal(m.fade_out, 2);
+  assert.ok(cutRanges(tl, [[1, 1.001]]).error);           // nothing meaningful to cut
+  const locked = ok(toggleTrack(tl, tl.tracks[2].id, "locked"));
+  assert.ok(cutRanges(locked, [[1, 2]]).error);
 });

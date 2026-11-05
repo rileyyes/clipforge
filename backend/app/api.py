@@ -683,6 +683,8 @@ def build_routes(svc: Services) -> list[Route]:
         captions: bool = False
         audio_polish: bool = False
         jump_cuts: Literal["off", "punch", "blend", "whip"] = "off"  # smoother jump cuts
+        remove_fillers: bool = False   # "um", "uh"… (needs a transcript)
+        remove_retakes: bool = False   # first tries of sentences you said again
 
     class ApplyBody(PlanBody):
         expected_output: Optional[float] = None  # guards against stale review screens
@@ -1024,15 +1026,37 @@ def build_routes(svc: Services) -> list[Route]:
         if any(t.clips for t in p.timeline.tracks):
             HistoryStore(store.dir(pid)).snapshot(p.model_dump(mode="json"), "Before AI edit", "before_ai")
 
+        segments = result["segments"]
+        clean_notes: list[dict] = []
+        ex = body.extras
+        if ex.remove_fillers or ex.remove_retakes:
+            from . import cleanup
+            words = (analysis_svc.load_analysis(store.dir(pid), asset.id) or {}).get("words") or []
+            if not words:
+                for on, step in ((ex.remove_fillers, "Remove filler words"), (ex.remove_retakes, "Remove retakes")):
+                    if on:
+                        clean_notes.append({"step": step, "ok": False, "detail": "skipped — no transcript yet"})
+            else:
+                found = cleanup.find(words)
+                kept = [(a["source_in"], a["source_out"]) for a in segments]
+                inside = lambda c: any(x <= c["start"] and c["end"] <= y for x, y in kept)  # noqa: E731
+                for on, kind, step in ((ex.remove_fillers, "filler", "Remove filler words"),
+                                       (ex.remove_retakes, "retake", "Remove retakes")):
+                    if on:
+                        cuts = [c for c in found if c["kind"] == kind and inside(c)]
+                        segments = cleanup.subtract(segments, [(c["start"], c["end"]) for c in cuts])
+                        clean_notes.append({"step": step, "ok": True, "detail": f"{len(cuts)} removed"})
+
         def apply(d: dict) -> dict:
-            d = edl_to_timeline(d, asset.model_dump(mode="json"), result["segments"], new_id)
+            d = edl_to_timeline(d, asset.model_dump(mode="json"), segments, new_id)
             d["edit_revision"] = d.get("edit_revision", 0) + 1
             return d
         try:
             saved = store.update(pid, apply)
         except (EDLError, ValidationError) as exc:
             return err(422, f"Generated edit failed validation: {exc}")
-        notes = apply_extras(pid, saved, body.extras) if body.extras != Extras() else []
+        rest = body.extras.model_copy(update={"remove_fillers": False, "remove_retakes": False})
+        notes = clean_notes + (apply_extras(pid, saved, rest) if rest != Extras() else [])
         if notes:
             saved = store.load(pid)
         return JSONResponse({"project": project_payload(saved), "plan": result, "extras": notes})
@@ -1136,6 +1160,17 @@ def build_routes(svc: Services) -> list[Route]:
     async def transcript(request: Request):
         pid = pid_of(request)
         return JSONResponse({"words": fx.edit_words(load(pid), store.dir(pid))[:20000]})
+
+    async def words(request: Request):
+        """Transcript words of every recording in the project, by media id (source seconds)"""
+        pid = pid_of(request)
+        p = load(pid)
+        out = {}
+        for m in p.media:
+            w = (analysis_svc.load_analysis(store.dir(pid), m.id) or {}).get("words")
+            if w:
+                out[m.id] = [{"text": x["text"], "start": x["start"], "end": x["end"], "p": x.get("p", 1.0)} for x in w]
+        return JSONResponse({"media": out})
 
     async def suggest_censor(request: Request):
         pid = pid_of(request)
@@ -1550,6 +1585,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/fx/censor/suggest", suggest_censor, methods=["POST"]),
         Route(P + "/fx/fun/suggest", suggest_fun, methods=["POST"]),
         Route(P + "/captions.srt", captions_srt),
+        Route(P + "/words", words),
         Route(P + "/fx/library", library_use, methods=["POST"]),
         Route(P + "/fx/broll/suggest", broll_suggest, methods=["POST"]),
         Route(P + "/fx/sounds/{sid}", project_sound_file),

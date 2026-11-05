@@ -4,6 +4,8 @@ import Inspector from "../components/Inspector";
 import EffectsPanel, { FX_COLOR } from "../components/EffectsPanel";
 import HistoryPanel from "../components/HistoryPanel";
 import FaceCamPanel from "../components/FaceCamPanel";
+import ScriptPanel from "../components/ScriptPanel";
+import TitlesPanel from "../components/TitlesPanel";
 import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
@@ -11,7 +13,7 @@ import TimelineView from "../components/TimelineView";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { History } from "../timeline/history";
 import {
-  addMedia, addTrack, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
+  addMedia, addTrack, cutRanges, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
   setTransition, smoothJumpCuts, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type JumpCutMode, type OpResult,
 } from "../timeline/ops";
 import type { AudioSettings, CaptionSettings, Effect, FaceCam, MediaMap, Project, Timeline } from "../timeline/types";
@@ -29,7 +31,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
   const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
-  const [rightTab, setRightTab] = useState<"clip" | "fx" | "cam" | "history">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "script" | "cam" | "history">("clip");
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -322,13 +324,21 @@ export default function Editor({ projectId }: { projectId: string }) {
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
-          <div className="pane-head" style={{ gap: 4 }}>
+          <div className="pane-head" style={{ gap: 2, flexWrap: "wrap" }}>
             <button className={"btn sm" + (rightTab === "clip" ? " on" : " ghost")} onClick={() => setRightTab("clip")}>Clip</button>
-            <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />Effects{effects.length ? ` (${effects.length})` : ""}</button>
+            <button className={"btn sm" + (rightTab === "fx" ? " on" : " ghost")} aria-label="Effects" title="Effects, bleeps, captions, audio" onClick={() => setRightTab("fx")}><Icon name="wand" size={13} />FX{effects.length ? ` ${effects.length}` : ""}</button>
+            <button className={"btn sm" + (rightTab === "text" ? " on" : " ghost")} title="Titles" onClick={() => setRightTab("text")}>Text</button>
+            <button className={"btn sm" + (rightTab === "script" ? " on" : " ghost")} title="Edit by transcript" onClick={() => setRightTab("script")}>Script</button>
             <button className={"btn sm" + (rightTab === "cam" ? " on" : " ghost")} aria-label="Face cam" title="Face cam" onClick={() => setRightTab("cam")}><Icon name="webcam" size={13} />Cam</button>
-            <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} onClick={() => setRightTab("history")}><Icon name="undo" size={13} />History</button>
+            <button className={"btn sm" + (rightTab === "history" ? " on" : " ghost")} aria-label="History" title="History (versions)" onClick={() => setRightTab("history")}><Icon name="undo" size={13} /></button>
           </div>
-          {rightTab === "cam" ? (
+          {rightTab === "text" ? (
+            <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} />
+          ) : rightTab === "script" ? (
+            <ScriptPanel projectId={projectId} timeline={timeline} playhead={playhead} playing={playing} jobs={jobs}
+              seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}
+              onCut={(ranges, label) => commit(cutRanges(timeline, ranges), label)} />
+          ) : rightTab === "cam" ? (
             <FaceCamPanel projectId={projectId} project={project} timeline={timeline} media={media} output={project.output}
               facecam={facecam} setFacecam={setFacecam} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               jobs={jobs} onJobs={() => { refreshJobs(); setTimeout(reloadMedia, 600); }} />

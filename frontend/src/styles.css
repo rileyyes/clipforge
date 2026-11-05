@@ -261,3 +261,16 @@ a.btn.primary { color: #fff; }
 /* Publish */
 .chip.tag { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; }
 textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
+
+/* ---- Script (edit by transcript) */
+.script-text { line-height: 1.9; font-size: 14px; user-select: none; }
+.script-word { padding: 2px 1px; border-radius: 3px; cursor: pointer; }
+.script-word:hover { background: rgba(255, 255, 255, .08); }
+.script-word.cur { background: rgba(76, 201, 240, .25); color: var(--text); }
+.script-word.sel { background: var(--accent, #ff5a3c); color: #fff; }
+.script-filler { color: #f2b84b; text-decoration: line-through; text-decoration-color: rgba(242, 184, 75, .7); }
+.script-retake { color: #c77dff; text-decoration: line-through; text-decoration-color: rgba(199, 125, 255, .7); }
+.script-gap { color: var(--dim, #777); }
+.title-row { padding: 4px 6px; border-radius: 6px; }
+.title-row:hover { background: rgba(255, 255, 255, .05); }
+.title-row.on { background: rgba(255, 90, 60, .15); }

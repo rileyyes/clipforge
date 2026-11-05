@@ -1,0 +1,436 @@
+[
+ {
+  "name": "fillers",
+  "words": [
+   {
+    "text": " so",
+    "start": 0.0,
+    "end": 0.3
+   },
+   {
+    "text": " um",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " I",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " think",
+    "start": 1.14,
+    "end": 1.44
+   },
+   {
+    "text": " uh",
+    "start": 1.52,
+    "end": 1.82
+   },
+   {
+    "text": " this",
+    "start": 1.9,
+    "end": 2.2
+   },
+   {
+    "text": " is",
+    "start": 2.28,
+    "end": 2.58
+   },
+   {
+    "text": " the",
+    "start": 2.66,
+    "end": 2.96
+   },
+   {
+    "text": " best",
+    "start": 3.04,
+    "end": 3.34
+   },
+   {
+    "text": " one",
+    "start": 3.42,
+    "end": 3.72
+   },
+   {
+    "text": " hmm",
+    "start": 3.8,
+    "end": 4.1
+   }
+  ],
+  "expect": [
+   {
+    "kind": "filler",
+    "start": 0.33,
+    "end": 0.7,
+    "text": "um",
+    "first": 1,
+    "last": 1
+   },
+   {
+    "kind": "filler",
+    "start": 1.47,
+    "end": 1.84,
+    "text": "uh",
+    "first": 4,
+    "last": 4
+   },
+   {
+    "kind": "filler",
+    "start": 3.75,
+    "end": 4.15,
+    "text": "hmm",
+    "first": 10,
+    "last": 10
+   }
+  ]
+ },
+ {
+  "name": "retake",
+  "words": [
+   {
+    "text": " today",
+    "start": 0.0,
+    "end": 0.3
+   },
+   {
+    "text": " I",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " want",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " to",
+    "start": 1.14,
+    "end": 1.44
+   },
+   {
+    "text": " show",
+    "start": 1.52,
+    "end": 1.82
+   },
+   {
+    "text": " you",
+    "start": 1.9,
+    "end": 2.2
+   },
+   {
+    "text": " today",
+    "start": 2.28,
+    "end": 2.58
+   },
+   {
+    "text": " I",
+    "start": 2.66,
+    "end": 2.96
+   },
+   {
+    "text": " want",
+    "start": 3.04,
+    "end": 3.34
+   },
+   {
+    "text": " to",
+    "start": 3.42,
+    "end": 3.72
+   },
+   {
+    "text": " show",
+    "start": 3.8,
+    "end": 4.1
+   },
+   {
+    "text": " you",
+    "start": 4.18,
+    "end": 4.48
+   },
+   {
+    "text": " my",
+    "start": 4.56,
+    "end": 4.86
+   },
+   {
+    "text": " setup",
+    "start": 4.94,
+    "end": 5.24
+   }
+  ],
+  "expect": [
+   {
+    "kind": "retake",
+    "start": -0.02,
+    "end": 2.23,
+    "text": "today I want to show you",
+    "first": 0,
+    "last": 5
+   }
+  ]
+ },
+ {
+  "name": "retake with filler",
+  "words": [
+   {
+    "text": " this",
+    "start": 0.0,
+    "end": 0.3
+   },
+   {
+    "text": " is",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " the",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " uh",
+    "start": 1.14,
+    "end": 1.44
+   },
+   {
+    "text": " this",
+    "start": 1.52,
+    "end": 1.82
+   },
+   {
+    "text": " is",
+    "start": 1.9,
+    "end": 2.2
+   },
+   {
+    "text": " the",
+    "start": 2.28,
+    "end": 2.58
+   },
+   {
+    "text": " moment",
+    "start": 2.66,
+    "end": 2.96
+   }
+  ],
+  "expect": [
+   {
+    "kind": "retake",
+    "start": -0.02,
+    "end": 1.47,
+    "text": "this is the uh",
+    "first": 0,
+    "last": 3
+   }
+  ]
+ },
+ {
+  "name": "no false retake",
+  "words": [
+   {
+    "text": " I",
+    "start": 0.0,
+    "end": 0.3
+   },
+   {
+    "text": " think",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " I",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " think",
+    "start": 1.14,
+    "end": 1.44
+   },
+   {
+    "text": " so",
+    "start": 1.52,
+    "end": 1.82
+   },
+   {
+    "text": " and",
+    "start": 1.9,
+    "end": 2.2
+   },
+   {
+    "text": " yes",
+    "start": 2.28,
+    "end": 2.58
+   },
+   {
+    "text": " yes",
+    "start": 2.66,
+    "end": 2.96
+   },
+   {
+    "text": " yes",
+    "start": 3.04,
+    "end": 3.34
+   },
+   {
+    "text": " we",
+    "start": 3.42,
+    "end": 3.72
+   },
+   {
+    "text": " go",
+    "start": 3.8,
+    "end": 4.1
+   },
+   {
+    "text": " go",
+    "start": 4.18,
+    "end": 4.48
+   },
+   {
+    "text": " go",
+    "start": 4.56,
+    "end": 4.86
+   },
+   {
+    "text": " now",
+    "start": 4.94,
+    "end": 5.24
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "too far apart",
+  "words": [
+   {
+    "text": " here",
+    "start": 0,
+    "end": 0.3
+   },
+   {
+    "text": " we",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " go",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " here",
+    "start": 20,
+    "end": 20.3
+   },
+   {
+    "text": " we",
+    "start": 20.38,
+    "end": 20.68
+   },
+   {
+    "text": " go",
+    "start": 20.76,
+    "end": 21.06
+   },
+   {
+    "text": " again",
+    "start": 21.14,
+    "end": 21.44
+   }
+  ],
+  "expect": []
+ },
+ {
+  "name": "punctuation and case",
+  "words": [
+   {
+    "text": " Um,",
+    "start": 0.0,
+    "end": 0.3
+   },
+   {
+    "text": " OK.",
+    "start": 0.38,
+    "end": 0.68
+   },
+   {
+    "text": " So",
+    "start": 0.76,
+    "end": 1.06
+   },
+   {
+    "text": " the",
+    "start": 1.14,
+    "end": 1.44
+   },
+   {
+    "text": " plan",
+    "start": 1.52,
+    "end": 1.82
+   },
+   {
+    "text": " is,",
+    "start": 1.9,
+    "end": 2.2
+   },
+   {
+    "text": " so",
+    "start": 2.28,
+    "end": 2.58
+   },
+   {
+    "text": " the",
+    "start": 2.66,
+    "end": 2.96
+   },
+   {
+    "text": " plan",
+    "start": 3.04,
+    "end": 3.34
+   },
+   {
+    "text": " is",
+    "start": 3.42,
+    "end": 3.72
+   },
+   {
+    "text": " simple.",
+    "start": 3.8,
+    "end": 4.1
+   },
+   {
+    "text": " Uhh",
+    "start": 4.18,
+    "end": 4.48
+   }
+  ],
+  "expect": [
+   {
+    "kind": "filler",
+    "start": -0.05,
+    "end": 0.32,
+    "text": "Um,",
+    "first": 0,
+    "last": 0
+   },
+   {
+    "kind": "retake",
+    "start": 0.74,
+    "end": 2.23,
+    "text": "So the plan is,",
+    "first": 2,
+    "last": 5
+   },
+   {
+    "kind": "filler",
+    "start": 4.13,
+    "end": 4.53,
+    "text": "Uhh",
+    "first": 11,
+    "last": 11
+   }
+  ]
+ }
+]

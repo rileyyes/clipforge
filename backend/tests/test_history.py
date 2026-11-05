@@ -280,3 +280,50 @@ def test_ai_edit_with_smoother_jump_cuts(server, tmp_path):
     st, job, _ = c.req("POST", f"/api/projects/{pid}/exports", {"filename": "j", "quality": "draft"})
     job = c.wait_job(job["id"], timeout=300)
     assert job["status"] == "succeeded" and job["result"]["validation"]["ok"]
+
+
+def test_ai_edit_removes_fillers_and_retakes(server, tmp_path, monkeypatch):
+    from test_autoedit import write_talk_wav
+    import subprocess
+
+    class Talker:
+        name = "fake-whisper"
+
+        def transcribe(self, src, on_progress, cancel):
+            on_progress(1.0)
+            text = "so um today I want to show today I want to show you uh my new setup"
+            out, t = [], 1.0
+            for w in text.split():
+                out.append({"start": round(t, 3), "end": round(t + 0.3, 3), "text": w, "p": 0.9})
+                t += 0.4
+            return out
+    monkeypatch.setattr("app.api.available_transcriber", lambda: Talker())
+    c = server
+    wav = write_talk_wav(tmp_path / "talk.wav")
+    vid = tmp_path / "talk.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=30",
+                    "-i", str(wav), "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-pix_fmt", "yuv420p", "-c:a", "aac", str(vid)], check=True)
+    _, p, _ = c.req("POST", "/api/projects", {"name": "clean"})
+    pid = p["id"]
+    _, up, _ = c.upload(pid, vid)
+    mid = up["media"]["id"]
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/autoedit/analyze", {"media_id": mid})
+    assert c.wait_job(job["id"])["status"] == "succeeded"
+    _, job, _ = c.req("POST", f"/api/projects/{pid}/transcribe", {"media_ids": [mid]})
+    assert c.wait_job(job["id"])["status"] == "succeeded"
+    st, w, _ = c.req("GET", f"/api/projects/{pid}/words")
+    assert st == 200 and len(w["media"][mid]) == 17
+
+    def dur(extras):
+        body = {"media_id": mid, "settings": {"target_mode": "original", "silence": "off"}, "extras": extras}
+        st, r, _ = c.req("POST", f"/api/projects/{pid}/autoedit/apply", body)
+        assert st == 200, r
+        v = r["project"]["timeline"]["tracks"][0]["clips"]
+        return sum(x["source_out"] - x["source_in"] for x in v), {n["step"]: n for n in r["extras"]}
+    full, _ = dur({})
+    cleaned, notes = dur({"remove_fillers": True, "remove_retakes": True})
+    assert notes["Remove filler words"]["detail"] == "2 removed"
+    assert notes["Remove retakes"]["detail"] == "1 removed"
+    # the retake ("today I want to show", 5 words) + 2 fillers ≈ 2.0 + 0.8 s shorter
+    assert 2.3 < full - cleaned < 3.3, (full, cleaned)

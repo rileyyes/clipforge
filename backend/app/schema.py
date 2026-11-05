@@ -213,9 +213,32 @@ class Track(Strict):
         return _check_id(v)
 
 
+COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
+
+
+class Title(Strict):
+    """A text graphic on the timeline (timeline seconds; drawn above video and captions)."""
+    id: str
+    start: float = Field(ge=0, le=86400)
+    duration: float = Field(default=4.0, ge=0.5, le=600)
+    template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter"] = "lower_third"
+    text: str = Field(default="Your name", max_length=80)
+    subtext: str = Field(default="", max_length=100)
+    color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+    accent: str = Field(default="#ff5a3c", pattern=COLOR_HEX)
+    align: Literal["left", "center", "right"] = "left"
+    size: float = Field(default=1.0, ge=0.5, le=2.0)
+
+    @field_validator("id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+
 class Timeline(Strict):
     # Video tracks: index order = stacking order (first = bottom / V1).
     tracks: list[Track] = Field(default_factory=list, max_length=32)
+    titles: list[Title] = Field(default_factory=list, max_length=500)
 
     @property
     def duration(self) -> float:
@@ -237,7 +260,6 @@ class OutputSettings(Strict):
 
 
 SOUNDS = ("beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh", "ding", "pop", "airhorn")
-COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
 
 
 class Effect(Strict):

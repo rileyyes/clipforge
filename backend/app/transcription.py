@@ -62,7 +62,10 @@ class FasterWhisperTranscriber:
         words: list[dict] = []
         total = max(media_duration(src), 1e-6)
         for offset, audio in decode_chunks(src, CHUNK_S, cancel):
-            segments, _info = model.transcribe(audio, word_timestamps=True, vad_filter=True)
+            # Whisper tends to leave out "um"/"uh"; a prompt written with them nudges it to keep
+            # them, so filler-word removal has something to find (results vary by voice)
+            segments, _info = model.transcribe(audio, word_timestamps=True, vad_filter=True,
+                                               initial_prompt=FILLER_PROMPT)
             for seg in segments:
                 if cancel is not None and cancel.is_set():
                     raise ff.Cancelled("cancelled")
@@ -76,6 +79,7 @@ class FasterWhisperTranscriber:
 
 SAMPLE_RATE = 16000  # what Whisper expects
 CHUNK_S = 20 * 60    # 20 min ≈ 77 MB of float32 samples per chunk
+FILLER_PROMPT = "Umm, so, uh, let me think. Hmm, okay, um, like this."
 
 
 def _ffmpeg_bins() -> tuple[str, str]:

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   MIN_CLIP, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
-  sanitize, setFades, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
+  addTitle, cutRanges, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
 import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
@@ -88,7 +88,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 18);
+      const op = Math.floor(r() * 20);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -117,7 +117,20 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 16: res = c ? updateClip(tl, c.id, { crop: { left: r() * 0.6, right: r() * 0.6, top: r() * 0.5, bottom: r() * 0.5 },
           color: { brightness: r() - 0.5, contrast: r() * 2, saturation: r() * 3, gamma: 0.2 + r() * 3, temperature: r() * 2 - 1, look: pick([...LOOKS]) } }) : { error: "none" }; break;
         case 17: res = c ? updateClip(tl, c.id, { transform: { rotation: (r() - 0.5) * 8000, opacity: r() * 1.3 - 0.1 } }) : { error: "none" }; break;
+        case 11: {
+          const n = 1 + Math.floor(r() * 3);
+          res = r() < 0.75 ? cutRanges(tl, Array.from({ length: n }, () => { const a = r() * dur; return [a, a + r() * 3] as [number, number]; }))
+            : smoothJumpCuts(tl, pick(["off", "punch", "blend", "whip"] as const));
+          break;
+        }
         case 14: res = setTrackRole(tl, pick(tl.tracks).id, r() < 0.5 ? "music" : "dialogue"); break;
+        case 18: res = addTitle(tl, pick(TITLE_TEMPLATES.map((x) => x[0])), t); break;
+        case 19: {
+          const ts = tl.titles ?? [];
+          res = ts.length ? (r() < 0.3 ? removeTitle(tl, pick(ts).id) : updateTitle(tl, pick(ts).id, { start: t - 2, duration: r() * 20, size: r() * 3,
+            text: "x".repeat(Math.floor(r() * 120)), align: pick(["left", "center", "right"] as const) })) : { error: "none" };
+          break;
+        }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

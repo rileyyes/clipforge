@@ -2,7 +2,7 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
-import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Track, TrackKind } from "./types";
+import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Title, TitleTemplate, Track, TrackKind } from "./types";
 import { KF_LIMITS } from "./keyframes";
 
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
@@ -561,4 +561,103 @@ export function smoothJumpCuts(tl: Timeline, mode: JumpCutMode): OpResult & { co
   }
   const timeline = withTracks(tl, (t, i) => (i === vi ? { ...t, clips } : t));
   return { timeline: sanitize(timeline), count };
+}
+
+// ---------------------------------------------------------------- cut stretches (edit by transcript)
+const MUSIC_TAIL_FADE = 2;
+
+/** Remove timeline stretches [a, b) from every track and close the gaps (ripple) — used by
+ * edit-by-transcript and filler/retake removal. Music tracks aren't cut (the song keeps
+ * playing); if the music now runs past the end of everything else it's trimmed there with
+ * a fade-out. Clips cut in two become two clips; linked picture + sound stay linked. */
+export function cutRanges(tl: Timeline, ranges: [number, number][]): OpResult {
+  const merged: [number, number][] = [];
+  for (const [a0, b0] of [...ranges].map(([a, b]) => [Math.max(0, Math.min(a, b)), Math.max(a, b)] as [number, number]).sort((x, y) => x[0] - y[0])) {
+    if (b0 - a0 < 0.02) continue;
+    const last = merged[merged.length - 1];
+    if (last && a0 <= last[1] + 0.02) last[1] = Math.max(last[1], b0); else merged.push([a0, b0]);
+  }
+  if (!merged.length) return { error: "Nothing to cut" };
+  const isMusic = (t: Track) => t.kind === "audio" && t.role === "music";
+  // sound linked to picture is cut with it even on a music track (or the two would drift apart)
+  const linked = new Set(tl.tracks.filter((t) => !isMusic(t)).flatMap((t) => t.clips.map((c) => c.link_id).filter(Boolean)));
+  // a music track is left alone (the song keeps playing) unless something on it is linked to picture
+  const freeTracks = new Set(tl.tracks.filter((t) => isMusic(t) && !t.clips.some((c) => c.link_id && linked.has(c.link_id))).map((t) => t.id));
+  const free = (_c: Clip, t: Track) => freeTracks.has(t.id);
+  for (const t of tl.tracks) {
+    if (!t.locked) continue;
+    if (t.clips.some((c) => !free(c, t) && merged.some(([a]) => clipEnd(c) > a + EPS))) return { error: `Track ${t.name} is locked` };
+  }
+  let cur = tl;
+  for (let i = merged.length - 1; i >= 0; i--) {
+    const [a, b] = merged[i];
+    const relink = new Map<string, string>();
+    const linkFor = (id?: string | null) => {
+      if (!id) return id ?? null;
+      if (!relink.has(id)) relink.set(id, newId());
+      return relink.get(id)!;
+    };
+    // titles move with the picture; one that starts inside the cut starts where the cut was
+    cur = { ...cur, titles: (cur.titles ?? []).map((t) => t.start >= b - EPS ? { ...t, start: round6(t.start - (b - a)) }
+      : t.start > a ? { ...t, start: round6(a) } : t) };
+    cur = withTracks(cur, (track) => {
+      const out: Clip[] = [];
+      for (const c of track.clips) {
+        if (free(c, track)) { out.push(c); continue; }
+        const s = c.start, e = clipEnd(c);
+        if (e <= a + EPS) { out.push(c); continue; }
+        if (s >= b - EPS) { out.push({ ...c, start: round6(c.start - (b - a)) }); continue; }
+        if (a - s >= MIN_CLIP + 0.01) out.push({ ...c, source_out: round6(c.source_in + (a - s) * c.speed), fade_out: 0 });
+        if (e - b >= MIN_CLIP + 0.01) {
+          const keepsId = a - s < MIN_CLIP + 0.01;  // nothing left before the cut: the piece after keeps the clip
+          out.push({ ...c, id: keepsId ? c.id : newId(), link_id: keepsId ? c.link_id : linkFor(c.link_id), start: round6(a),
+            source_in: round6(c.source_in + (b - s) * c.speed), transition_in: null, fade_in: 0 });
+        }
+      }
+      return { ...track, clips: sortClips(out) };
+    });
+  }
+  // music past the end of everything else: trim with a fade-out
+  const end = Math.max(0, ...cur.tracks.flatMap((t) => t.clips.filter((c) => !free(c, t)).map(clipEnd)));
+  cur = withTracks(cur, (track) => !isMusic(track) || end <= 0 ? track : {
+    ...track,
+    clips: track.clips.filter((c) => !free(c, track) || c.start < end - MIN_CLIP).map((c) => {
+      if (!free(c, track) || clipEnd(c) <= end + EPS) return c;
+      const d = end - c.start;
+      return { ...c, source_out: round6(c.source_in + d * c.speed), fade_out: round6(Math.min(MUSIC_TAIL_FADE, d / 2)), fade_in: Math.min(c.fade_in ?? 0, d / 2) };
+    }),
+  });
+  return { timeline: sanitize(cur) };
+}
+
+// ---------------------------------------------------------------- titles
+export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
+  ["lower_third", "Lower third", { text: "Your name", subtext: "What you do", align: "left", duration: 5 }],
+  ["big_title", "Big title", { text: "TITLE", subtext: "", align: "center", duration: 3 }],
+  ["top_banner", "Top banner", { text: "Breaking news", subtext: "", align: "center", duration: 5 }],
+  ["subscribe", "Subscribe", { text: "SUBSCRIBE", subtext: "", align: "right", duration: 4, accent: "#e62117" }],
+  ["chapter", "Chapter card", { text: "Chapter title", subtext: "Part 1", align: "center", duration: 3 }],
+];
+
+export function addTitle(tl: Timeline, template: TitleTemplate, at: number): OpResult & { id?: string } {
+  const preset = TITLE_TEMPLATES.find((x) => x[0] === template)?.[2] ?? {};
+  const t: Title = { id: newId(), start: round6(Math.max(0, at)), duration: 4, template, text: "", subtext: "",
+    color: "#ffffff", accent: "#ff5a3c", align: "left", size: 1, ...preset };
+  return { timeline: { ...tl, titles: [...(tl.titles ?? []), t] }, id: t.id };
+}
+
+export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title, "id">>): OpResult {
+  const t = (tl.titles ?? []).find((x) => x.id === id);
+  if (!t) return { error: "Title not found" };
+  const n: Title = { ...t, ...patch };
+  n.start = round6(Math.max(0, n.start));
+  n.duration = round6(Math.max(0.5, Math.min(600, n.duration)));
+  n.size = Math.max(0.5, Math.min(2, n.size));
+  n.text = n.text.slice(0, 80); n.subtext = n.subtext.slice(0, 100);
+  if (!/^#[0-9a-fA-F]{6}$/.test(n.color) || !/^#[0-9a-fA-F]{6}$/.test(n.accent)) return { error: "Colours must be like #ff5a3c" };
+  return { timeline: { ...tl, titles: (tl.titles ?? []).map((x) => (x.id === id ? n : x)) } };
+}
+
+export function removeTitle(tl: Timeline, id: string): OpResult {
+  return { timeline: { ...tl, titles: (tl.titles ?? []).filter((x) => x.id !== id) } };
 }

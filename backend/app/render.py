@@ -34,6 +34,7 @@ from . import effects as fx
 from .effects import mutes_for_clip
 from . import look
 from . import facecam, matte
+from . import titles as titles_mod
 from .rcache import RenderCache
 from .library import project_sound
 from .storage import PathSecurityError
@@ -752,8 +753,9 @@ def _render_blocks(settings: Settings, project: Project, project_dir: Path, plan
             "-filter_complex", ";".join(g), "-map", "[vout]", "-an",
             *encoder_args(encoder, quality), "-pix_fmt", "yuv420p", "-r", str(fps),
             "-frames:v", str(B - A), "-video_track_timescale", "90000", str(work / name)]
-        ass = work / f"cap{k:04d}.ass"
-        key = cache.key(args, work, name, extra=ass.read_text(encoding="utf-8") if ass.exists() else "")
+        extra = "".join(f.read_text(encoding="utf-8") for f in (work / f"cap{k:04d}.ass", work / f"titles{k:04d}.ass")
+                        if f.exists())
+        key = cache.key(args, work, name, extra=extra)
         names.append(name)
         if cache.fetch(key, work / name):
             reused += 1
@@ -850,6 +852,15 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
             (work / ass).write_text(fx.captions_ass(project, chunks, family, H, W), encoding="utf-8")
             g.append(f"[{last}]ass={ass}:fontsdir=.[cap]")
             last, cwd = "cap", work
+    tl = [t.model_dump() for t in project.timeline.titles
+          if t.start < D and (not win or (t.start + t.duration > lo - 0.1 and t.start < hi + 0.1))]
+    if tl:
+        family = _caption_font_cached(work)
+        font = next(iter(sorted(work.glob("capfont.*"))), None)
+        ass = f"titles{tag}.ass" if win else "titles.ass"
+        (work / ass).write_text(titles_mod.ass(tl, W, H, family, str(font) if font else None), encoding="utf-8")
+        g.append(f"[{last}]ass={ass}:fontsdir=.[ttl]")
+        last, cwd = "ttl", work
     return last, more, cwd
 
 
