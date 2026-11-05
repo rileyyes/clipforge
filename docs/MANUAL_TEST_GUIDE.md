@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–9
+# Hands-on test guide: Phases 4–10
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -117,4 +117,25 @@ You need a game/screen recording and a webcam video of the same session (OBS + t
 | 9.14 | Clip tab → Transition → try **Spin**, **Glitch**, **Light leak**, **Whip pan**, **Flash cut** and export | Each one shows in the export (the preview still shows a plain cut) |
 | 9.15 | Shorts → a moment → Face cam: **Stacked** → Make Short → export | Face cam on the top 40%, the game below |
 
-**Known preview limits (the export is always exact):** colour is approximate, transitions show as cuts, and face cam background removal only appears in the export.
+## Phase 10: edit by transcript, fillers & retakes, titles, blur, beat
+
+Use a talking video with speech transcribed (Effects → Transcribe speech), ideally with a few "um"s and a sentence you restarted.
+
+| # | Do this | You should see |
+|---|---|---|
+| 10.1 | Editor → **Script** | Your edit as text; the current word lights up as it plays; fillers marked yellow, retakes purple |
+| 10.2 | Click a word | The playhead jumps there |
+| 10.3 | Drag across a few words → **Cut** (or Delete) | They're gone from picture and sound; the timeline closes up; Ctrl+Z brings them back |
+| 10.4 | **Remove N filler words**, then **Remove N retakes** | The "um"s and first tries are gone and it still sounds natural |
+| 10.5 | AI Auto Editor → Finishing touches → tick **Remove filler words** and **Remove retakes** → Send to Manual Editor | The report says how many were removed |
+| 10.6 | **Text** → **Lower third** → type your name and a second line | It slides in at the bottom-left of the preview |
+| 10.7 | Try **Big title**, **Top banner**, **Subscribe**, **Chapter card**; change colours, position, size | Each one in the preview; export them and compare |
+| 10.8 | **Blur** → **Draw a blur** → drag over something | A blurred box there for 3 s |
+| 10.9 | Put the playhead on a face → **Blur faces here** | An oval blur on each face |
+| 10.10 | Select a blur → **Follow it** (on something that moves) | After a moment "Following it now"; the blur moves with it in the preview |
+| 10.11 | Try **Pixelate** and **Black box**; export | The export hides it the same way |
+| 10.12 | Put a song on the music track (♪) → **Beat** → **Find the beat** | Its BPM, and green marks on the timeline |
+| 10.13 | Make a few cuts → **Snap cuts to the beat** | The cuts move onto the green marks; play it: the cuts land on the beat |
+| 10.14 | **End the music with the video** | The song ends with the video with a fade |
+
+**Known preview limits (the export is always exact):** colour is approximate, transitions show as cuts, face cam background removal only appears in the export, and titles/blur are drawn by the browser in the preview (close, not identical).

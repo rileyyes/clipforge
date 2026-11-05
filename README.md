@@ -2,7 +2,7 @@
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
-> **Status: Phases 1–6 working and tested; Phase 7 done except two items this dev environment blocks (see ROADMAP); Phases 8–9 built and tested automatically, waiting for hands-on testing** (Shorts maker, Publish page, YouTube upload, library suggestions, Thumbnail Maker cut-outs, fast re-exports, Windows portable package; face cam with sync by sound and optional background removal, smoother jump cuts, 9 new transitions). Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
+> **Status: Phases 1–6 working and tested; Phase 7 done except two items this dev environment blocks (see ROADMAP); Phases 8–10 built and tested automatically, waiting for hands-on testing** (Shorts maker, Publish page, YouTube upload, library suggestions, Thumbnail Maker cut-outs, fast re-exports, Windows portable package; face cam with sync by sound and optional background removal, smoother jump cuts, 9 new transitions; edit by transcript, filler/retake removal, titles, privacy blur, music beat sync). Transcription is optional and experimental. See [ROADMAP.md](ROADMAP.md) for the live checklist.
 
 ## What works today
 
@@ -25,6 +25,12 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 - **Smoother jump cuts**: zoom punch-ins, quick blends or whip pans wherever talking was cut out of one shot.
 - **My sounds & images**: record your own sounds with the mic (or import MP3/WAV/M4A/OGG, or a video's audio) and your own images. Use them as the bleep sound, as sound effects, or as pop-ups, in every project.
 - Needs the free transcriber for bleeps/captions: `pip install -r requirements-ai.txt`. See [docs/EFFECTS.md](docs/EFFECTS.md).
+
+### Edit by text, titles, blur, beat
+- **Script tab**: your video as text. Select words and cut them; remove "um"s and retakes in one click.
+- **Titles**: lower thirds, big titles, banners, a subscribe button, chapter cards — animated.
+- **Privacy blur**: blur, pixelate or black-box a face, plate or chat; draw it on the preview, one-click face blur, and it can follow what moves.
+- **Beat sync**: finds the beat of your music, shows it on the timeline and moves cuts onto it.
 
 ### Face cam
 - Import your webcam video: it sits in a corner and **follows every cut** of the main recording, so it stays in sync.

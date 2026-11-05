@@ -456,8 +456,9 @@ def test_whisper_gets_ffmpeg_decoded_chunks_with_exact_offsets(tmp_path, monkeyp
     seen = []
 
     class FakeModel:
-        def transcribe(self, audio, word_timestamps, vad_filter):
+        def transcribe(self, audio, word_timestamps, vad_filter, initial_prompt=None):
             assert isinstance(audio, np.ndarray) and audio.dtype == np.float32  # never a file path
+            assert initial_prompt and "um" in initial_prompt.lower()  # asks Whisper to keep filler words
             seen.append(len(audio))
             loud = np.flatnonzero(np.abs(audio) > 0.3)
             if not loud.size:

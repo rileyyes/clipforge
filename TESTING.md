@@ -11,7 +11,7 @@ cd frontend && npm run typecheck           # strict TypeScript on the engine
 python scripts/e2e_browser.py              # headless Chromium end-to-end (needs Playwright + built frontend)
 ```
 
-## Current results (2026-11-05, Phase 9) — full suite (`scripts/verify_all.sh`) run 3× in a row locally and green in CI on Ubuntu + Windows
+## Current results (2026-11-05, Phase 10) — full suite (`scripts/verify_all.sh`) run 3× in a row locally and green in CI on Ubuntu + Windows
 
 | Suite | Tests | Result |
 |---|---|---|
@@ -23,6 +23,12 @@ python scripts/e2e_browser.py              # headless Chromium end-to-end (needs
 | Look & animation (`tests/test_look.py`) | 51 (keyframe maths vs FFmpeg expressions, pixel-measured rotation, crop, opacity, colour/looks, volume keyframes, all 21 transitions) | ✅ |
 | Render cache & previews (`tests/test_perf.py`) | 6 (full reuse, only changed clip re-renders, off switch, eviction, proxy + 100 peaks/s waveform) | ✅ |
 | Block rendering (`tests/test_blocks.py`) | 6 (block windows; block render vs one-pass render **frame by frame** with zoom, shake, flash, pop-up, keyframed overlay, wipe and captions across 1 s block edges; audio matches; exact frame counts at 25/30 fps over 0.4 s blocks; a small edit re-encodes one block and the copied blocks are bit-identical; a caption word change only touches nearby blocks) | ✅ |
+| Fillers & retakes (`tests/test_cleanup.py`, `cleanup.test.ts`) | 8 + shared vectors run by Python and TypeScript (fillers, retakes incl. one with an "uh" inside, no false retakes on "yes yes yes", too far apart, punctuation/case; cuts never reach into neighbouring words; segment subtraction) + the AI finishing touch end to end (2 fillers + 1 retake removed, length checked) | ✅ |
+| Edit by transcript (`ops.test.ts`, `cleanup.test.ts`, fuzz) | cutRanges: picture + sound cut together, pieces relinked, overlapping ranges merged, music trimmed with a fade, locked tracks refused; editWords maps words through cuts and speed; fuzz + cross-check include cutRanges, titles, blurs and beat snaps | ✅ |
+| Titles (`tests/test_titles.py`) | 7 (lower third slides in and shows text, big title / banner / subscribe draw where they should, chapter card dims, block render = one-pass, editing one title re-encodes only its blocks, validation) | ✅ |
+| Privacy blur (`tests/test_blur.py`) | 8 (blur / pixelate / black only inside the box and only while on, oval leaves the corners, moving keys + block render = one-pass, 240-key expressions evaluate correctly, tracking follows a moving square within 2% of the frame, API: tracking across two pieces with a cut (re-found after the cut), faces) | ✅ |
+| Beat detection (`tests/test_beats.py`, `ops.test.ts`) | 6 (90/120/128/150 BPM found within 1.5 BPM and beats within about a frame, silence, API + cache) + snap cuts to beats (roll edits, linked sound, nothing else moves, no-footage case) + fit music | ✅ |
+| Browser E2E: Phase 10 | transcript (written directly) → remove 2 fillers → 1 retake → cut a word → lower third (preview) → draw a blur on the preview → follow it → find the beat (119.7 BPM) → snap cuts → reload → export shows the title | ✅ no console errors |
 | Face cam (`tests/test_facecam.py`) | 20 (corner maths, tall cams stay on screen, following cuts with offset/hidden/full ranges, renders checked by pixel: follows the cuts (colour-coded cam), circle + border + shadow, hide fades + full screen, block render = one-pass render, background removal on a real photo of a person (background replaced, person kept, mask reused), off by default, stacked Shorts, API flow incl. sync job, delete guard, null removes; layout vectors shared with the Editor) | ✅ |
 | Sync by sound & crop to face (`tests/test_sync.py`) | 9 (offsets +2.37/−1.23/0/+11.5 s found within 3 ms with a duller, quieter, noisy second mic; unrelated audio = low confidence; real AAC files; face crop finds the face; no face = no crop) | ✅ |
 | New transitions (`tests/test_transitions9.py`) | 18 (all 9 render and land on both clips; whip moves sideways, flash goes white, shake moves, light leak is warm top-right, glitch mixes bands, spin rotates and ends upright on the right frames, zoom blur zooms) | ✅ |
@@ -57,6 +63,11 @@ Run everything: `scripts/verify_all.sh`.
 
 | Found by | Bug |
 |---|---|
+| fuzz | Cutting stretches out of a music track holding both linked and free clips made clips overlap; picture linked to sound on a music track went out of sync |
+| fuzz | Snapping two neighbouring cuts to beats could shrink the clip between them to nothing |
+| blur API test | After a cut the followed object jumped and tracking lost it (it only searched nearby); it now searches the whole frame after each cut |
+| beat tests | Beats landed on the hi-hats between kicks, then 80 ms early (frames timed at the window start) |
+| title/blur tests | Missing `json`/`subprocess` imports in two new endpoints (500 errors) |
 | transition tests | New transitions came out noisy or solid green: FFmpeg runs custom transition expressions on several threads that share their variables, and `a0()` reads plane 0 only. Now single-threaded with per-plane sampling |
 | transition tests | Spin: the incoming clip started on the wrong frame and stayed rotated |
 | face cam tests | A very tall (phone) face cam could reach past the top edge |

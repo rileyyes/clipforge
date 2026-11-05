@@ -145,13 +145,23 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **9 new transitions**: whip pan left/right, spin, glitch, RGB split, light leak, zoom blur, flash cut, shake cut (30 in total)
 - ⬜ Previewing transitions in the monitor (they still show as cuts there; the export is exact)
 
+## Phase 10 — Modern editing essentials 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Edit by transcript** (Editor → **Script**): your edit as text. Click a word to jump there; drag or Shift+click to select words and **Cut** (or press Delete). Picture and sound are cut together and the gap closes; the music keeps playing (and is trimmed with a fade if it now runs past the end). Titles and blurs move along. Undo works
+- ✅ **Filler words & retakes**: "um", "uh", "hmm"… and sentences you started, stopped and said again (the same 3–5 words within 15 s; the later take is kept). Marked in the Script tab, removed in one click there, or as AI finishing touches. ClipForge asks the speech-to-text to write fillers down, but how many it catches depends on the speech
+- ✅ **Titles** (Editor → **Text**): lower third, big title, top banner, subscribe button, chapter card; text, second line, colours, position, size; animated in and out. Rendered sharply by the same subtitle engine as captions; previewed in the monitor
+- ✅ **Privacy blur** (Editor → **Blur**): blur, pixelate or black box; box or oval; **draw it on the preview**, or **Blur faces here** in one click; **Follow it** tracks what moves (and finds it again after a cut). Works best on things with clear detail; check the preview
+- ✅ **Music beat sync** (Editor → **Beat**): finds the tempo and beats of the song on your music track (within about a frame in tests), shows them on the timeline, **snaps nearby cuts onto the beat** (roll edits: nothing else shifts, linked sound follows), and ends the music with the video. No built-in music library (licences); YouTube Studio's Audio Library has free music you can import
+- ⬜ Previewing transitions in the monitor (still cuts there)
+
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
 - Very long timelines render one FFmpeg process per clip. Correct and memory-safe, but a 140-clip, 29-minute timeline took ~7 min on 2 cores.
 - Block rendering (fast re-exports) is used with the software H.264 encoder. With a GPU encoder the final video is still encoded in one pass (fast already, but not cached).
 
-- Preview colour is a CSS approximation, transitions preview as cuts, and face cam background removal only shows in the export. Export is exact.
+- Preview colour is a CSS approximation, transitions preview as cuts, face cam background removal only shows in the export, and titles/blur preview with browser styling (close, not pixel-identical). Export is exact.
+- Titles and blurs sit at timeline times: cutting with the Script tab moves them, but moving or ripple-deleting clips by hand doesn't.
 - Face cam background removal runs per frame on the CPU: preparing it took 0.43× the cam's length on a 2-core VM (a 1-hour webcam recording ≈ 26 minutes), once per recording.
 - Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.
 - Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).
