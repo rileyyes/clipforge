@@ -14,7 +14,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Dark UI shell: Dashboard, AI Auto Editor, Manual Editor, Projects, Export, Settings
 - ✅ Initial tests (backend unit + integration, frontend engine, browser E2E)
 
-## Phase 2 — Manual editor foundation ✅ (core) / 🟡 (rest)
+## Phase 2 — Manual editor foundation ✅ (the last four items were finished in Phase 12)
 
 - ✅ Media library (import, drag-to-timeline, double-click append, remove unused, status chips)
 - ✅ Multitrack timeline with real data model (video stacking, linked A/V clips)
@@ -26,11 +26,11 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ Clip speed, volume, scale, position
 - ✅ Autosave, crash-safe writes, cross-window conflict detection, reopen
 - ✅ Export presets (1080p, 720p, 4K, 9:16, 1:1, custom), fps, letterbox/crop, quality, validation report
-- 🟡 Preview fidelity: shows only the top video layer, no transform preview, volume capped at 100% in preview (export is exact)
-- ⬜ Multi-clip drag (move several selected clips at once)
-- ⬜ Relink missing media (detection ✅, relink UI ⬜)
-- ⬜ Unlink / relink A/V clips
-- ⬜ Timeline markers
+- ✅ Preview fidelity: every video layer, size/position/rotation/crop, volume above 100% (added in Phases 6 and 11; colour and transitions are look-alikes, the export is exact)
+- ✅ Multi-clip drag (Phase 12)
+- ✅ Relink missing media (Phase 12)
+- ✅ Unlink / relink A/V clips (Phase 12)
+- ✅ Timeline markers (Phase 12)
 
 ## Phase 3 — Automatic editing engine ✅ (signal-based) / 🟡 (transcript features)
 
@@ -163,6 +163,18 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **Safe-area guides** on the preview: title-safe and action-safe boxes, or, for vertical Shorts, where YouTube puts its own buttons and text (approximate)
 - ✅ **Fits laptop screens**: the Editor and the AI Auto Editor no longer run off a 1280×720 screen (the Export button and the side tabs were cut off; the Auto Editor's columns overlapped)
 
+## Phase 12 — Editing basics that were skipped 🟡 (built and tested automatically; waiting for your hands-on test)
+
+Picked by looking for what earlier phases left unfinished (the four ⬜ items in Phase 2) and what a creator would trip over.
+
+- ✅ **Move several clips at once**: Ctrl/Shift-click to select, drag any of them; they keep their spacing and their sound. **Ctrl+A** selects every clip. (A group stays on its tracks; drag a single clip to change track)
+- ✅ **Unlink / link picture and sound** (Ctrl+L or the chain button): unlink to nudge or delete the sound on its own; link clips that line up (same start and length) so they move together again
+- ✅ **Timeline markers**: **M** adds one at the playhead; name it, colour it, drag it, delete it; **Shift+← / →** jumps between them. They move with ripple delete and Script-tab cuts
+- ✅ **Chapters from markers** on the Publish page: your marker names become the YouTube chapters (an "Intro" at 0:00 is added if needed; works without a transcript; the local AI keeps your names)
+- ✅ **Relink missing media**: if a recording disappears from the project folder, the Media panel says so and **Find file** brings it back from any copy (any name). The file must have what the edit uses and be long enough; a different file resets that recording's transcript/analysis and says so
+- ✅ The timeline toolbar fits a 1280-wide screen (less-used buttons become icons with tooltips)
+- ✅ Fixes found on the way: job progress can no longer step backwards (seen on Windows); the Editor fits 1280×720 even with wider system fonts
+
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
@@ -170,7 +182,8 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - Block rendering (fast re-exports) is used with the software H.264 encoder. With a GPU encoder the final video is still encoded in one pass (fast already, but not cached).
 
 - Preview colour and transitions are CSS look-alikes, face cam background removal only shows in the export, and titles/blur preview with browser styling (close, not pixel-identical). Export is exact.
-- Titles and blurs sit at timeline times: Script-tab cuts and ripple delete move them; moving a single clip by hand doesn't.
+- Titles, blurs and markers sit at timeline times: Script-tab cuts and ripple delete move them; moving clips by hand doesn't.
+- Linking needs the clips to line up exactly (same start and length); linked clips always stay in sync, so offset sound is kept unlinked.
 - Face cam background removal runs per frame on the CPU: preparing it took 0.43× the cam's length on a 2-core VM (a 1-hour webcam recording ≈ 26 minutes), once per recording.
 - Long exports are CPU-bound: a 30-minute 1080p edit took 42 min on a 2-core VM with software H.264 (see docs/BENCHMARKS.md). GPU encoders are used automatically when they work.
 - Keyframed rotation/scale/opacity render through a transparent warp pass, which is slower than plain clips (about 2–3× for those clips only).

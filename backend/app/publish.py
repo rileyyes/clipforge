@@ -213,26 +213,58 @@ def description_for(hook: str, keywords: list[str], ch: Sequence[dict], hashtags
     return "\n\n".join(parts)[:4900]  # YouTube: 5000 characters max
 
 
-def suggest(words: Sequence[dict], duration: float, project_name: str) -> dict:
+def marker_chapters(markers: Sequence[dict], duration: float) -> list[dict]:
+    """Chapters from the user's timeline markers: [{t, title}] in time order.
+
+    Markers past the end (or within the last 0.5 s) are ignored, markers closer than
+    0.5 s to the previous one are merged, and if none is at 0:00 an "Intro" chapter is
+    added there (YouTube's first chapter must start at 0:00). Unnamed markers become
+    "Part N". validate_chapters() then reports anything YouTube would still reject."""
+    pts = sorted((max(0.0, float(m["t"])), str(m.get("label") or "").strip()[:100]) for m in markers)
+    out: list[dict] = []
+    for t, label in pts:
+        if t > duration - 0.5:
+            continue
+        if out and t - out[-1]["t"] < 0.5:
+            out[-1]["title"] = out[-1]["title"] or label
+            continue
+        out.append({"t": round(t, 1), "title": label})
+    if not out:
+        return []
+    if out[0]["t"] > 0.5:
+        out.insert(0, {"t": 0.0, "title": "Intro"})
+    else:
+        out[0]["t"] = 0.0
+    for i, c in enumerate(out):
+        c["title"] = c["title"] or ("Intro" if i == 0 else f"Part {i + 1}")
+    return out
+
+
+def suggest(words: Sequence[dict], duration: float, project_name: str, markers: Optional[Sequence[dict]] = None) -> dict:
     words = list(words)
     clean = _clean(words)
     toks = [t for w in clean for t in _tokens(w["text"])]
     vec = _tfidf([toks, []])[0] if toks else {}
     keywords = _keywords(toks, vec, 8) if toks else []
-    ch = chapters(words, duration)
+    from_markers = bool(markers)
+    ch = marker_chapters(markers, duration) if from_markers else chapters(words, duration)
     titles = title_ideas(words, project_name, keywords)
     hook = next((s for _t, s in _sentences(clean) if 4 <= len(s.split()) <= 25), "")
     hook = hook[:1].upper() + hook[1:]
     hashtags = ["#" + re.sub(r"[^a-z0-9]", "", k) for k in keywords[:3] if re.sub(r"[^a-z0-9]", "", k)]
     warnings = []
-    if not words:
+    if from_markers:
+        if not words:
+            warnings.append("No transcript in this edit: chapters come from your markers, but only a basic title could be suggested.")
+    elif not words:
         warnings.append("No transcript in this edit, so only a basic title could be suggested. Transcribe it for chapters, a description and tags.")
     elif not ch and duration >= 60:
         warnings.append("Not enough talking to make chapters.")
     elif duration < 60:
         warnings.append("Chapters are only useful on videos longer than a minute.")
     return {"titles": titles, "description": description_for(hook, keywords, ch, hashtags), "chapters": ch,
-            "tags": tags_for(words), "hashtags": hashtags, "keywords": keywords, "source": "rules", "warnings": warnings}
+            "tags": tags_for(words), "hashtags": hashtags, "keywords": keywords, "source": "rules", "warnings": warnings,
+            "chapters_from": "markers" if from_markers else "transcript"}
 
 
 # ---------------------------------------------------------------- optional local AI polish
@@ -256,7 +288,8 @@ def ai_polish(model, words: Sequence[dict], base: dict, cancel=None) -> dict:
     if titles:
         out["titles"] = titles[:5] + [t for t in base["titles"] if t not in titles][:2]
     names = [str(t).strip()[:60] for t in (data.get("chapter_titles") or [])]
-    if base.get("chapters") and len(names) == len(base["chapters"]) and all(names):
+    # chapters from the user's own markers keep the names they gave them
+    if base.get("chapters_from") != "markers" and base.get("chapters") and len(names) == len(base["chapters"]) and all(names):
         out["chapters"] = [{"t": c["t"], "title": n} for c, n in zip(base["chapters"], names)]
     desc = str(data.get("description") or "").strip()
     if desc and not _has_swear(desc):

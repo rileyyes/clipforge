@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–11
+# Hands-on test guide: Phases 4–12
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -152,3 +152,21 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 11.8 | Make the window smaller (or try a 1280×720 laptop) | Everything still fits: Export button, all side tabs, no overlapping |
 
 **Known preview limits (the export is always exact):** colour and transitions are look-alikes, face cam background removal only appears in the export, and titles/blur are drawn by the browser in the preview (close, not identical).
+
+## Phase 12: editing basics that were skipped
+
+| # | Do this | You should see |
+|---|---|---|
+| 12.1 | Click a clip, then **Ctrl-click** (or Shift-click) another; drag one of them | Both move together, keeping the gap between them, with their sound. Ctrl+Z puts them back |
+| 12.2 | Press **Ctrl+A** | Every clip is selected (not ones on locked tracks) |
+| 12.3 | Select a video clip and press **Ctrl+L** (or the chain button) | "Unlinked": now drag just the sound a little. The picture stays put |
+| 12.4 | Drag the sound back into line (edges snap), select both, **Ctrl+L** | "Linked": they move together again. If they don't line up, it tells you to line them up first |
+| 12.5 | Press **M** at a few places | A flag on the ruler and a bar above the timeline: type a name, pick a colour. **Done** closes it |
+| 12.6 | Press **Shift+←** / **Shift+→**; drag a flag; select one and press **Delete** | Jumps between markers; the marker moves; it's gone |
+| 12.7 | Ripple delete a clip before a marker | The marker moves left with the video |
+| 12.8 | **Publish** → Chapters: *From my timeline markers* → **Write it for me** | Chapters named like your markers, the first at 0:00 (an "Intro" is added if needed). Works even without a transcript. YouTube's rules are still checked (3+ chapters, 10 s apart) |
+| 12.9 | Close ClipForge, rename or move a recording out of `workspace\projects\<project>\media\original`, reopen | "file missing" in the Media panel and a note at the top |
+| 12.10 | Click **Find file** and pick the recording (any name) | "Relinked", the clips play again. A different or too-short file is refused with the reason |
+
+**Notes:** moving several clips keeps each on its own track (drag one clip on its own to move it to another track). If you relink to a *different* file (for example a re-export), its old transcript and analysis are reset, so check the cuts still line up.
+

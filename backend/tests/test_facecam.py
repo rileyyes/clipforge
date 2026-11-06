@@ -15,7 +15,7 @@ from app.media import build_asset
 from app.projects import ProjectStore
 from app.config import Settings
 from app.render import render_project
-from app.schema import FaceCam, Project
+from app.schema import SCHEMA_VERSION, FaceCam, Project
 from app.storage import new_id
 
 from test_audio_transitions import Ctx
@@ -213,7 +213,7 @@ def test_project_without_face_cam_renders_as_before(tmp_path):
 def test_old_projects_migrate(tmp_path):
     from app.schema import migrate
     d = {"schema_version": 4, "id": "a" * 32, "name": "x"}
-    assert migrate(d)["schema_version"] == 5
+    assert migrate(d)["schema_version"] == SCHEMA_VERSION
     assert json.loads(json.dumps(Project.model_validate(migrate(d)).model_dump(mode="json")))["facecam"] is None
 
 

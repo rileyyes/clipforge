@@ -105,7 +105,7 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
             <div className="dim">Shortcuts</div>
             {[["Space", "Play / pause"], ["S", "Split at playhead"], ["Del", "Delete"], ["Shift+Del", "Ripple delete"],
               ["Ctrl+D", "Duplicate"], ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"], ["← →", "Step one frame"], ["N", "Toggle snapping"],
-              ["Ctrl + wheel", "Zoom timeline"]].map(([k, d]) => (
+              ["Ctrl+L", "Link / unlink picture and sound"], ["M", "Add a marker"], ["?", "All shortcuts"]].map(([k, d]) => (
               <div key={k} className="row"><span className="kbd">{k}</span><span>{d}</span></div>
             ))}
           </div>

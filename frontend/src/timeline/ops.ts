@@ -2,7 +2,7 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
-import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Timeline, Title, TitleTemplate, Track, TrackKind, Blur, BlurKey } from "./types";
+import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Marker, Timeline, Title, TitleTemplate, Track, TrackKind, Blur, BlurKey } from "./types";
 import { KF_LIMITS } from "./keyframes";
 
 export const MIN_CLIP = 0.04; // seconds; matches backend MIN_CLIP_DURATION
@@ -213,6 +213,99 @@ export function moveClip(tl: Timeline, id: string, newStart: number, targetTrack
   };
 }
 
+/** Move several clips (each with its linked clips) by the same `delta` seconds,
+ *  keeping their spacing. They stay on their tracks. If the earliest would go
+ *  before 0, the whole group stops at 0. Rejects overlaps and locked tracks. */
+export function moveClips(tl: Timeline, ids: string[], delta: number): OpResult {
+  const all = expandLinked(tl, ids);
+  if (!all.size) return { error: "Nothing selected" };
+  const refs = [...all].map((i) => findClip(tl, i)!);
+  const le = lockedError(refs);
+  if (le) return { error: le };
+  const minStart = Math.min(...refs.map((r) => r.clip.start));
+  if (minStart + delta < 0) delta = -minStart;
+  if (Math.abs(delta) < EPS) return { timeline: tl };
+  for (const r of refs) {
+    const s = r.clip.start + delta;
+    if (overlaps(r.track, s, s + clipDuration(r.clip), all)) return { error: `Clips can't overlap on ${r.track.name}` };
+  }
+  return {
+    timeline: withTracks(tl, (track) =>
+      track.clips.some((c) => all.has(c.id))
+        ? { ...track, clips: sortClips(track.clips.map((c) => (all.has(c.id) ? { ...c, start: round6(c.start + delta) } : c))) }
+        : track),
+  };
+}
+
+// ---------------------------------------------------------------- link / unlink
+
+/** Unlink picture and sound: each selected clip (and the clips linked to it) can then be
+ *  moved, trimmed and deleted on its own. */
+export function unlinkClips(tl: Timeline, ids: string[]): OpResult {
+  const all = expandLinked(tl, ids);
+  const refs = [...all].map((i) => findClip(tl, i)!).filter(Boolean);
+  if (!refs.some((r) => r.clip.link_id)) return { error: "These clips aren't linked" };
+  const le = lockedError(refs);
+  if (le) return { error: le };
+  return { timeline: withTracks(tl, (track) => track.clips.some((c) => all.has(c.id))
+    ? { ...track, clips: track.clips.map((c) => (all.has(c.id) ? { ...c, link_id: null } : c)) } : track) };
+}
+
+/** Link the selected clips (and anything already linked to them) so they move, trim,
+ *  split and delete together. They must be on different tracks and line up exactly (same
+ *  start, length and speed): linked clips always stay in sync. Clip edges snap to each
+ *  other, so drag/trim them into line first. */
+export function linkClips(tl: Timeline, ids: string[]): OpResult {
+  const all = expandLinked(tl, ids);
+  const refs = [...all].map((i) => findClip(tl, i)!).filter(Boolean);
+  if (refs.length < 2) return { error: "Select at least two clips to link (for example a video clip and a sound clip)" };
+  const tracks = new Set(refs.map((r) => r.track.id));
+  if (tracks.size !== refs.length) return { error: "Only one clip per track can be linked together" };
+  const le = lockedError(refs);
+  if (le) return { error: le };
+  if (new Set(refs.map((r) => r.clip.link_id)).size === 1 && refs[0].clip.link_id) return { error: "These clips are already linked" };
+  const r0 = refs[0].clip;
+  if (refs.some((r) => Math.abs(r.clip.start - r0.start) > 0.002 || Math.abs(clipDuration(r.clip) - clipDuration(r0)) > 0.002 || r.clip.speed !== r0.speed))
+    return { error: "Linked clips must start and end together: drag or trim them into line first (edges snap to each other)" };
+  const link = newId();
+  return { timeline: withTracks(tl, (track) => track.clips.some((c) => all.has(c.id))
+    ? { ...track, clips: track.clips.map((c) => (all.has(c.id) ? { ...c, link_id: link } : c)) } : track) };
+}
+
+// ---------------------------------------------------------------- markers
+export const MARKER_LIMIT = 500;
+
+/** Add a marker at time t (at most one per 0.05 s). */
+export function addMarker(tl: Timeline, t: number, color = "#ffb703"): OpResult & { id?: string } {
+  const at = round6(Math.max(0, t));
+  const ms = tl.markers ?? [];
+  if (ms.some((m) => Math.abs(m.t - at) < 0.05)) return { error: "There's already a marker here" };
+  if (ms.length >= MARKER_LIMIT) return { error: `At most ${MARKER_LIMIT} markers` };
+  const m: Marker = { id: newId(), t: at, label: "", color };
+  return { timeline: { ...tl, markers: [...ms, m].sort((a, b) => a.t - b.t) }, id: m.id };
+}
+
+export function updateMarker(tl: Timeline, id: string, patch: Partial<Omit<Marker, "id">>): OpResult {
+  const m = (tl.markers ?? []).find((x) => x.id === id);
+  if (!m) return { error: "Marker not found" };
+  const n: Marker = { ...m, ...patch };
+  n.t = round6(Math.max(0, n.t));
+  n.label = n.label.slice(0, 100);
+  if (!/^#[0-9a-fA-F]{6}$/.test(n.color)) return { error: "Colours must be like #ffb703" };
+  return { timeline: { ...tl, markers: (tl.markers ?? []).map((x) => (x.id === id ? n : x)).sort((a, b) => a.t - b.t) } };
+}
+
+export function removeMarker(tl: Timeline, id: string): OpResult {
+  if (!(tl.markers ?? []).some((x) => x.id === id)) return { error: "Marker not found" };
+  return { timeline: { ...tl, markers: (tl.markers ?? []).filter((x) => x.id !== id) } };
+}
+
+/** The next (dir 1) or previous (dir -1) marker strictly after / before t, or null. */
+export function markerNear(tl: Timeline, t: number, dir: 1 | -1): Marker | null {
+  const ms = [...(tl.markers ?? [])].sort((a, b) => a.t - b.t);
+  return dir > 0 ? ms.find((m) => m.t > t + 1e-3) ?? null : [...ms].reverse().find((m) => m.t < t - 1e-3) ?? null;
+}
+
 // ---------------------------------------------------------------- delete / ripple
 
 export function deleteClips(tl: Timeline, ids: string[], ripple = false): OpResult {
@@ -251,6 +344,7 @@ export function deleteClips(tl: Timeline, ids: string[], ripple = false): OpResu
       ...moved,
       ...(removed.titles ? { titles: removed.titles.map((t) => ({ ...t, start: newTime(t.start) })) } : {}),
       ...(removed.blurs ? { blurs: removed.blurs.map((b) => shiftBlur(b, newTime(b.start) - b.start)) } : {}),
+      ...(removed.markers ? { markers: removed.markers.map((m) => ({ ...m, t: newTime(m.t) })) } : {}),
     },
   };
 }
@@ -611,7 +705,8 @@ export function cutRanges(tl: Timeline, ranges: [number, number][]): OpResult {
     // titles move with the picture; one that starts inside the cut starts where the cut was
     cur = { ...cur, titles: (cur.titles ?? []).map((t) => t.start >= b - EPS ? { ...t, start: round6(t.start - (b - a)) }
       : t.start > a ? { ...t, start: round6(a) } : t),
-      blurs: (cur.blurs ?? []).map((x) => x.start >= b - EPS ? shiftBlur(x, -(b - a)) : x.start > a ? shiftBlur(x, a - x.start) : x) };
+      blurs: (cur.blurs ?? []).map((x) => x.start >= b - EPS ? shiftBlur(x, -(b - a)) : x.start > a ? shiftBlur(x, a - x.start) : x),
+      ...(cur.markers ? { markers: cur.markers.map((m) => m.t >= b - EPS ? { ...m, t: round6(m.t - (b - a)) } : m.t > a ? { ...m, t: round6(a) } : m) } : {}) };
     cur = withTracks(cur, (track) => {
       const out: Clip[] = [];
       for (const c of track.clips) {

@@ -52,9 +52,10 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **Relink**: if a recording goes missing from the project folder, point ClipForge at any copy of it and the edit works again.
 - **Import** video/audio (MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A, FLAC, OGG) with streaming upload and real progress. Files are validated with FFprobe, checksummed, de-duplicated and stored read-only.
 - **Background preparation**: thumbnails, audio waveforms, and browser-playable preview proxies for formats like MKV.
-- **Multitrack timeline**: video and audio tracks, linked picture + sound, move (including across tracks), trim both edges, split, delete, ripple delete, duplicate, snapping, zoom and scroll, track mute/hide/lock, add/remove tracks, undo/redo.
+- **Multitrack timeline**: video and audio tracks, linked picture + sound, move (including across tracks), trim both edges, split, delete, ripple delete, duplicate, snapping, zoom and scroll, track mute/hide/lock, add/remove tracks, undo/redo. Select several clips (Ctrl/Shift-click, Ctrl+A) and drag them together; unlink/link picture and sound (Ctrl+L); **markers** (M) you can name and turn into YouTube chapters.
 - **Clip properties**: speed (0.25–4×, audio pitch preserved), volume, scale, position, rotation, opacity, crop (e.g. picture-in-picture on V2).
 - **Keyframes** (◆) for scale, position, rotation, opacity and volume, with linear / ease / hold. Slow zooms, moving picture-in-picture, music that dips under talking.
 - **Colour**: brightness, contrast, saturation, gamma, temperature, plus looks (warm, cool, B&W, vintage, vivid, faded, cinematic, noir).

@@ -73,10 +73,21 @@ export interface Blur {
   strength: number; keys: BlurKey[];
 }
 
+/** A named point on the timeline (press M). Can become YouTube chapters on the Publish page. */
+export interface Marker {
+  id: string;
+  t: number;
+  label: string;
+  color: string;
+}
+
+export const MARKER_COLORS = ["#ffb703", "#4cc9f0", "#2bb38a", "#ff5a3c", "#b388ff"];
+
 export interface Timeline {
   tracks: Track[];
   titles?: Title[];
   blurs?: Blur[];
+  markers?: Marker[];
 }
 
 export interface MediaAsset {

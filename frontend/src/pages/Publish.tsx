@@ -45,6 +45,8 @@ function Picker() {
 function Workspace({ projectId }: { projectId: string }) {
   const [name, setName] = useState("");
   const [duration, setDuration] = useState(0);
+  const [markerCount, setMarkerCount] = useState(0);
+  const [chapterSrc, setChapterSrc] = useState<"auto" | "markers">("auto");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [cats, setCats] = useState<Record<string, string>>({});
   const [sug, setSug] = useState<Suggest | null>(null);
@@ -65,7 +67,10 @@ function Workspace({ projectId }: { projectId: string }) {
   const loadYt = () => call<YTStatus>("GET", "/api/youtube/status").then(setYt).catch(() => {});
   const loadUploads = () => call<{ uploads: any[] }>("GET", `/api/projects/${projectId}/youtube/uploads`).then((r) => setUploads(r.uploads)).catch(() => {});
   useEffect(() => {
-    api.project(projectId).then((p) => { setName(p.name); setDuration(p.timeline.tracks.reduce((m, t) => Math.max(m, ...t.clips.map((c) => c.start + (c.source_out - c.source_in) / c.speed)), 0)); });
+    api.project(projectId).then((p) => {
+      setName(p.name);
+      const n = p.timeline.markers?.length ?? 0;
+      setMarkerCount(n); if (n) setChapterSrc("markers"); setDuration(p.timeline.tracks.reduce((m, t) => Math.max(m, ...t.clips.map((c) => c.start + (c.source_out - c.source_in) / c.speed)), 0)); });
     call<{ draft: Draft; categories: Record<string, string> }>("GET", `/api/projects/${projectId}/publish`).then((r) => { setDraft(r.draft); setCats(r.categories); });
     api.exports(projectId).then(setExports).catch(() => {});
     call<{ exports: { file: string }[] }>("GET", `/api/projects/${projectId}/thumbnails/exports`).then((r) => setThumbs(r.exports.map((e) => e.file))).catch(() => {});
@@ -104,11 +109,11 @@ function Workspace({ projectId }: { projectId: string }) {
   const write = async (useAi: boolean) => {
     setWriting(useAi ? "ai" : "rules");
     try {
-      const r = await call<Suggest>("POST", `/api/projects/${projectId}/publish/suggest`, { use_ai: useAi });
+      const r = await call<Suggest>("POST", `/api/projects/${projectId}/publish/suggest`, { use_ai: useAi, chapters: markerCount ? chapterSrc : "auto" });
       setSug(r);
       set({ title: draft.title || r.titles[0] || "", description: r.description, chapters: r.chapters, tags: r.tags });
       r.warnings.forEach((w) => toast(w, true));
-      toast(r.source === "ai" ? `Written with ${r.ai_model}` : "Written from your transcript");
+      toast(r.source === "ai" ? `Written with ${r.ai_model}` : (r as any).chapters_from === "markers" ? "Written — chapters come from your markers" : "Written from your transcript");
     } catch (e: any) { toast(e.message, true); } finally { setWriting(""); }
   };
 
@@ -147,6 +152,14 @@ function Workspace({ projectId }: { projectId: string }) {
             <button className="btn sm" disabled={!!writing} onClick={() => write(false)}><Icon name="wand" size={13} />{writing === "rules" ? "Writing…" : "Write it for me"}</button>
             {ai?.model && <button className="btn sm" disabled={!!writing} onClick={() => write(true)}><Icon name="wand" size={13} />{writing === "ai" ? "Thinking…" : `Write with local AI (${ai.model})`}</button>}
           </div>
+          {markerCount > 0 && (
+            <label className="row" style={{ gap: 6, fontSize: 12 }}>Chapters
+              <select value={chapterSrc} onChange={(e) => setChapterSrc(e.target.value as "auto" | "markers")} aria-label="Chapters from">
+                <option value="markers">From my {markerCount} timeline marker{markerCount === 1 ? "" : "s"} (their names)</option>
+                <option value="auto">Found from what's said</option>
+              </select>
+            </label>
+          )}
           <div className="dim" style={{ fontSize: 11 }}>Written from what's said in your <em>final edit</em> (cut parts never show up). Swear words are left out.{!ai?.model && ai?.help ? ` For catchier wording, a free local AI can help: ${ai.help}` : ""}</div>
           <label className="field">Title <span className="mono dim">{draft.title.length}/100</span>
             <input type="text" value={draft.title} maxLength={100} onChange={(e) => set({ title: e.target.value })} aria-label="Title" />

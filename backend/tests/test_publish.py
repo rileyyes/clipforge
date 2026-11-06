@@ -138,3 +138,74 @@ def test_api_publish_flow(server, tmp_path):
     assert c.req("GET", f"/api/projects/{pid}/publish")[1]["draft"]["title"] == r["titles"][0]
     assert c.req("PUT", f"/api/projects/{pid}/publish", {**body, "privacy": "secret"})[0] == 422
     assert c.req("PUT", f"/api/projects/{pid}/publish", {**body, "extra": 1})[0] == 422
+
+
+# ---------------------------------------------------------------- Phase 12: chapters from markers
+def test_marker_chapters_follow_youtube_rules():
+    m = lambda t, label="": {"id": new_id(), "t": t, "label": label}
+    ch = PB.marker_chapters([m(95, "Boss fight"), m(30, "Gameplay"), m(30.2, ""), m(299.8, "too late")], 300)
+    assert ch == [{"t": 0.0, "title": "Intro"}, {"t": 30.0, "title": "Gameplay"}, {"t": 95.0, "title": "Boss fight"}]
+    assert PB.validate_chapters(ch, 300) == []
+    # a marker at (nearly) 0 becomes the first chapter; unnamed ones are numbered
+    ch = PB.marker_chapters([m(0.3), m(40), m(80, "End")], 120)
+    assert ch == [{"t": 0.0, "title": "Intro"}, {"t": 40.0, "title": "Part 2"}, {"t": 80.0, "title": "End"}]
+    # too close together: still returned, and the problem is reported
+    ch = PB.marker_chapters([m(5, "A"), m(9, "B")], 60)
+    assert any("shorter than 10 seconds" in p for p in PB.validate_chapters(ch, 60))
+    assert PB.marker_chapters([], 60) == [] and PB.marker_chapters([m(70)], 60) == []
+
+
+def test_marker_chapters_without_transcript_and_ai_keeps_names():
+    markers = [{"id": new_id(), "t": t, "label": l} for t, l in ((0, "Hello"), (20, "Build"), (50, "Fight"))]
+    out = PB.suggest([], 90, "My video", markers)
+    assert out["chapters_from"] == "markers" and [c["title"] for c in out["chapters"]] == ["Hello", "Build", "Fight"]
+    assert "0:00 Hello" in out["description"] and "0:50 Fight" in out["description"]
+
+    class Model:
+        model = "fake"
+        def chat_json(self, *a, **k):
+            return {"titles": ["A great title"], "description": "Nice.", "chapter_titles": ["x", "y", "z"], "tags": ["t"]}
+    words, _ = transcript()
+    pol = PB.ai_polish(Model(), words, out)
+    assert [c["title"] for c in pol["chapters"]] == ["Hello", "Build", "Fight"]
+
+
+def test_markers_schema_and_migration():
+    from app.schema import SCHEMA_VERSION, Marker, migrate
+    from pydantic import ValidationError
+    assert SCHEMA_VERSION >= 6
+    Marker(id=new_id(), t=12.5, label="Intro", color="#00ff00")
+    for bad in ({"t": -1}, {"t": 1, "color": "red"}, {"t": 1, "label": "x" * 101}, {"t": 1, "extra": 1}):
+        with pytest.raises(ValidationError):
+            Marker(id=new_id(), **bad)
+    assert migrate({"schema_version": 5})["schema_version"] == SCHEMA_VERSION
+
+
+def test_api_chapters_from_markers(server, tmp_path):
+    c = server
+    vid = tmp_path / "v.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=160x90:r=25:d=90", "-f", "lavfi",
+                    "-i", "sine=f=200:d=90", "-shortest", "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", str(vid)], check=True)
+    _, p, _ = c.req("POST", "/api/projects", {"name": "Markers"})
+    pid = p["id"]
+    mid = c.upload(pid, vid)[1]["media"]["id"]
+    _, p, _ = c.req("GET", f"/api/projects/{pid}")
+    p["timeline"]["tracks"][0]["clips"] = [{"id": new_id(), "media_id": mid, "start": 0, "source_in": 0, "source_out": 90}]
+    save = lambda: c.req("PUT", f"/api/projects/{pid}/timeline", {"base_edit_revision": p["edit_revision"], "timeline": p["timeline"], "output": p["output"]})
+    st, _r, _ = save()
+    assert st == 200
+    st, r, _ = c.req("POST", f"/api/projects/{pid}/publish/suggest", {"chapters": "markers"})
+    assert st == 409 and "markers" in r["error"]
+    _, p, _ = c.req("GET", f"/api/projects/{pid}")
+    p["timeline"]["markers"] = [{"id": new_id(), "t": 25, "label": "Part one"}, {"id": new_id(), "t": 60, "label": "Part two", "color": "#4cc9f0"}]
+    st, _r, _ = save()
+    assert st == 200
+    _, p, _ = c.req("GET", f"/api/projects/{pid}")
+    assert [m["label"] for m in p["timeline"]["markers"]] == ["Part one", "Part two"] and p["timeline"]["markers"][0]["color"] == "#ffb703"
+    st, r, _ = c.req("POST", f"/api/projects/{pid}/publish/suggest", {"chapters": "markers"})
+    assert st == 200 and r["chapters_from"] == "markers" and r["chapter_problems"] == []
+    assert [x["title"] for x in r["chapters"]] == ["Intro", "Part one", "Part two"]
+    assert c.req("POST", f"/api/projects/{pid}/publish/suggest", {"chapters": "nope"})[0] == 422
+    p["timeline"]["markers"] = [{"id": new_id(), "t": 5, "label": "bad", "color": "javascript:1"}]
+    assert save()[0] == 422

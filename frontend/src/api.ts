@@ -181,9 +181,19 @@ export const exportUrl = (pid: string, name: string, inline = false) =>
 /** Streaming upload with real byte-level progress (XHR exposes upload progress; fetch doesn't). */
 export function uploadMedia(pid: string, file: File, onProgress: (f: number) => void):
   Promise<{ media: MediaAsset; job_id?: string; duplicate: boolean }> {
+  return sendFile(`/api/projects/${pid}/media?filename=${encodeURIComponent(file.name)}`, file, onProgress);
+}
+
+/** Replace a missing media file with a new copy of it (same media id, so the edit keeps working). */
+export function relinkMedia(pid: string, mid: string, file: File, onProgress: (f: number) => void):
+  Promise<{ media: MediaAsset; job_id: string; same_file: boolean; note: string | null }> {
+  return sendFile(`/api/projects/${pid}/media/${mid}/relink?filename=${encodeURIComponent(file.name)}`, file, onProgress);
+}
+
+function sendFile<T>(url: string, file: File, onProgress: (f: number) => void): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `/api/projects/${pid}/media?filename=${encodeURIComponent(file.name)}`);
+    xhr.open("POST", url);
     xhr.setRequestHeader("X-ClipForge", "1");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };

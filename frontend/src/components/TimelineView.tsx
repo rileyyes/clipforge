@@ -1,10 +1,10 @@
 import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { fmtTime, thumbUrl, waveformUrl } from "../api";
 import {
-  clipDuration, clipEnd, findClip, linkedGroup, moveClip, snap, snapPoints, timelineDuration, trimEdge, updateBlur, updateTitle, type OpResult,
+  clipDuration, clipEnd, expandLinked, updateMarker, findClip, linkedGroup, moveClip, moveClips, snap, snapPoints, timelineDuration, trimEdge, updateBlur, updateTitle, type OpResult,
 } from "../timeline/ops";
 import { keyframeTimes } from "../timeline/keyframes";
-import { TRANSITIONS, type Clip, type MediaMap, type Timeline, type Track } from "../timeline/types";
+import { TRANSITIONS, type Clip, type Marker, type MediaMap, type Timeline, type Track } from "../timeline/types";
 import { Icon } from "./ui";
 
 const ROW_H: Record<Track["kind"], number> = { video: 58, audio: 50 };
@@ -58,6 +58,8 @@ type Drag = {
   id: string;
   x0: number;
   orig: Clip;
+  /** several selected clips dragged together (time only; they keep their tracks) */
+  group?: string[];
   moved: boolean;
   preview?: OpResult;
   snapAt?: number | null;
@@ -82,6 +84,10 @@ export interface TimelineProps {
   onRemoveTrack: (trackId: string) => void;
   toolbar: React.ReactNode;
   markers?: { t: number; color: string; title: string }[];
+  /** the user's own markers (M): click selects + seeks, drag moves */
+  userMarkers?: Marker[];
+  markerSel?: string | null;
+  onMarkerSelect?: (id: string) => void;
   /** titles + blurs lane: click selects, drag moves, edges resize */
   overlaySel?: string | null;
   onOverlaySelect?: (kind: "title" | "blur", id: string) => void;
@@ -100,6 +106,7 @@ export default function TimelineView(p: TimelineProps) {
   const [dropTrack, setDropTrack] = useState<string | null>(null);
   const [ov, setOv] = useState<OvDrag | null>(null);
   const [ovNow, setOvNow] = useState<{ start: number; duration: number } | null>(null);
+  const [mkDrag, setMkDrag] = useState<{ id: string; t: number } | null>(null);
   const zoomAnchor = useRef<{ t: number; px: number } | null>(null);
 
   const shown = drag?.preview?.timeline ?? timeline;
@@ -172,7 +179,7 @@ export default function TimelineView(p: TimelineProps) {
         if (!tr || tr === ref.track.id) return;
       }
       const dt = dx / pps;
-      const exclude = new Set(linkedGroup(timeline, d.id).map((r) => r.clip.id));
+      const exclude = d.group ? expandLinked(timeline, d.group) : new Set(linkedGroup(timeline, d.id).map((r) => r.clip.id));
       const pts = p.snapping && !e.altKey ? snapPoints(timeline, exclude, playhead) : [];
       const thr = 8 / pps;
       let preview: OpResult;
@@ -184,7 +191,9 @@ export default function TimelineView(p: TimelineProps) {
         if (s1 !== s && (Math.abs(s1 - s) <= Math.abs(s2 - s) || s2 === s)) { snapAt = s1; s = s1; }
         else if (s2 !== s) { snapAt = s2 + dur; s = s2; }
         const ref = findClip(timeline, d.id)!;
-        preview = moveClip(timeline, d.id, s, trackAt(e.clientY, ref.track.kind) ?? ref.track.id);
+        preview = d.group
+          ? moveClips(timeline, d.group, s - d.orig.start)
+          : moveClip(timeline, d.id, s, trackAt(e.clientY, ref.track.kind) ?? ref.track.id);
       } else {
         const base = d.mode === "trim-start" ? d.orig.start : clipEnd(d.orig);
         let t = base + dt;
@@ -201,7 +210,9 @@ export default function TimelineView(p: TimelineProps) {
       dragRef.current = null;
       setDrag(null);
       if (d?.moved && d.preview) {
-        p.commit(d.preview, d.mode === "move" ? "Move clip" : "Trim clip");
+        p.commit(d.preview, d.mode === "move" ? (d.group ? `Move ${d.group.length} clips` : "Move clip") : "Trim clip");
+      } else if (d?.group) {
+        p.setSelection([d.id]); // a plain click on one of several selected clips selects just it
       }
     };
     window.addEventListener("pointermove", onMove);
@@ -217,12 +228,39 @@ export default function TimelineView(p: TimelineProps) {
       p.setSelection(p.selection.includes(clip.id) ? p.selection.filter((x) => x !== clip.id) : [...p.selection, clip.id]);
       return;
     }
-    if (!p.selection.includes(clip.id) || p.selection.length > 1) p.setSelection([clip.id]);
+    const group = mode === "move" && p.selection.length > 1 && p.selection.includes(clip.id) ? [...p.selection] : undefined;
+    if (!group && (!p.selection.includes(clip.id) || p.selection.length > 1)) p.setSelection([clip.id]);
     const track = findClip(timeline, clip.id)!.track;
     if (track.locked) return;
-    const d: Drag = { mode, id: clip.id, x0: e.clientX, orig: clip, moved: false };
+    const d: Drag = { mode, id: clip.id, x0: e.clientX, orig: clip, group, moved: false };
     dragRef.current = d;
     setDrag(d);
+  };
+
+  // ---- user markers: click = select + seek, drag = move (snaps like clips; Alt bypasses)
+  const startMarker = (e: React.PointerEvent, m: Marker) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    p.onMarkerSelect?.(m.id);
+    p.seek(m.t);
+    const x0 = e.clientX;
+    let moved = false, cur = m.t;
+    const pts = snapPoints(timeline, new Set(), playhead);
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      moved = true;
+      let t = Math.max(0, m.t + (ev.clientX - x0) / pps);
+      if (p.snapping && !ev.altKey) t = snap(t, pts, 8 / pps);
+      cur = t;
+      setMkDrag({ id: m.id, t });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      setMkDrag(null);
+      if (moved) { p.commit(updateMarker(timeline, m.id, { t: cur }), "Move marker"); p.seek(cur); }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
   };
 
   // ---- ruler scrub
@@ -247,7 +285,11 @@ export default function TimelineView(p: TimelineProps) {
 
   const visible = (c: Clip) => clipEnd(c) * pps >= view.left - 200 && c.start * pps <= view.left + view.width + 200;
   const invalid = drag?.preview?.error;
+  const dragged = useMemo(() => (!drag?.moved ? null
+    : drag.group ? expandLinked(timeline, drag.group) : new Set(linkedGroup(timeline, drag.id).map((r) => r.clip.id))),
+  [drag?.moved, drag?.id, drag?.group, timeline]);
   const hasOverlays = (timeline.titles?.length ?? 0) + (timeline.blurs?.length ?? 0) > 0;
+  const fullH = RULER_H + (hasOverlays ? OV_H + 1 : 0) + timeline.tracks.reduce((s, t) => s + ROW_H[t.kind] + 1, 0);
   const selected = new Set(p.selection);
 
   return (
@@ -288,6 +330,14 @@ export default function TimelineView(p: TimelineProps) {
               {(p.markers ?? []).filter((m) => m.t * pps >= view.left - 10 && m.t * pps <= view.left + view.width + 10).map((m, i) => (
                 <div key={"m" + i} title={m.title} style={{ position: "absolute", left: m.t * pps - 4, bottom: 0, width: 8, height: 8,
                   borderRadius: 2, background: m.color, transform: "rotate(45deg)", zIndex: 1, pointerEvents: "auto" }} />
+              ))}
+              {(p.userMarkers ?? []).map((m) => ({ ...m, t: mkDrag?.id === m.id ? mkDrag.t : m.t }))
+                .filter((m) => m.t * pps >= view.left - 160 && m.t * pps <= view.left + view.width + 10).map((m) => (
+                <div key={m.id} className={"umarker" + (p.markerSel === m.id ? " sel" : "")} data-testid="user-marker"
+                  title={`${m.label || "Marker"} · ${fmtTime(m.t)} — click to select, drag to move`}
+                  style={{ left: m.t * pps, ["--mc" as any]: m.color }} onPointerDown={(e) => startMarker(e, m)}>
+                  <span>{m.label}</span>
+                </div>
               ))}
               {ticks.out.map(({ t, major }) => (
                 <div key={t.toFixed(4)} className={"tick" + (major ? "" : " minor")} style={{ left: t * pps }}>
@@ -365,7 +415,7 @@ export default function TimelineView(p: TimelineProps) {
                 {t.clips.filter(visible).map((c) => {
                   const m = media[c.media_id];
                   const w = clipDuration(c) * pps;
-                  const isDragged = drag?.moved && linkedGroup(timeline, drag.id).some((r) => r.clip.id === c.id);
+                  const isDragged = !!dragged?.has(c.id);
                   return (
                     <div key={c.id}
                       className={`clip ${t.kind}${selected.has(c.id) ? " sel" : ""}${isDragged ? " ghost" : ""}${isDragged && invalid ? " invalid" : ""}${(t.hidden || t.muted) ? " dim" : ""}`}
@@ -396,8 +446,11 @@ export default function TimelineView(p: TimelineProps) {
                 })}
               </div>
             ))}
-            <div className="playhead" style={{ left: playhead * pps, height: RULER_H + (hasOverlays ? OV_H + 1 : 0) + timeline.tracks.reduce((s, t) => s + ROW_H[t.kind] + 1, 0) }} />
+            <div className="playhead" style={{ left: playhead * pps, height: fullH }} />
             {drag?.snapAt != null && <div className="snapline" style={{ left: drag.snapAt * pps }} />}
+            {(p.userMarkers ?? []).filter((m) => p.markerSel === m.id || mkDrag?.id === m.id).map((m) => (
+              <div key={"ml" + m.id} className="umarker-line" style={{ left: (mkDrag?.id === m.id ? mkDrag.t : m.t) * pps, borderColor: m.color, height: fullH }} />
+            ))}
           </div>
         </div>
       </div>

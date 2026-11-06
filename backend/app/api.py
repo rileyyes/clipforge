@@ -602,6 +602,96 @@ def build_routes(svc: Services) -> list[Route]:
         return FileResponse(store.dir(pid) / "media" / "waveforms" / asset.waveform,
                             media_type="application/json")
 
+    async def relink_media(request: Request):
+        """Point a missing media file at a new copy of it (raw file body, like an upload).
+
+        The media keeps its id, so every clip, the face cam and effects keep working. The
+        new file must have what the edit uses (picture and/or sound) and be long enough
+        for every clip. If it is a different file from the original (other SHA-256), the
+        old analysis, transcript, beats and background-removal matte are dropped, since
+        they described the old file."""
+        pid, asset = media_asset(request)
+        p = load(pid)
+        orig = media_svc.media_dir(store.dir(pid), "original")
+        if (orig / asset.stored_name).exists():
+            return err(409, "This file isn't missing, so there is nothing to relink.")
+        try:
+            ext = media_extension(request.query_params.get("filename", ""))
+        except PathSecurityError as exc:
+            return err(415, str(exc))
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > S.max_upload_bytes:
+            return err(413, f"file exceeds the {S.max_upload_bytes // 1024**2} MB upload limit")
+        if dir_size(S.workspace) > S.max_workspace_bytes:
+            return err(507, "workspace storage quota reached; delete projects or run cleanup")
+        if not ff.tools_available(S.ffmpeg_bin, S.ffprobe_bin):
+            return err(503, ff.MISSING_FFMPEG)
+        # what the edit needs from this file
+        kinds = {t.kind for t in p.timeline.tracks for c in t.clips if c.media_id == asset.id}
+        need_until = max((c.source_out for t in p.timeline.tracks for c in t.clips if c.media_id == asset.id), default=0.0)
+        if p.facecam and asset.id in (p.facecam.media_id, p.facecam.main_media_id):
+            kinds.add("video")
+
+        final = orig / f"{asset.id}{ext}"
+        partial = orig / f"{asset.id}{ext}.relink.partial"
+        if final.exists():
+            return err(409, "A file with this name is already in the project folder.")
+        size = 0
+        h = hashlib.sha256()
+        try:
+            with open(partial, "wb") as fh:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > S.max_upload_bytes:
+                        raise HTTPException(413, "file exceeds the upload limit")
+                    h.update(chunk)
+                    fh.write(chunk)
+            if size == 0:
+                raise HTTPException(400, "empty upload")
+            replace_retry(partial, final)
+            try:
+                new = media_svc.build_asset(S, asset.id, final, display_name(request.query_params.get("filename", "")))
+            except ff.FFmpegError as exc:
+                final.unlink(missing_ok=True)
+                return err(415, f"Could not read this file: {exc}")
+        finally:
+            partial.unlink(missing_ok=True)
+
+        problem = None
+        if "video" in kinds and not new.has_video:
+            problem = "The edit uses this file's picture, but the new file has no video."
+        elif "audio" in kinds and not new.has_audio:
+            problem = "The edit uses this file's sound, but the new file has no audio."
+        elif new.duration + 0.05 < need_until:
+            problem = (f"The new file is too short: it is {new.duration:.1f} s long, but the edit uses it "
+                       f"up to {need_until:.1f} s. Pick the full recording.")
+        sha = h.hexdigest()
+        other = next((m for m in p.media if m.sha256 == sha and m.id != asset.id), None)
+        if other is not None:
+            problem = f"That file is already in this project as “{other.original_name}”."
+        if problem:
+            final.unlink(missing_ok=True)
+            return err(422, problem)
+
+        same = bool(asset.sha256) and asset.sha256 == sha
+        new.sha256 = sha
+        new.imported_at = asset.imported_at
+        mdir = store.dir(pid) / "media"
+        if same and asset.proxy and (mdir / "proxy" / asset.proxy).exists():
+            new.proxy = asset.proxy  # same picture: the light preview is still right
+        if not same:
+            for f in (store.dir(pid) / "analysis" / f"{asset.id}.json",
+                      store.dir(pid) / "analysis" / f"beats-{asset.id}.json",
+                      mdir / "matte" / f"{asset.id}.mp4"):
+                f.unlink(missing_ok=True)
+        media_svc.mark_read_only(final)
+        data = new.model_dump(mode="json")
+        store.update(pid, lambda d: {**d, "media": [data if m["id"] == asset.id else m for m in d["media"]]})
+        job = svc.jobs.submit("derive_media", pid, {"media_id": asset.id})
+        return JSONResponse({"media": data, "job_id": job.id, "same_file": same,
+                             "note": None if same else "This is a different file from the original (or the original's "
+                             "fingerprint wasn't known), so its analysis and transcript were reset. Check your cuts still line up."})
+
     async def delete_media(request: Request):
         pid, asset = media_asset(request)
         p = load(pid)
@@ -771,6 +861,7 @@ def build_routes(svc: Services) -> list[Route]:
     # -- Publish: chapters, titles, description, tags ------------------------
     class PublishSuggestBody(BaseModel):
         use_ai: bool = False
+        chapters: Literal["auto", "markers"] = "auto"
 
     def draft_path(pid: str) -> Path:
         return store.dir(pid) / "publish.json"
@@ -782,7 +873,10 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         from . import effects as fx, language, publish as PB
         words = fx.edit_words(p, store.dir(pid))
-        out = PB.suggest(words, p.timeline.duration, p.name)
+        if body.chapters == "markers" and not p.timeline.markers:
+            return err(409, "There are no markers on the timeline. Press M in the Editor to add one.")
+        markers = [m.model_dump() for m in p.timeline.markers] if body.chapters == "markers" else None
+        out = PB.suggest(words, p.timeline.duration, p.name, markers)
         if body.use_ai:
             model = language.text_model()
             if model is None:
@@ -1693,6 +1787,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/media/{mid}", delete_media, methods=["DELETE"]),
         Route(P + "/media/{mid}/stream", media_stream),
         Route(P + "/media/{mid}/previews", media_previews, methods=["POST"]),
+        Route(P + "/media/{mid}/relink", relink_media, methods=["POST"]),
         Route(P + "/media/{mid}/thumbnail", media_thumb),
         Route(P + "/media/{mid}/waveform", media_waveform),
         Route(P + "/exports", list_exports),

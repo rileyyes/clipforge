@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -269,11 +269,25 @@ class Blur(Strict):
         return v
 
 
+class Marker(Strict):
+    """A named point on the timeline (timeline seconds). Can be used as YouTube chapters."""
+    id: str
+    t: float = Field(ge=0, le=86400)
+    label: str = Field(default="", max_length=100)
+    color: str = Field(default="#ffb703", pattern=COLOR_HEX)
+
+    @field_validator("id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+
 class Timeline(Strict):
     # Video tracks: index order = stacking order (first = bottom / V1).
     tracks: list[Track] = Field(default_factory=list, max_length=32)
     titles: list[Title] = Field(default_factory=list, max_length=500)
     blurs: list[Blur] = Field(default_factory=list, max_length=200)
+    markers: list[Marker] = Field(default_factory=list, max_length=500)
 
     @property
     def duration(self) -> float:
@@ -549,6 +563,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "schema_version": 4}
     if data.get("schema_version", 4) < 5:  # v4 -> v5: face cam (none) and new transitions
         data = {**data, "schema_version": 5}
+    if data.get("schema_version", 5) < 6:  # v5 -> v6: timeline markers (none)
+        data = {**data, "schema_version": 6}
     return data
 
 

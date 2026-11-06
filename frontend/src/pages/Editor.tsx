@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError } from "../api";
+import { api, ApiError, fmtTime } from "../api";
 import Inspector from "../components/Inspector";
 import EffectsPanel, { FX_COLOR } from "../components/EffectsPanel";
 import HistoryPanel from "../components/HistoryPanel";
@@ -15,10 +15,11 @@ import TimelineView from "../components/TimelineView";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { History } from "../timeline/history";
 import {
-  addMedia, addTrack, beatTimes, cutRanges, deleteClips, duplicateClip, findClip, moveClip, removeTrack, sanitize, setFades, setTrackRole,
+  addMarker, addMedia, addTrack, beatTimes, cutRanges, deleteClips, duplicateClip, expandLinked, findClip, linkClips, markerNear, moveClip,
+  removeMarker, removeTrack, sanitize, setFades, setTrackRole, unlinkClips, updateMarker,
   setTransition, smoothJumpCuts, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type JumpCutMode, type OpResult,
 } from "../timeline/ops";
-import type { AudioSettings, CaptionSettings, Effect, FaceCam, MediaMap, Project, Timeline } from "../timeline/types";
+import { MARKER_COLORS, type AudioSettings, type CaptionSettings, type Effect, type FaceCam, type MediaMap, type Project, type Timeline } from "../timeline/types";
 
 type Doc = { timeline: Timeline; effects: Effect[]; captions: CaptionSettings; audio: AudioSettings; facecam: FaceCam | null };
 import { go } from "../router";
@@ -35,6 +36,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
   const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "history">("clip");
   const [overlaySel, setOverlaySel] = useState<string | null>(null);
+  const [markerSel, setMarkerSel] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
@@ -218,6 +220,24 @@ export default function Editor({ projectId }: { projectId: string }) {
       if (selection.length !== 1) return toast("Select one clip to duplicate", true);
       commit(duplicateClip(timeline!, selection[0]), "Duplicate");
     },
+    selectAll: () => setSelection(timeline!.tracks.filter((t) => !t.locked).flatMap((t) => t.clips.map((c) => c.id))),
+    /** linked → unlink; otherwise link the selection */
+    toggleLink: () => {
+      if (!selection.length) return toast("Select clips first", true);
+      const anyLinked = selection.some((id) => findClip(timeline!, id)?.clip.link_id);
+      if (anyLinked && expandLinked(timeline!, selection).size > 1) {
+        if (commit(unlinkClips(timeline!, selection), "Unlink")) toast("Unlinked: picture and sound now move on their own");
+      } else if (commit(linkClips(timeline!, selection), "Link")) toast("Linked: these clips now move together");
+    },
+    marker: () => {
+      const r = addMarker(timeline!, playhead) as OpResult & { id?: string };
+      if (commit(r, "Add marker") && r.id) { setMarkerSel(r.id); setSelection([]); }
+    },
+    jumpMarker: (dir: 1 | -1) => {
+      const m = markerNear(timeline!, playhead, dir);
+      if (!m) return toast(dir > 0 ? "No marker after the playhead" : "No marker before the playhead", true);
+      setPlaying(false); seek(m.t); setMarkerSel(m.id);
+    },
   };
 
   // ---------------------------------------------------------------- keyboard
@@ -237,13 +257,23 @@ export default function Editor({ projectId }: { projectId: string }) {
       else if (mod && k === "d") { e.preventDefault(); actions.duplicate(); }
       else if (mod && k === "s") { e.preventDefault(); dirty.current = true; flush(); }
       else if (k === "s" && !mod) actions.split();
-      else if (k === "delete" || k === "backspace") { e.preventDefault(); actions.del(e.shiftKey); }
+      else if (k === "delete" || k === "backspace") {
+        e.preventDefault();
+        // a selected marker (and no clips) is what Delete removes
+        if (markerSel && !selection.length && timeline!.markers?.some((m) => m.id === markerSel)) { if (commit(removeMarker(timeline!, markerSel), "Delete marker")) setMarkerSel(null); }
+        else actions.del(e.shiftKey);
+      }
       else if (k === "n" && !mod) setSnapping((s) => !s);
+      else if (mod && k === "a") { e.preventDefault(); actions.selectAll(); }
+      else if (mod && k === "l") { e.preventDefault(); actions.toggleLink(); }
+      else if (k === "m" && !mod) actions.marker();
+      else if (e.shiftKey && k === "arrowleft") { e.preventDefault(); actions.jumpMarker(-1); }
+      else if (e.shiftKey && k === "arrowright") { e.preventDefault(); actions.jumpMarker(1); }
       else if (k === "arrowleft") { setPlaying(false); seek(playhead - 1 / (project?.output.fps ?? 30)); }
       else if (k === "arrowright") { setPlaying(false); seek(playhead + 1 / (project?.output.fps ?? 30)); }
       else if (k === "home") seek(0);
       else if (k === "end") seek(timelineDuration(timeline!));
-      else if (k === "escape") { setSelection([]); setShowKeys(false); }
+      else if (k === "escape") { setSelection([]); setMarkerSel(null); setShowKeys(false); }
       else return;
     };
     window.addEventListener("keydown", onKey);
@@ -264,7 +294,26 @@ export default function Editor({ projectId }: { projectId: string }) {
   const usedIds = new Set(timeline.tracks.flatMap((t) => t.clips.map((c) => c.media_id)));
   const missing = project.missing_media?.length ?? 0;
 
-  const toolbar = (
+  const selLinked = selection.length > 0 && selection.some((id) => findClip(timeline, id)?.clip.link_id) && expandLinked(timeline, selection).size > 1;
+  const mk = markerSel ? (timeline.markers ?? []).find((m) => m.id === markerSel) : undefined;
+  const markerBar = mk && (
+    <div className="row marker-bar" data-testid="marker-bar" style={{ gap: 8, flex: 1, minWidth: 0 }}>
+      <Icon name="marker" size={15} />
+      <span className="dim" style={{ fontSize: 12, fontVariantNumeric: "tabular-nums" }}>Marker at {fmtTime(mk.t)}</span>
+      <input aria-label="Marker name" placeholder="Name (used as the chapter title)" value={mk.label} maxLength={100} style={{ flex: "1 1 160px", minWidth: 0, maxWidth: 320 }}
+        onChange={(e) => commit(updateMarker(timeline, mk.id, { label: e.target.value }), "Rename marker", true)}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur(); }} />
+      {MARKER_COLORS.map((c) => (
+        <button key={c} className="swatch" aria-label={`Colour ${c}`} title={c} onClick={() => commit(updateMarker(timeline, mk.id, { color: c }), "Marker colour")}
+          style={{ width: 18, height: 18, borderRadius: 4, background: c, border: mk.color === c ? "2px solid var(--text)" : "1px solid var(--line)", padding: 0, cursor: "pointer" }} />
+      ))}
+      <button className="btn sm ghost" title="Move the marker to the playhead" onClick={() => commit(updateMarker(timeline, mk.id, { t: playhead }), "Move marker")}>To playhead</button>
+      <button className="btn sm ghost" onClick={() => { if (commit(removeMarker(timeline, mk.id), "Delete marker")) setMarkerSel(null); }}><Icon name="trash" size={14} />Delete</button>
+      <span className="spacer" />
+      <button className="btn sm" onClick={() => setMarkerSel(null)}>Done</button>
+    </div>
+  );
+  const toolbar = markerBar || (
     <>
       <button className="btn icon ghost" title={`Undo${history.current.undoLabel ? ": " + history.current.undoLabel : ""} (Ctrl+Z)`} disabled={!history.current.canUndo} onClick={undo}><Icon name="undo" /></button>
       <button className="btn icon ghost" title={`Redo${history.current.redoLabel ? ": " + history.current.redoLabel : ""} (Ctrl+Shift+Z)`} disabled={!history.current.canRedo} onClick={redo}><Icon name="redo" /></button>
@@ -272,7 +321,11 @@ export default function Editor({ projectId }: { projectId: string }) {
       <button className="btn sm ghost" title="Split at playhead (S)" onClick={actions.split}><Icon name="scissors" size={14} />Split</button>
       <button className="btn sm ghost" title="Delete (Del)" disabled={!selection.length} onClick={() => actions.del(false)}><Icon name="trash" size={14} />Delete</button>
       <button className="btn sm ghost" title="Delete and close the gap (Shift+Del)" disabled={!selection.length} onClick={() => actions.del(true)}><Icon name="ripple" size={14} />Ripple delete</button>
-      <button className="btn sm ghost" title="Duplicate (Ctrl+D)" disabled={selection.length !== 1} onClick={actions.duplicate}><Icon name="copy" size={14} />Duplicate</button>
+      <button className="btn sm ghost" title="Duplicate (Ctrl+D)" aria-label="Duplicate" disabled={selection.length !== 1} onClick={actions.duplicate}><Icon name="copy" size={14} /><span className="lbl">Duplicate</span></button>
+      <button className="btn sm ghost" disabled={!selection.length} onClick={actions.toggleLink} aria-label={selLinked ? "Unlink" : "Link"}
+        title={selLinked ? "Unlink picture and sound so they move on their own (Ctrl+L)" : "Link the selected clips so they move together (Ctrl+L)"}>
+        <Icon name={selLinked ? "unlink" : "link"} size={14} /><span className="lbl">{selLinked ? "Unlink" : "Link"}</span></button>
+      <button className="btn sm ghost" title="Add a marker at the playhead (M). Shift+← / → jumps between markers" aria-label="Marker" onClick={actions.marker}><Icon name="marker" size={14} /><span className="lbl">Marker</span></button>
       <button className={"btn sm" + (snapping ? " on" : " ghost")} title="Snapping (N) — hold Alt while dragging to bypass" onClick={() => setSnapping(!snapping)}><Icon name="magnet" size={14} />Snap</button>
       <select className="btn sm ghost" value="" aria-label="Smooth jump cuts" title="Hide the jump where talking was cut out of one shot"
         onChange={(e) => { if (e.target.value) smoothCuts(e.target.value as JumpCutMode); }}>
@@ -283,8 +336,8 @@ export default function Editor({ projectId }: { projectId: string }) {
         <option value="off">Plain cuts (undo smoothing)</option>
       </select>
       <span style={{ width: 1, height: 20, background: "var(--line)" }} />
-      <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "video"), "Add video track")}><Icon name="plus" size={14} />Video track</button>
-      <button className="btn sm ghost" onClick={() => commit(addTrack(timeline, "audio"), "Add audio track")}><Icon name="plus" size={14} />Audio track</button>
+      <button className="btn sm ghost" title="Add a video track" aria-label="Video track" onClick={() => commit(addTrack(timeline, "video"), "Add video track")}><Icon name="plus" size={14} /><span className="lbl">Video track</span></button>
+      <button className="btn sm ghost" title="Add an audio track" aria-label="Audio track" onClick={() => commit(addTrack(timeline, "audio"), "Add audio track")}><Icon name="plus" size={14} /><span className="lbl">Audio track</span></button>
       <span className="spacer" />
       <button className="btn icon ghost" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts" onClick={() => setShowKeys(true)}><Icon name="keyboard" size={15} /></button>
       <button className="btn icon ghost" title="Zoom out" onClick={() => setPps(Math.max(2, pps / 1.4))}><Icon name="zoomout" size={15} /></button>
@@ -310,7 +363,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           <span className={"dot" + (save === "saved" ? "" : save === "error" || save === "conflict" ? " bad" : " busy")} />
           {{ saved: "All changes saved", pending: "Unsaved changes…", saving: "Saving…", error: "Save failed — retrying", conflict: "Changed elsewhere" }[save]}
         </span>
-        {missing > 0 && <span className="chip err">{missing} media file(s) missing</span>}
+        {missing > 0 && <span className="chip err" title="Media panel → Find file to relink">{missing} media file(s) missing</span>}
         <span className="spacer" />
         {jobs.filter((j) => j.kind === "render" && (j.status === "running" || j.status === "queued")).map((j) => (
           <span key={j.id} className="chip run">Exporting {j.progress != null ? `${Math.round(j.progress * 100)}%` : "…"}</span>
@@ -388,7 +441,10 @@ export default function Editor({ projectId }: { projectId: string }) {
       </div>
       {showKeys && <ShortcutSheet onClose={() => setShowKeys(false)} />}
       <div className="splitter" onPointerDown={startResize} />
-      <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection} setSelection={setSelection}
+      <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection}
+        setSelection={(sel) => { setSelection(sel); if (sel.length) setMarkerSel(null); }}
+        userMarkers={timeline.markers ?? []} markerSel={markerSel}
+        onMarkerSelect={(id) => { setMarkerSel(id); setSelection([]); setOverlaySel(null); }}
         playhead={playhead} seek={(t) => { seek(t); }} playing={playing} pps={pps} setPps={setPps} snapping={snapping}
         commit={(r, l) => { commit(r, l); force((n) => n + 1); }}
         onDropMedia={(mid, time, trackId) => {
@@ -416,6 +472,9 @@ const SHORTCUTS: [string, string][] = [
   ["Shift + Delete", "Ripple delete (close the gap)"], ["Ctrl + D", "Duplicate clip"], ["Ctrl + Z", "Undo"],
   ["Ctrl + Shift + Z / Ctrl + Y", "Redo"], ["Ctrl + S", "Save now"], ["N", "Snapping on / off"],
   ["Ctrl + mouse wheel", "Zoom the timeline"], ["Alt while dragging", "Drag without snapping"],
+  ["Ctrl + A", "Select every clip"], ["Ctrl + L", "Link / unlink picture and sound"],
+  ["Shift-click / Ctrl-click", "Select several clips (drag one to move them all)"],
+  ["M", "Add a marker at the playhead"], ["Shift + ← / →", "Previous / next marker"],
   ["Script tab: Delete", "Cut the selected words"], ["Esc", "Clear selection / close this"], ["?", "Show this list"],
 ];
 

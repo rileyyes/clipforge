@@ -49,6 +49,9 @@ const P: Record<string, string> = {
   script: "M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7M9 19h4",
   keyboard: "M3 6h18v12H3zM7 10h0M11 10h0M15 10h0M7 14h10",
   guides: "M3 5h18v14H3zM6 8h12v8H6z",
+  link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+  unlink: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1M3 3l18 18",
+  marker: "M6 21V4M6 4h11l-2 4 2 4H6",
 };
 
 export function Icon({ name, size = 16 }: { name: string; size?: number }) {
