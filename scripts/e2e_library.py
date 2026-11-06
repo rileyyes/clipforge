@@ -130,7 +130,7 @@ async def main(pid: str):
         await pg.wait_for_timeout(300)
         # ---- keywords -> suggestion: tag the image with a word that's said in the video
         await img.get_by_role("button", name="#").click()
-        await pg.get_by_role("textbox").last.fill("oh, shit")
+        await pg.locator(".modal input[type=text]").fill("oh, shit")  # the keywords box
         await pg.get_by_role("button", name="Save", exact=True).click()
         await img.get_by_role("button", name="#").wait_for()
         br = pg.get_by_test_id("broll")

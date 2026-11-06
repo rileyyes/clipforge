@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, effectSoundUrl, fmtTime, library, type BrollSuggestion, type Job, type LibraryItem } from "../api";
 import LibraryPanel from "./LibraryPanel";
-import { activeEffects, effectTime, newEffectAt } from "../timeline/effects";
+import { activeEffects, effectTime, moveEffectTo, newEffectAt, parseTime } from "../timeline/effects";
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
 
@@ -80,6 +80,14 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
     setFx([...effects.filter((e) => !(e.origin === "auto" && kinds(e.kind))), ...incoming], captions, label);
   const patch = (id: string, p: Partial<Effect>, label = "Edit effect") =>
     setFx(effects.map((e) => (e.id === id ? { ...e, ...p } : e)), captions, label);
+  /** move an effect to timeline time t (re-pinned to the footage there); false + a message if it can't */
+  const moveTo = (e: Effect, t: number) => {
+    const r = moveEffectTo(timeline, e, Math.max(0, t));
+    if ("error" in r) { toast(r.error, true); return false; }
+    setFx(effects.map((x) => (x.id === e.id ? { ...r, needs_review: false } : x)), captions, "Move effect");
+    seek(Math.max(0, t));
+    return true;
+  };
   const [broll, setBroll] = useState<BrollSuggestion[] | null>(null);
   const [brollNote, setBrollNote] = useState("");
   /** Effects from library suggestions, anchored at timeline time t. */
@@ -282,19 +290,26 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
       {/* ---------------- list */}
       <div style={{ display: "grid", gap: 6 }}>
         <div className="row"><h3 style={{ margin: 0 }}>Effects ({effects.length})</h3><span className="spacer" />
-          <select value={filter} onChange={(e) => setFilter(e.target.value as any)}>
+          <select value={filter} style={{ maxWidth: 140, minWidth: 0 }} aria-label="Show effects" onChange={(e) => setFilter(e.target.value as any)}>
             <option value="all">All</option><option value="censor">Bleeps ({counts.censor})</option><option value="review">Needs check ({counts.review})</option>
           </select></div>
         {rows.length === 0 && <div className="muted" style={{ fontSize: 12 }}>None yet.</div>}
         {rows.slice(0, 400).map(({ e, t }) => (
-          <div key={e.id} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8, display: "grid", gap: 6, opacity: e.enabled && t !== null ? 1 : 0.5, borderLeft: `3px solid ${KIND_COLOR[e.kind]}` }}>
+          <div key={e.id} className="fx-card" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 8, display: "grid", gap: 6, opacity: e.enabled && t !== null ? 1 : 0.5, borderLeft: `3px solid ${KIND_COLOR[e.kind]}` }}>
             <div className="row" style={{ gap: 6 }}>
               <input type="checkbox" checked={e.enabled} title="Use this effect" onChange={(ev) => patch(e.id, { enabled: ev.target.checked, needs_review: false }, ev.target.checked ? "Enable effect" : "Disable effect")} />
-              <strong style={{ fontSize: 12 }}>{KIND_LABEL[e.kind]}</strong>
-              <button className="btn sm ghost mono" disabled={t === null} onClick={() => t !== null && seek(Math.max(0, t - 0.5))}>{t === null ? "cut from edit" : fmtTime(t)}</button>
+              <strong className="ellipsis" style={{ fontSize: 12 }} title={KIND_LABEL[e.kind]}>{KIND_LABEL[e.kind]}</strong>
+              <button className="btn sm ghost" title="Play from just before it" aria-label="Go to effect" disabled={t === null} onClick={() => t !== null && seek(Math.max(0, t - 0.5))}><Icon name="play" size={11} /></button>
               {e.needs_review && <span className="chip warn" title="Low confidence or very short word — check it">check</span>}
               <span className="spacer" />
               <button className="btn sm ghost danger" title="Delete" onClick={() => setFx(effects.filter((x) => x.id !== e.id), captions, "Delete effect")}><Icon name="trash" size={12} /></button>
+            </div>
+            <div className="row fx-time" style={{ gap: 4 }}>
+              <span className="muted" style={{ fontSize: 11 }}>At</span>
+              <TimeField value={t} onCommit={(v) => moveTo(e, v)} />
+              <button className="btn xs ghost" disabled={t === null} title="0.1 s earlier" onClick={() => t !== null && moveTo(e, t - 0.1)}>−0.1s</button>
+              <button className="btn xs ghost" disabled={t === null} title="0.1 s later" onClick={() => t !== null && moveTo(e, t + 0.1)}>+0.1s</button>
+              <button className="btn xs ghost" title={`Start it at the playhead (${fmtTime(playhead)})`} onClick={() => moveTo(e, playhead)}>To playhead</button>
             </div>
             {e.kind === "censor" && (<>
               <div style={{ fontSize: 12 }}>“{e.word}” {e.confidence != null && <span className="dim">({Math.round(e.confidence * 100)}% sure)</span>}</div>
@@ -331,3 +346,31 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
     </div>
   );
 }
+
+/** The effect's time in the edit, as a box you can type into ("20.8", "0:20.80", "1:02.5").
+ *  Enter or leaving the box moves the effect there; Esc (or a time that isn't one) puts it back. */
+function TimeField({ value, onCommit }: { value: number | null; onCommit: (t: number) => boolean }) {
+  const shown = value === null ? "" : fmtTime(value);
+  const [text, setText] = useState(shown);
+  const [editing, setEditing] = useState(false);
+  const cancelled = useRef(false);  // Esc: the blur that follows must not apply the typed time
+  useEffect(() => { if (!editing) setText(shown); }, [shown, editing]);
+  const commit = () => {
+    setEditing(false);
+    if (cancelled.current) { cancelled.current = false; setText(shown); return; }
+    if (text.trim() === shown) return;
+    const v = parseTime(text);
+    if (v === null || !onCommit(v)) setText(shown);
+  };
+  return (
+    <input className="mono fx-time-input" aria-label="Effect time" title="Type a time (e.g. 20.8 or 0:20.8) and press Enter to move it there"
+      placeholder={value === null ? "cut from edit" : ""} value={editing ? text : shown || text}
+      onFocus={(ev) => { setEditing(true); setText(shown); ev.target.select(); }}
+      onChange={(ev) => setText(ev.target.value)} onBlur={commit}
+      onKeyDown={(ev) => {
+        if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+        else if (ev.key === "Escape") { ev.stopPropagation(); cancelled.current = true; (ev.target as HTMLInputElement).blur(); }
+      }} />
+  );
+}
+

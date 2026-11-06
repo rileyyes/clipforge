@@ -331,3 +331,16 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .umarker-line { position: absolute; top: 0; border-left: 1px dashed; pointer-events: none; z-index: 4; opacity: .9; }
 .marker-bar input { height: 26px; }
 .relink-note { font-size: 12px; line-height: 1.4; padding: 8px 10px; margin-bottom: 8px; border-radius: 6px; background: rgba(255, 90, 60, .12); border: 1px solid rgba(255, 90, 60, .4); }
+
+/* Phase 13: editable effect times */
+.fx-time-input { width: 78px; height: 24px; padding: 2px 6px; font-size: 12px; }
+.fx-time-input::placeholder { color: var(--dim); font-family: inherit; }
+.fx-card { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.fx-card .row { min-width: 0; flex-wrap: nowrap; }
+.fx-card .row > * { min-width: 0; }
+.fx-card .row > .btn, .fx-card .row > input[type=checkbox], .fx-card .row > .chip, .fx-card .fx-time-input { flex-shrink: 0; }
+.fx-card .row > input[type=text]:not(.fx-time-input) { flex: 1 1 auto; width: 0; }
+.fx-card input[type=color] { width: 34px; flex: none; padding: 2px; }
+.fx-card .fx-time { flex-wrap: wrap; }
+.fx-card .insp-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.fx-card input[type=range] { width: 100%; min-width: 0; }

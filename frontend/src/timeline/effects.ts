@@ -32,6 +32,35 @@ export function effectTime(tl: Timeline, e: Effect): number | null {
   return alt.length ? alt[0].start : null;
 }
 
+/** The footage at timeline time t that an effect of this kind pins to: the top visible
+ *  video clip (or, for sounds and bleeps, the first unmuted audio clip first), else the
+ *  other kind. Returns its media and the matching moment in that recording. */
+export function anchorAt(tl: Timeline, t: number, kind: EffectKind): { media_id: string; source_time: number } | null {
+  const video = () => topVideoClipAt(tl, t)?.clip ?? null;
+  const audio = () => { for (const tr of tl.tracks) if (tr.kind === "audio" && !tr.muted) { const c = clipAt(tr, t); if (c) return c; } return null; };
+  const hit = isAudioFx(kind) ? (audio() ?? video()) : (video() ?? audio());
+  if (!hit) return null;
+  return { media_id: hit.media_id, source_time: Math.max(0, +(hit.source_in + (t - hit.start) * hit.speed).toFixed(3)) };
+}
+
+/** Move an effect so it starts at timeline time t (re-pinned to the footage there). */
+export function moveEffectTo(tl: Timeline, e: Effect, t: number): Effect | { error: string } {
+  if (!Number.isFinite(t) || t < 0) return { error: "Type a time like 20.8 or 0:20.8" };
+  const a = anchorAt(tl, t + 0.001, e.kind);
+  if (!a) return { error: `There's no footage at ${t.toFixed(2)} s to put it on` };
+  return { ...e, media_id: a.media_id, source_time: Math.max(0, +(a.source_time - 0.001).toFixed(3)) };
+}
+
+/** "20.8", "20.8s", "0:20.80", "1:02:03.5" -> seconds; null if it isn't a time. */
+export function parseTime(text: string): number | null {
+  const s = text.trim().replace(/s$/i, "").trim();
+  if (!/^\d+(:\d{1,2}){0,2}(\.\d*)?$/.test(s) && !/^\.\d+$/.test(s)) return null;
+  const parts = s.split(":");
+  if (parts.slice(1).some((p) => parseFloat(p) >= 60)) return null;
+  const v = parts.reduce((acc, p) => acc * 60 + parseFloat(p || "0"), 0);
+  return Number.isFinite(v) ? v : null;
+}
+
 /** Anchor a new effect at timeline time t (top visible video clip, else audio). */
 export function newEffectAt(tl: Timeline, t: number, kind: EffectKind, extra: Partial<Effect> = {}): Effect | null {
   let hit = topVideoClipAt(tl, t)?.clip ?? null;

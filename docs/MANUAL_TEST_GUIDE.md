@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–12
+# Hands-on test guide: Phases 4–13
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -169,4 +169,18 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 12.10 | Click **Find file** and pick the recording (any name) | "Relinked", the clips play again. A different or too-short file is refused with the reason |
 
 **Notes:** moving several clips keeps each on its own track (drag one clip on its own to move it to another track). If you relink to a *different* file (for example a re-export), its old transcript and analysis are reset, so check the cuts still line up.
+
+## Phase 13: change an effect's time
+
+| # | Do this | You should see |
+|---|---|---|
+| 13.1 | AI Auto Editor with comedy edits (or add a **Pop-up text** yourself) → Editor → **FX** tab → scroll to **Effects** | Each effect has an **At** box with its time |
+| 13.2 | Click the box, type a new time (`20.8`, `0:20.8` or `1:02.5`), press **Enter** | The box shows the new time, the preview jumps there and the effect plays there |
+| 13.3 | **−0.1s** / **+0.1s** | It moves by a tenth of a second each click |
+| 13.4 | Move the playhead somewhere, click **To playhead** | It starts at the playhead |
+| 13.5 | Type `abc`, or a time past the end of the video | Goes back to the old time; past the end you get "no footage" |
+| 13.6 | Type a time, then press **Esc** instead of Enter | Nothing changes |
+| 13.7 | Ctrl+Z, then export | Undo moves it back; the export shows it at the time you set |
+
+**Note:** moving a bleep moves both the beep and the part of the sound that's silenced, so it's the way to line a bleep up with its word if it's slightly early or late (use ±0.1s). The masked word in the captions follows the bleep too.
 

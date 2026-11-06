@@ -175,6 +175,13 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The timeline toolbar fits a 1280-wide screen (less-used buttons become icons with tooltips)
 - ✅ Fixes found on the way: job progress can no longer step backwards (seen on Windows); the Editor fits 1280×720 even with wider system fonts
 
+## Phase 13 — Effect times you can edit 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Type a new time** for any effect (pop-up text, zoom, shake, flash, sound, image, bleep), including ones the AI placed: Editor → **FX** → Effects list → the **At** box. Type `20.8`, `0:20.8` or `1:02.5`, press Enter. The preview jumps there; **Esc** cancels
+- ✅ **Nudge** −0.1 s / +0.1 s, or **To playhead**
+- ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
+- ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
+
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).
