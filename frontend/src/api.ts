@@ -53,6 +53,9 @@ export const api = {
   /** ``facecam``: left out = unchanged, null = remove it. */
   saveTimeline: (id: string, base_edit_revision: number, timeline: Timeline, output: OutputSettings, effects?: Effect[], captions?: CaptionSettings, audio?: AudioSettings, facecam?: FaceCam | null) =>
     call<Project>("PUT", `/api/projects/${id}/timeline`, { base_edit_revision, timeline, output, effects, captions, audio, ...(facecam !== undefined ? { facecam } : {}) }),
+  /** Fix a misheard transcript word (text only; its timing stays). */
+  fixWord: (pid: string, media_id: string, start: number, text: string) =>
+    call<{ word: { text: string; start: number; end: number; old: string } }>("POST", `/api/projects/${pid}/words/fix`, { media_id, start, text }),
   rename: (id: string, name: string) => call<Project>("POST", `/api/projects/${id}/rename`, { name }),
   duplicate: (id: string) => call<Project>("POST", `/api/projects/${id}/duplicate`),
   deleteProject: (id: string) => call<void>("DELETE", `/api/projects/${id}`),

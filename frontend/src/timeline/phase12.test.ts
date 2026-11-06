@@ -89,6 +89,9 @@ test("link rules: two or more clips, one per track, lined up", () => {
   assert.match(linkClips(un, [v[0], a[1], a[0]]).error!, /one clip per track/);
   assert.match(linkClips(tl, [v[0], a[0]]).error!, /already linked/);
   assert.match(linkClips(un, [v[0], a[1]]).error!, /start and end together/);
+  // same place on the timeline but a different moment of the recording (sound slipped)
+  const slipped = { ...un, tracks: un.tracks.map((t) => ({ ...t, clips: t.clips.map((c) => (c.id === a[0] ? { ...c, source_in: 1, source_out: 11 } : c)) })) };
+  assert.match(linkClips(slipped, [v[0], a[0]]).error!, /different moments/);
   const trimmed = ok(trimEdge(un, a[0], "end", 8, M));                     // same start, shorter sound
   assert.match(linkClips(trimmed, [v[0], a[0]]).error!, /start and end together/);
 });

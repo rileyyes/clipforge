@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
@@ -1417,8 +1417,41 @@ def build_routes(svc: Services) -> list[Route]:
         for m in p.media:
             w = (analysis_svc.load_analysis(store.dir(pid), m.id) or {}).get("words")
             if w:
-                out[m.id] = [{"text": x["text"], "start": x["start"], "end": x["end"], "p": x.get("p", 1.0)} for x in w]
+                out[m.id] = [{"text": x["text"], "start": x["start"], "end": x["end"], "p": x.get("p", 1.0),
+                              **({"fixed": True} if x.get("fixed") else {})} for x in w]
         return JSONResponse({"media": out})
+
+    class WordFixBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        media_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+        start: float = Field(ge=0, le=86400)
+        text: str = Field(min_length=1, max_length=60)
+
+        @field_validator("text")
+        @classmethod
+        def _one_word(cls, v: str) -> str:
+            v = v.strip()
+            if not v:
+                raise ValueError("type the word (to remove a word, cut it in the Script tab instead)")
+            if any(ch in v for ch in "\r\n\t") or any(ord(ch) < 32 for ch in v):
+                raise ValueError("one line only")
+            return v
+
+    async def fix_word(request: Request):
+        """Fix a misheard transcript word (its text only; timing stays)."""
+        pid = pid_of(request)
+        body = await body_model(request, WordFixBody)
+        p = load(pid)
+        if not any(m.id == body.media_id for m in p.media):
+            return err(404, "media not found")
+        busy = [j for j in svc.jobs.active_for_project(pid) if j.kind in ("transcribe", "analyze")]
+        if busy:
+            return err(409, "Wait for the transcription to finish, then fix the word.")
+        try:
+            w = analysis_svc.fix_word(store.dir(pid), body.media_id, body.start, body.text)
+        except LookupError as exc:
+            return err(404, str(exc))
+        return JSONResponse({"word": w})
 
     async def suggest_censor(request: Request):
         pid = pid_of(request)
@@ -1837,6 +1870,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/fx/censor/suggest", suggest_censor, methods=["POST"]),
         Route(P + "/fx/fun/suggest", suggest_fun, methods=["POST"]),
         Route(P + "/captions.srt", captions_srt),
+        Route(P + "/words/fix", fix_word, methods=["POST"]),
         Route(P + "/words", words),
         Route(P + "/fx/library", library_use, methods=["POST"]),
         Route(P + "/fx/broll/suggest", broll_suggest, methods=["POST"]),

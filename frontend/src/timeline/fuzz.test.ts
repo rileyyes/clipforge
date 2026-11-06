@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
-  MIN_CLIP, addMarker, linkClips, moveClips, removeMarker, unlinkClips, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
+  MIN_CLIP, MUSIC_DEFAULTS, addMusic, addMarker, linkClips, moveClips, removeMarker, unlinkClips, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
   addBlur, addTitle, cutRanges, fitMusicToVideo, snapCutsToBeats, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
@@ -94,7 +94,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 27);
+      const op = Math.floor(r() * 28);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -153,6 +153,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
           : linkClips(tl, [c.id, ...tl.tracks.flatMap((tr) => tr.clips.filter((x) => x.id !== c.id && Math.abs(x.start - c.start) < 1e-4
               && Math.abs(clipDuration(x) - clipDuration(c)) < 1e-4).slice(0, 1).map((x) => x.id))]); break;
         case 26: res = r() < 0.6 ? addMarker(tl, t) : (tl.markers?.length ? removeMarker(tl, pick(tl.markers).id) : { error: "none" }); break;
+        case 27: res = addMusic(tl, pick(MEDIA), t, t + r() * 40, { ...MUSIC_DEFAULTS, loop: r() < 0.7, songStart: r() < 0.3 ? r() * 5 : 0, volume: r() * 1.5 }); break;
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

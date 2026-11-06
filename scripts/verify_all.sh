@@ -38,6 +38,8 @@ echo "== browser E2E: Phase 12 (relink missing media, move several clips, link/u
 python3 scripts/e2e_phase12.py 2>&1 | grep -E "OK|toolbar|group drag|markers|chapters|Error|assert"
 echo "== browser E2E: Phase 13 (type a new time for an effect; nudge; to playhead; export check)"
 python3 scripts/e2e_phase13.py 2>&1 | grep -E "OK|after|overflow|yellow|Error|assert"
+echo "== browser E2E: Phase 14 (background music for a time range, caption preview, fix a misheard word, export check)"
+python3 scripts/e2e_phase14.py 2>&1 | grep -E "OK|caption|music pieces|overflow|song vs|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

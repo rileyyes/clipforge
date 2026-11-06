@@ -1,7 +1,7 @@
 import type { Timeline } from "./types";
 // Filler words and retakes in a transcript. Same rules as backend/app/cleanup.py
 // (both checked against backend/tests/data/cleanup_vectors.json).
-export interface Word { text: string; start: number; end: number }
+export interface Word { text: string; start: number; end: number; fixed?: boolean }
 export interface Cleanup { kind: "filler" | "retake"; start: number; end: number; text: string; first: number; last: number }
 
 export const FILLERS = new Set(["um", "umm", "uh", "uhh", "uhm", "er", "erm", "ah", "hmm", "hm", "mm", "mhm"]);

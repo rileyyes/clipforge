@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–13
+# Hands-on test guide: Phases 4–14
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -183,4 +183,18 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 13.7 | Ctrl+Z, then export | Undo moves it back; the export shows it at the time you set |
 
 **Note:** moving a bleep moves both the beep and the part of the sound that's silenced, so it's the way to line a bleep up with its word if it's slightly early or late (use ±0.1s). The masked word in the captions follows the bleep too.
+
+## Phase 14: background music and captions
+
+| # | Do this | You should see |
+|---|---|---|
+| 14.1 | Editor → **Music** tab → **Import** a song you have the rights to (mp3, m4a, wav…) | It's picked in the Song list |
+| 14.2 | Type **From** and **To** (e.g. `0:10` and `1:30`), or use the **Playhead** buttons / **Whole video** → **Add music** | A message like "looped 3×" if the song is shorter; the song appears on the A2/Music track and in "Music in this video" |
+| 14.3 | Play it | The music fades in, loops with a short dip, fades out at the end, and goes quieter while you talk (try "Lower the music while you talk": A lot) |
+| 14.4 | Drag the item's volume slider; click the trash icon; Ctrl+Z | Louder/quieter in the export; removed; back |
+| 14.5 | FX tab → **1 · Transcript**, then **4 · Captions** → turn them on | Captions now show **in the preview** while you play, in the style/size/position you pick |
+| 14.6 | Script tab → **double-click** a wrong word → type the right one → Enter | "Fixed: …", the preview caption changes, the word is highlighted |
+| 14.7 | Export, and FX → **Download .srt** | The burned-in captions and the .srt both have the fixed word |
+
+**Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 

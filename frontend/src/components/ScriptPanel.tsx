@@ -1,24 +1,23 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { fmtTime, type Job } from "../api";
+import { fmtTime } from "../api";
 import { editWords, findCleanups, rangeForWords, type Word } from "../timeline/cleanup";
 import type { Timeline } from "../timeline/types";
 import { Icon, useToast } from "./ui";
 
 /** Editor → Script: the edit as text. Select words and cut them; remove "um"s and retakes. */
-export default function ScriptPanel({ projectId, timeline, playhead, playing, seek, onCut, jobs, openEffects }: {
-  projectId: string; timeline: Timeline; playhead: number; playing: boolean; seek: (t: number) => void;
-  onCut: (ranges: [number, number][], label: string) => boolean; jobs: Job[]; openEffects: () => void;
+export default function ScriptPanel({ timeline, playhead, playing, seek, onCut, openEffects, byMedia, onFixWord }: {
+  timeline: Timeline; playhead: number; playing: boolean; seek: (t: number) => void;
+  onCut: (ranges: [number, number][], label: string) => boolean; openEffects: () => void;
+  /** transcript words by media id (null while loading) */
+  byMedia: Record<string, Word[]> | null;
+  /** fix a misheard word's text; resolves false if it couldn't be saved */
+  onFixWord: (media_id: string, src_start: number, text: string) => Promise<boolean>;
 }) {
   const toast = useToast();
-  const [byMedia, setByMedia] = useState<Record<string, Word[]> | null>(null);
+  const [fixing, setFixing] = useState<number | null>(null);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const drag = useRef<{ from: number; moved: boolean } | null>(null);
   const curRef = useRef<HTMLSpanElement | null>(null);
-  const transcribed = jobs.filter((j) => j.kind === "transcribe" && j.status === "succeeded").length;
-
-  useEffect(() => {
-    fetch(`/api/projects/${projectId}/words`).then((r) => r.json()).then((d) => setByMedia(d.media ?? {})).catch(() => setByMedia({}));
-  }, [projectId, transcribed]);
 
   const words = useMemo(() => (byMedia ? editWords(timeline, byMedia) : []), [timeline, byMedia]);
   const cleanups = useMemo(() => findCleanups(words), [words]);
@@ -71,19 +70,28 @@ export default function ScriptPanel({ projectId, timeline, playhead, playing, se
       </div>
       <div className="dim" style={{ fontSize: 11 }}>
         Click a word to jump there. Drag (or click, then Shift+click) to select, then <b>Cut</b> or press Delete.
+        <b> Double-click</b> a misheard word to fix it (captions use the fix).
         <span className="script-filler"> fillers</span> and <span className="script-retake">retakes</span> are marked.
       </div>
-      {sel && (
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn sm primary" onClick={cutSelection}><Icon name="scissors" size={13} />Cut {b - a + 1} word{b > a ? "s" : ""}</button>
-          <button className="btn xs ghost" onClick={() => setSel(null)}>Cancel</button>
-        </div>
-      )}
+      {/* always there (buttons disabled until words are selected), so the text never jumps under the mouse */}
+      <div className="row script-actions" style={{ gap: 6 }}>
+        <button className="btn sm primary" disabled={!sel} onClick={cutSelection}><Icon name="scissors" size={13} />
+          {sel ? `Cut ${b - a + 1} word${b > a ? "s" : ""}` : "Cut"}</button>
+        <button className="btn sm" disabled={!sel || a !== b} title="Fix a word the transcript got wrong (captions use the fixed word). Or double-click a word."
+          onClick={() => setFixing(a)}><Icon name="pencil" size={13} />Fix word</button>
+        {sel && <button className="btn xs ghost" onClick={() => setSel(null)}>Cancel</button>}
+      </div>
       <div className="script-text" onMouseUp={() => { drag.current = null; }} onMouseLeave={() => { drag.current = null; }}>
         {words.map((w, i) => (
           <React.Fragment key={`${w.media_id}@${w.src_start}`}>
             {i > 0 && w.start - words[i - 1].end > 1.2 && <span className="script-gap" title={`${(w.start - words[i - 1].end).toFixed(1)} s pause`}> ⋯ </span>}
-            <span ref={i === cur ? curRef : undefined} data-i={i}
+            {fixing === i ? (
+              <FixBox word={w.text.trim()} onDone={async (text) => {
+                if (text === null || text === w.text.trim()) { setFixing(null); return; }
+                if (await onFixWord(w.media_id, w.src_start, text)) { toast(`Fixed: “${w.text.trim()}” → “${text}”`); setFixing(null); }
+              }} />
+            ) : (
+            <span ref={i === cur ? curRef : undefined} data-i={i} title={byMedia?.[w.media_id]?.find((x) => x.start === w.src_start)?.fixed ? "Fixed by you" : undefined}
               className={"script-word" + (i === cur ? " cur" : "") + (i >= a && i <= b ? " sel" : "") +
                 (mark.get(i) === "filler" ? " script-filler" : mark.get(i) === "retake" ? " script-retake" : "")}
               onMouseDown={(e) => {
@@ -92,12 +100,13 @@ export default function ScriptPanel({ projectId, timeline, playhead, playing, se
                 drag.current = { from: i, moved: false };
                 setSel(null);
               }}
+              onDoubleClick={() => { setSel([i, i]); setFixing(i); }}
               onMouseEnter={() => { if (drag.current) { drag.current.moved = true; setSel([drag.current.from, i]); } }}
               onMouseUp={() => {
                 const d = drag.current;
                 if (d && !d.moved) { seek(w.start); setSel([i, i]); }
                 drag.current = null;
-              }}>{w.text.trim()}</span>{" "}
+              }}>{w.text.trim()}</span>)}{" "}
           </React.Fragment>
         ))}
       </div>
@@ -115,3 +124,21 @@ export default function ScriptPanel({ projectId, timeline, playhead, playing, se
     </div>
   );
 }
+
+/** Inline box for fixing one word: Enter saves, Esc (or clicking away unchanged) cancels. */
+function FixBox({ word, onDone }: { word: string; onDone: (text: string | null) => void }) {
+  const [v, setV] = useState(word);
+  const done = useRef(false);
+  const finish = (text: string | null) => { if (done.current) return; done.current = true; onDone(text); };
+  return (
+    <input autoFocus aria-label="Fix word" className="script-fix" value={v} maxLength={60} size={Math.max(4, v.length + 1)}
+      onFocus={(e) => e.target.select()} onChange={(e) => setV(e.target.value)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); finish(v.trim() || null); }
+        else if (e.key === "Escape") finish(null);
+      }}
+      onBlur={() => finish(v.trim() && v.trim() !== word ? v.trim() : null)} />
+  );
+}
+

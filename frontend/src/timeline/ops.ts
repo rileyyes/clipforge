@@ -265,8 +265,11 @@ export function linkClips(tl: Timeline, ids: string[]): OpResult {
   if (le) return { error: le };
   if (new Set(refs.map((r) => r.clip.link_id)).size === 1 && refs[0].clip.link_id) return { error: "These clips are already linked" };
   const r0 = refs[0].clip;
-  if (refs.some((r) => Math.abs(r.clip.start - r0.start) > 0.002 || Math.abs(clipDuration(r.clip) - clipDuration(r0)) > 0.002 || r.clip.speed !== r0.speed))
+  if (refs.some((r) => Math.abs(r.clip.start - r0.start) > 1e-4 || Math.abs(clipDuration(r.clip) - clipDuration(r0)) > 1e-4 || r.clip.speed !== r0.speed))
     return { error: "Linked clips must start and end together: drag or trim them into line first (edges snap to each other)" };
+  // two pieces of the same recording only link if they're the same moment of it (else picture and sound wouldn't match)
+  if (refs.some((r) => refs.some((q) => q.clip.media_id === r.clip.media_id && Math.abs(q.clip.source_in - r.clip.source_in) > 1e-4)))
+    return { error: "These are different moments of the same recording, so the picture and sound wouldn't match" };
   const link = newId();
   return { timeline: withTracks(tl, (track) => track.clips.some((c) => all.has(c.id))
     ? { ...track, clips: track.clips.map((c) => (all.has(c.id) ? { ...c, link_id: link } : c)) } : track) };
@@ -816,7 +819,7 @@ export function removeBlur(tl: Timeline, id: string): OpResult {
 }
 
 // ---------------------------------------------------------------- music beats
-const isMusicTrack = (t: Track) => t.kind === "audio" && t.role === "music";
+export const isMusicTrack = (t: Track) => t.kind === "audio" && t.role === "music";
 
 /** Beat times on the timeline: each music clip's beats (source seconds) placed where it plays. */
 export function beatTimes(tl: Timeline, beatsByMedia: Record<string, number[]>): number[] {
@@ -909,3 +912,97 @@ export function transitionAt(track: Track, t: number): TransitionState | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------- background music (Phase 14)
+export interface MusicOptions {
+  volume: number;        // 0..2 (1 = as recorded); ducking lowers it further under speech
+  fadeIn: number;        // s, at the start
+  fadeOut: number;       // s, at the end
+  songStart: number;     // s into the song to begin (skip an intro); loops restart here too
+  loop: boolean;         // repeat the song if it's shorter than the stretch
+}
+export const MUSIC_DEFAULTS: MusicOptions = { volume: 0.3, fadeIn: 1, fadeOut: 2, songStart: 0, loop: true };
+/** fade at each loop join (out and back in), so the jump back isn't a click */
+export const LOOP_JOIN_FADE = 0.3;
+
+/** End of the video part of the edit (everything except music tracks). */
+export function videoEnd(tl: Timeline): number {
+  return Math.max(0, ...tl.tracks.filter((t) => !isMusicTrack(t)).flatMap((t) => t.clips.map(clipEnd)));
+}
+
+/** Put a song under the video from `from` to `to` (timeline seconds), looping it if it's
+ *  shorter, on a music track (one that's free there, else a new "Music" track). Music
+ *  tracks are lowered under speech when ducking is on. */
+export function addMusic(tl: Timeline, media: MediaAsset, from: number, to: number, o: MusicOptions = MUSIC_DEFAULTS): OpResult {
+  if (!media.has_audio) return { error: `“${media.original_name}” has no sound` };
+  from = round6(Math.max(0, from)); to = round6(to);
+  if (!(to - from >= 0.5)) return { error: "Pick an end time at least half a second after the start" };
+  const songStart = Math.max(0, o.songStart);
+  const songLen = media.duration - songStart;
+  if (songLen < 0.5) return { error: "“Start song at” is past the end of the song" };
+  if (!(o.volume >= 0 && o.volume <= 2)) return { error: "Volume must be between 0 and 200 %" };
+  // pieces
+  const pieces: [number, number, number][] = []; // [start, source_in, length]
+  for (let t = from; to - t > MIN_CLIP - EPS;) {
+    const len = Math.min(to - t, songLen);
+    pieces.push([t, songStart, len]);
+    t = round6(t + len);
+    if (!o.loop) break;
+    if (pieces.length > 200) return { error: "That song is too short to loop over such a long stretch" };
+  }
+  if (pieces.length > 1 && pieces[pieces.length - 1][2] < MIN_CLIP) pieces.pop();
+  // a music track that's free over [from, end)
+  const end = pieces.length ? pieces[pieces.length - 1][0] + pieces[pieces.length - 1][2] : to;
+  let target = tl.tracks.find((t) => isMusicTrack(t) && !t.locked && !t.clips.some((c) => c.start < end - EPS && clipEnd(c) > from + EPS));
+  let base = tl;
+  if (!target) {
+    if (tl.tracks.length >= 32) return { error: "Track limit reached" };
+    const n = tl.tracks.filter(isMusicTrack).length;
+    target = { id: newId(), kind: "audio", name: n ? `Music ${n + 1}` : "Music", muted: false, hidden: false, locked: false, clips: [], role: "music" };
+    base = { ...tl, tracks: [...tl.tracks, target] };
+  }
+  const created: string[] = [];
+  const clips: Clip[] = pieces.map(([start, si, len], i) => {
+    const first = i === 0, last = i === pieces.length - 1;
+    const half = len / 2;
+    const c: Clip = {
+      id: newId(), media_id: media.id, start: round6(start), source_in: round6(si), source_out: round6(si + len), speed: 1,
+      volume: round6(o.volume), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, link_id: null, label: null,
+      fade_in: round6(Math.min(half, first ? Math.max(0, o.fadeIn) : LOOP_JOIN_FADE)),
+      fade_out: round6(Math.min(half, last ? Math.max(0, o.fadeOut) : LOOP_JOIN_FADE)),
+    };
+    created.push(c.id);
+    return c;
+  });
+  return {
+    timeline: withTracks(base, (t) => (t.id === target!.id ? { ...t, clips: sortClips([...t.clips, ...clips]) } : t)),
+    created,
+  };
+}
+
+/** Music on the timeline as the user thinks of it: back-to-back pieces of the same song
+ *  on the same track (a loop) form one item. */
+export interface MusicItem { track: Track; clips: Clip[]; media_id: string; start: number; end: number; volume: number }
+export function musicItems(tl: Timeline): MusicItem[] {
+  const out: MusicItem[] = [];
+  for (const t of tl.tracks.filter(isMusicTrack)) {
+    for (const c of [...t.clips].sort((a, b) => a.start - b.start)) {
+      const last = out[out.length - 1];
+      if (last && last.track.id === t.id && last.media_id === c.media_id && Math.abs(last.end - c.start) < 1e-3) {
+        last.clips.push(c); last.end = clipEnd(c);
+      } else out.push({ track: t, clips: [c], media_id: c.media_id, start: c.start, end: clipEnd(c), volume: c.volume });
+    }
+  }
+  return out;
+}
+
+/** Change the volume of every piece of a music item. */
+export function setMusicVolume(tl: Timeline, ids: string[], volume: number): OpResult {
+  const v = round6(Math.min(2, Math.max(0, volume)));
+  const set = new Set(ids);
+  const refs = ids.map((i) => findClip(tl, i)).filter(Boolean) as ClipRef[];
+  const le = lockedError(refs);
+  if (le) return { error: le };
+  return { timeline: withTracks(tl, (t) => t.clips.some((c) => set.has(c.id)) ? { ...t, clips: t.clips.map((c) => (set.has(c.id) ? { ...c, volume: v } : c)) } : t) };
+}
+

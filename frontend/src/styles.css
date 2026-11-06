@@ -344,3 +344,8 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .fx-card .fx-time { flex-wrap: wrap; }
 .fx-card .insp-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .fx-card input[type=range] { width: 100%; min-width: 0; }
+.script-fix { font: inherit; padding: 0 4px; height: 1.6em; border: 1px solid var(--accent); border-radius: 4px; background: var(--bg); color: var(--text); }
+
+/* Phase 14: background music */
+.music-times { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.music-item { display: grid; gap: 2px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }

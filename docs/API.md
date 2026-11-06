@@ -30,6 +30,7 @@ Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send h
 | GET | `/api/projects/{pid}/media/{mid}/thumbnail` | JPEG |
 | GET | `/api/projects/{pid}/media/{mid}/waveform` | `{peaks_per_second: 100, peaks: [0..255]}` (20 for media imported before Phase 6) |
 | DELETE | `/api/projects/{pid}/media/{mid}` | 409 if used on the timeline |
+| POST | `/api/projects/{pid}/words/fix` | `{media_id, start, text}`: fix a misheard transcript word (text only; found by its start time, ±2 ms). 404 if no word there, 409 while that project is transcribing, 422 for empty/multi-line/over 60 characters → `{word: {text, start, end, old}}` |
 | POST | `/api/projects/{pid}/media/{mid}/relink?filename=x.mp4` | raw file body: replaces a **missing** original, keeping the media id (409 if it isn't missing). 422 if the file lacks the picture/sound the edit uses, is shorter than the edit needs, or is already another media item. → `{media, job_id, same_file, note}`; a different file (other SHA-256) drops that media's analysis, transcript, beats and matte |
 
 ## Exports

@@ -5,7 +5,9 @@ import type { MediaMap, Timeline } from "../timeline/types";
 import { Icon, useToast } from "./ui";
 
 /** Editor → Beat: find the beat of your music, show it, cut on it. */
-export default function BeatPanel({ projectId, timeline, media, commit, beats, setBeats, showBeats, setShowBeats }: {
+export default function BeatPanel({ projectId, timeline, media, commit, beats, setBeats, showBeats, setShowBeats, top }: {
+  /** shown first (the background-music section) */
+  top?: React.ReactNode;
   projectId: string; timeline: Timeline; media: MediaMap; commit: (r: OpResult, label: string) => boolean;
   beats: Record<string, { bpm: number; beats: number[] }>; setBeats: (b: Record<string, { bpm: number; beats: number[] }>) => void;
   showBeats: boolean; setShowBeats: (v: boolean) => void;
@@ -19,9 +21,10 @@ export default function BeatPanel({ projectId, timeline, media, commit, beats, s
   const times = beatTimes(timeline, Object.fromEntries(Object.entries(beats).map(([k, v]) => [k, v.beats])));
 
   return (
-    <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start" }} data-testid="beat-panel">
+    <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="beat-panel">
+      {top}
       <div className="insp-section" style={{ marginBottom: 0 }}>
-        <h3 style={{ margin: 0 }}>Music &amp; beat</h3>
+        <h3 style={{ margin: 0 }}>Beat sync</h3>
         {!songs.length ? (
           <div className="muted" style={{ fontSize: 12 }}>
             Import a song and put it on a music track (the audio track with ♪ — A2 by default). Then ClipForge can find its beat

@@ -139,6 +139,32 @@ def load_analysis(project_dir: Path, media_id: str) -> Optional[dict]:
     return data if data.get("version") == ANALYSIS_VERSION else None
 
 
+_fix_lock = threading.Lock()
+
+
+def fix_word(project_dir: Path, media_id: str, start: float, text: str) -> dict:
+    """Change the text of one transcript word (a misheard word): captions, the Script tab,
+    swear finding and chapters all use the fixed text. Timing is unchanged. The word is
+    found by its start time (source seconds). Its leading space is kept.
+    Raises LookupError if there's no transcript or no word starting there."""
+    with _fix_lock:
+        data = load_analysis(project_dir, media_id)
+        words = (data or {}).get("words")
+        if not words:
+            raise LookupError("This recording has no transcript yet.")
+        hit = min(range(len(words)), key=lambda i: abs(words[i]["start"] - start))
+        if abs(words[hit]["start"] - start) > 0.002:
+            raise LookupError("That word isn't in the transcript any more (was it transcribed again?).")
+        old = words[hit]["text"]
+        lead = old[: len(old) - len(old.lstrip())]
+        words[hit] = {**words[hit], "text": lead + text.strip(), "fixed": True}
+        out = analysis_path(project_dir, media_id)
+        tmp = out.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        replace_retry(tmp, out)
+        return {"text": words[hit]["text"], "start": words[hit]["start"], "end": words[hit]["end"], "old": old}
+
+
 def analyze_media(ctx, settings: Settings, project_dir: Path, asset: MediaAsset,
                   transcriber=None) -> dict:
     src = project_dir / "media" / "original" / asset.stored_name

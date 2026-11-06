@@ -182,6 +182,13 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 14 — Background music & captions 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Background music for a stretch of time**: Editor → **Music** tab (was "Beat") → pick a song or **Import** one → **From / To** (type times or use the playhead; "Whole video") → volume, fade in/out, "start song at" (skip an intro), **loop if shorter** → **Add music**. It goes on a music track (a free one, else a new "Music" track), so it's lowered while you talk ("Lower the music while you talk"). Each song is listed with its own volume and a remove button. Loop joins get a short fade out and back in (0.3 s), not a crossfade
+- ✅ **Captions in the preview**: when captions are on (FX → 4 · Captions), the preview shows them while you edit, built exactly like the export's lines (checked against the same test cases). The look is a close CSS copy of the burned-in style
+- ✅ **Fix a misheard word**: Script tab → double-click a word (or select it → **Fix word**) → type → Enter. Captions, the .srt, swear finding and chapters use the fix; the timing stays. Re-transcribing a recording replaces its fixes
+- ✅ Fixes found on the way: the Script tab's Cut/Fix bar no longer appears above the text when you click a word (a double-click could hit **Cut**); linking picture and sound now needs them to line up exactly and be the same moment of a recording
+
 ## Known limitations / bugs
 
 - Without a transcript, "humor" and "story" styles are approximations (the UI says so).

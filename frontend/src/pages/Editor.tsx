@@ -13,6 +13,9 @@ import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
 import TimelineView from "../components/TimelineView";
 import { Icon, useJobs, useToast } from "../components/ui";
+import { captionChunks } from "../timeline/captions";
+import MusicSection from "../components/MusicSection";
+import type { Word } from "../timeline/cleanup";
 import { History } from "../timeline/history";
 import {
   addMarker, addMedia, addTrack, beatTimes, cutRanges, deleteClips, duplicateClip, expandLinked, findClip, linkClips, markerNear, moveClip,
@@ -60,6 +63,21 @@ export default function Editor({ projectId }: { projectId: string }) {
   latest.current = { timeline, project, effects, captions, audio, facecam };
   const toast = useToast();
   const { jobs, refresh: refreshJobs } = useJobs(projectId);
+  // transcript words (for the Script tab and the caption preview)
+  const [byMedia, setByMedia] = useState<Record<string, Word[]> | null>(null);
+  const transcribed = jobs.filter((j) => j.kind === "transcribe" && j.status === "succeeded").length;
+  useEffect(() => {
+    fetch(`/api/projects/${projectId}/words`).then((r) => r.json()).then((d) => setByMedia(d.media ?? {})).catch(() => setByMedia({}));
+  }, [projectId, transcribed]);
+  const fixWord = async (media_id: string, start: number, text: string) => {
+    try {
+      const r = await api.fixWord(projectId, media_id, start, text);
+      setByMedia((m) => m && ({ ...m, [media_id]: (m[media_id] ?? []).map((w) => (w.start === start ? { ...w, text: r.word.text, fixed: true } as Word : w)) }));
+      return true;
+    } catch (e: any) { toast(e.message, true); return false; }
+  };
+  const captionPreview = useMemo(() => (timeline && captions?.enabled && byMedia
+    ? { chunks: captionChunks(timeline, effects, byMedia, captions), settings: captions } : null), [timeline, effects, byMedia, captions]);
 
   // ---------------------------------------------------------------- load
   const reloadMedia = useCallback(async () => {
@@ -388,6 +406,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam}
           drawBox={rightTab === "blur" && drawing ? drawing.onBox : null}
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
+          captions={captionPreview}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
           <div className="pane-head side-tabs" role="tablist">
@@ -397,7 +416,7 @@ export default function Editor({ projectId }: { projectId: string }) {
               ["text", "text", "Text", "Titles"],
               ["script", "script", "Script", "Edit by transcript; remove filler words and retakes"],
               ["blur", "blur", "Blur", "Privacy blur"],
-              ["beat", "music", "Beat", "Music beat sync"],
+              ["beat", "music", "Music", "Background music and beat sync"],
               ["cam", "webcam", "Cam", "Face cam"],
               ["history", "undo", "History", "Saved versions"],
             ] as const).map(([id, icon, label, tip]) => (
@@ -409,14 +428,16 @@ export default function Editor({ projectId }: { projectId: string }) {
           </div>
           {rightTab === "beat" ? (
             <BeatPanel projectId={projectId} timeline={timeline} media={media} commit={commit} beats={beats} setBeats={setBeats}
-              showBeats={showBeats} setShowBeats={setShowBeats} />
+              showBeats={showBeats} setShowBeats={setShowBeats}
+              top={<MusicSection projectId={projectId} timeline={timeline} media={media} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+                commit={commit} audio={audio!} setAudio={setAudio} onImported={() => { reloadMedia(); refreshJobs(); }} />} />
           ) : rightTab === "blur" ? (
             <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "text" ? (
             <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "script" ? (
-            <ScriptPanel projectId={projectId} timeline={timeline} playhead={playhead} playing={playing} jobs={jobs}
+            <ScriptPanel timeline={timeline} playhead={playhead} playing={playing} byMedia={byMedia} onFixWord={fixWord}
               seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}
               onCut={(ranges, label) => commit(cutRanges(timeline, ranges), label)} />
           ) : rightTab === "cam" ? (

@@ -6,7 +6,9 @@ import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
 import { camAspect, camAt, layoutBox } from "../timeline/facecam";
 import TitlesPreview from "./TitlesPreview";
-import type { Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
+import CaptionsPreview from "./CaptionsPreview";
+import type { CapChunk } from "../timeline/captions";
+import type { CaptionSettings, Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
 import { Icon } from "./ui";
 
 /**
@@ -22,7 +24,9 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour and transitions are CSS look-alikes.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview, facecam = null, drawBox }: {
+  lightPreview = false, onLightPreview, facecam = null, drawBox, captions = null }: {
+  /** burned-in captions to preview (only when they're switched on) */
+  captions?: { chunks: CapChunk[]; settings: CaptionSettings } | null;
   projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[]; facecam?: FaceCam | null;
   /** when set, dragging on the picture draws a box (frame fractions) and calls this */
   drawBox?: ((box: { x: number; y: number; w: number; h: number }) => void) | null;
@@ -337,6 +341,8 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
             oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
             W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
+          {captions?.settings.enabled && captions.chunks.length > 0 && <CaptionsPreview chunks={captions.chunks} cs={captions.settings} t={playhead}
+            k={scr.w / output.width} W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (
             <div key={e.id} style={{ position: "absolute", left: `${e.x * 100}%`, top: `${e.y * 100}%`, transform: "translate(-50%,-50%)", pointerEvents: "none" }}>
               {e.kind === "text" ? (

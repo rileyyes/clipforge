@@ -1,0 +1,61 @@
+// Caption lines for the preview: the same grouping as the export (backend/app/effects.py
+// caption_chunks), checked against backend/tests/data/caption_vectors.json.
+import { editWords, type Word } from "./cleanup";
+import { effectWindows } from "./effects";
+import type { CaptionSettings, Effect, Timeline } from "./types";
+
+export interface CapWord { text: string; start: number; end: number }
+export interface CapChunk { start: number; end: number; text: string; words: CapWord[] }
+
+const isLetter = (ch: string) => /\p{L}/u.test(ch) || ch === "*";
+
+/** "shit" -> "s***" (as the export masks bleeped words). */
+export function maskWord(word: string): string {
+  const chars = [...word];
+  const letters = chars.flatMap((ch, i) => (isLetter(ch) ? [i] : []));
+  if (letters.length <= 1) return "*".repeat(chars.length);
+  for (const i of letters.slice(1)) chars[i] = "*";
+  return chars.join("");
+}
+
+const pyUpper = (s: string) => s.toUpperCase();
+
+/** Group the edit's words into short caption lines (bleeped words masked). */
+export function captionChunks(tl: Timeline, effects: Effect[], byMedia: Record<string, Word[]>,
+  cs: Pick<CaptionSettings, "max_words" | "uppercase">): CapChunk[] {
+  const words = editWords(tl, byMedia).map((w) => ({ ...w }));
+  const censor = effects.filter((e) => e.kind === "censor" && e.enabled !== false)
+    .flatMap((e) => effectWindows(tl, e, "audio").map((w) => [w.start, w.end] as const));
+  for (const w of words) {
+    const mid = (w.start + w.end) / 2;
+    if (censor.some(([a, b]) => a - 0.02 <= mid && mid <= b + 0.02)) w.text = maskWord(w.text.trim());
+  }
+  const chunks: { words: CapWord[] }[] = [];
+  let cur: CapWord[] = [];
+  for (const w of words) {
+    const txt = w.text.trim();
+    if (!txt) continue;
+    const last = cur[cur.length - 1];
+    if (last && (cur.length >= cs.max_words || w.start - last.end > 0.6 || ".?!".includes(last.text.trim().slice(-1) || "x"))) {
+      chunks.push({ words: cur });
+      cur = [];
+    }
+    cur.push({ text: cs.uppercase ? pyUpper(txt) : txt, start: w.start, end: w.end });
+  }
+  if (cur.length) chunks.push({ words: cur });
+  return chunks.map((c, i) => {
+    const start = c.words[0].start;
+    let end = c.words[c.words.length - 1].end + 0.25;
+    if (i + 1 < chunks.length) end = Math.min(end, chunks[i + 1].words[0].start);
+    return { start, end: Math.max(end, start + 0.3), text: c.words.map((w) => w.text).join(" "), words: c.words };
+  });
+}
+
+/** The caption line on screen at time t, and (for word highlight) which word is lit. */
+export function captionAt(chunks: CapChunk[], t: number): { chunk: CapChunk; word: number } | null {
+  const chunk = chunks.find((c) => t >= c.start && t < c.end);
+  if (!chunk) return null;
+  let word = 0;
+  for (let i = 1; i < chunk.words.length; i++) if (t >= chunk.words[i].start) word = i;
+  return { chunk, word };
+}

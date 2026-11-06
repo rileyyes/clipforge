@@ -151,7 +151,7 @@ async def main(pid):
         await toast("Following it now")
 
         # ---- Beat: find it, snap cuts
-        await pg.get_by_role("tab", name="Beat", exact=True).click()
+        await pg.get_by_role("tab", name="Music", exact=True).click()
         bp = pg.get_by_test_id("beat-panel")
         await bp.get_by_role("button", name="Find the beat").click()
         await bp.get_by_text("BPM").wait_for(timeout=60000)
