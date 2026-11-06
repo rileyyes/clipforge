@@ -139,9 +139,33 @@ async def main(pid, mid):
 
         # ---- fix a misheard word in the Script tab
         await pg.get_by_role("tab", name="Script", exact=True).click()
+        # the action row must keep its height when a word is selected, even with wider fonts
+        await pg.evaluate("""() => { const st = document.createElement('style'); st.id = 'e2e-wide';
+            st.textContent = '* { letter-spacing: 0.6px !important }'; document.head.appendChild(st) }""")
+        row = pg.locator(".script-actions")
+        h0 = (await row.bounding_box())["height"]
+        await pg.locator(".script-word", has_text="Today").click()
+        await pg.locator(".script-word", has_text="Today").click(modifiers=["Shift"])
+        await pg.locator(".script-word", has_text="edit.").click(modifiers=["Shift"])
+        h1 = (await row.bounding_box())["height"]
+        print("Script action row height:", h0, "->", h1, "(wide text)")
+        assert h0 == h1
+        await pg.keyboard.press("Escape")
+        await pg.evaluate("() => document.getElementById('e2e-wide')?.remove()")
         word = pg.locator(".script-word", has_text="click")
+        await pg.evaluate("""() => { window.__blurs = []; document.addEventListener('focusout', (e) => window.__blurs.push(
+            (e.target?.tagName || '') + '.' + (e.target?.className || '') + ' -> ' + (e.relatedTarget ? e.relatedTarget.tagName + '.' + e.relatedTarget.className : 'nothing')), true) }""")
         await word.dblclick()
         box = pg.get_by_label("Fix word")
+        try:
+            await box.wait_for(timeout=5000)
+        except Exception:
+            await pg.screenshot(path=str(TMP / "fix_word_missing.png"))
+            print("DIAG fix box missing | words:", await pg.locator(".script-word").all_inner_texts(),
+                  "| selected:", await pg.locator(".script-word.sel").all_inner_texts(),
+                  "| focus-outs:", await pg.evaluate("window.__blurs"),
+                  "| toasts:", await pg.locator(".toast").all_inner_texts())
+            raise
         await box.fill("ClipForge")
         await box.press("Enter")
         await toast("Fixed")

@@ -116,7 +116,7 @@ async def main(pid):
         print("after cleanup:", " ".join(words))
         assert words == "so today I want to show you my new setup and this is really it".split()
         await panel.locator(".script-word", has_text="really").click()
-        await panel.get_by_role("button", name="Cut 1 word").click()
+        await panel.get_by_role("button", name="Cut", exact=True).click()
         await toast("Ctrl+Z to undo")
         words = await panel.locator(".script-word").all_inner_texts()
         assert "really" not in words, words

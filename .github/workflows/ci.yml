@@ -132,6 +132,13 @@ jobs:
             echo "::endgroup::"
           done
           exit $fail
+      - name: Keep E2E screenshots if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: /tmp/clipforge-e2e-*/*.png
+          retention-days: 5
 
   security:
     name: Dependency scans

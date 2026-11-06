@@ -74,12 +74,13 @@ export default function ScriptPanel({ timeline, playhead, playing, seek, onCut, 
         <span className="script-filler"> fillers</span> and <span className="script-retake">retakes</span> are marked.
       </div>
       {/* always there (buttons disabled until words are selected), so the text never jumps under the mouse */}
-      <div className="row script-actions" style={{ gap: 6 }}>
-        <button className="btn sm primary" disabled={!sel} onClick={cutSelection}><Icon name="scissors" size={13} />
-          {sel ? `Cut ${b - a + 1} word${b > a ? "s" : ""}` : "Cut"}</button>
+      <div className="row script-actions">
+        <button className="btn sm primary" disabled={!sel} onClick={cutSelection} title="Cut the selected words (Delete)">
+          <Icon name="scissors" size={13} />{sel && b > a ? `Cut ${b - a + 1} words` : "Cut"}</button>
         <button className="btn sm" disabled={!sel || a !== b} title="Fix a word the transcript got wrong (captions use the fixed word). Or double-click a word."
           onClick={() => setFixing(a)}><Icon name="pencil" size={13} />Fix word</button>
-        {sel && <button className="btn xs ghost" onClick={() => setSel(null)}>Cancel</button>}
+        <span className="spacer" />
+        <button className="btn xs ghost" aria-label="Clear selection" title="Clear the selection (Esc)" disabled={!sel} onClick={() => setSel(null)}><Icon name="x" size={12} /></button>
       </div>
       <div className="script-text" onMouseUp={() => { drag.current = null; }} onMouseLeave={() => { drag.current = null; }}>
         {words.map((w, i) => (
