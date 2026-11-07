@@ -4,7 +4,7 @@ import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import type { MediaAsset, Project } from "../timeline/types";
 import { go } from "../router";
 
-const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
+const H = { "X-RJClip": "1", "Content-Type": "application/json" };
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, { method: "POST", headers: H, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));

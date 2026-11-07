@@ -344,11 +344,11 @@ def test_text_model_contract(fake):
 
 
 def test_free_local_defaults(monkeypatch):
-    for k in ("CLIPFORGE_IMAGE_PROVIDER", "CLIPFORGE_SDWEBUI_URL", "CLIPFORGE_LLM_BASE_URL"):
+    for k in ("RJCLIP_IMAGE_PROVIDER", "RJCLIP_SDWEBUI_URL", "RJCLIP_LLM_BASE_URL"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-be-used-automatically")
     assert tp.image_provider() is None and tp.text_model() is None
-    monkeypatch.setenv("CLIPFORGE_SDWEBUI_URL", "http://127.0.0.1:7860")
+    monkeypatch.setenv("RJCLIP_SDWEBUI_URL", "http://127.0.0.1:7860")
     assert tp.image_provider().id == "sdwebui"
 
 
@@ -420,7 +420,7 @@ def test_api_thumbnail_workflow(server, tmp_path, fake, monkeypatch):
     assert c.req("POST", f"/api/projects/{pid}/thumbnails/assets", raw=b"<svg/>")[0] == 415
 
     # local Stable Diffusion (fake server) → AI artwork design
-    monkeypatch.setenv("CLIPFORGE_SDWEBUI_URL", fake)
+    monkeypatch.setenv("RJCLIP_SDWEBUI_URL", fake)
     ai = next(x for x in concepts if x["workflow"] != "footage_composite")
     st, job, _ = c.req("POST", f"/api/projects/{pid}/thumbnails/generate", {"concept": ai})
     assert st == 202

@@ -28,7 +28,7 @@ class FFmpegError(RuntimeError):
 
 MISSING_FFMPEG = ("FFmpeg wasn't found. Easiest fix on Windows: download ffmpeg-release-essentials.zip "
                   "from gyan.dev/ffmpeg/builds, extract it so C:\\ffmpeg\\bin\\ffmpeg.exe exists, then "
-                  "restart ClipForge (it checks C:\\ffmpeg\\bin automatically).")
+                  "restart RJClip (it checks C:\\ffmpeg\\bin automatically).")
 
 
 def tools_available(ffmpeg_bin: str, ffprobe_bin: str) -> bool:

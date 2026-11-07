@@ -444,7 +444,7 @@ def test_analysis_survives_a_failing_transcriber(server, tmp_path, monkeypatch):
 
 def test_whisper_gets_ffmpeg_decoded_chunks_with_exact_offsets(tmp_path, monkeypatch):
     """User report: "open() got an unexpected keyword argument 'metadata_errors'" (PyAV 19 vs
-    faster-whisper 1.2). ClipForge now decodes audio itself; the model only sees samples."""
+    faster-whisper 1.2). RJClip now decodes audio itself; the model only sees samples."""
     from types import SimpleNamespace
 
     from app import transcription as T

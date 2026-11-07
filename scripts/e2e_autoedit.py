@@ -19,7 +19,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-TMP = Path(tempfile.mkdtemp(prefix="clipforge-e2e-auto-"))
+TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-auto-"))
 PORT = 8792
 B = f"http://127.0.0.1:{PORT}"
 SRC = TMP / "talk.mp4"
@@ -104,7 +104,7 @@ async def main():
 
 if __name__ == "__main__":
     make_recording()
-    env = {**os.environ, "CLIPFORGE_WORKSPACE": str(TMP / "ws"), "CLIPFORGE_PORT": str(PORT)}
+    env = {**os.environ, "RJCLIP_WORKSPACE": str(TMP / "ws"), "RJCLIP_PORT": str(PORT)}
     srv = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT / "backend", env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

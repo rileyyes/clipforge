@@ -551,7 +551,7 @@ def migrate(data: dict) -> dict:
     v = data.get("schema_version", 1)
     if v > SCHEMA_VERSION:
         raise ValueError(
-            f"project was saved by a newer version (schema {v}); please update ClipForge"
+            f"project was saved by a newer version (schema {v}); please update RJClip"
         )
     if v < 2:  # v1 -> v2: effects + captions added
         data = {**data, "effects": [], "captions": {}, "schema_version": 2}

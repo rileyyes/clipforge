@@ -2,10 +2,10 @@
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
-**Before you start.** The easiest way is to double-click **`Update ClipForge.bat`** in the clipforge folder. It gets the latest version, installs what's needed (including speech-to-text) and starts ClipForge. Or do it by hand:
+**Before you start.** The easiest way is to double-click **`Update RJClip.bat`** in the rjclip folder. It gets the latest version, installs what's needed (including speech-to-text) and starts RJClip. Or do it by hand:
 
 ```powershell
-cd C:\Users\Riley\clipforge
+cd C:\Users\Riley\rjclip
 git pull
 cd frontend; npm run build
 cd ..\backend; .venv\Scripts\activate; pip install -r requirements.txt
@@ -63,7 +63,7 @@ Use a 2–10 minute video with talking, a few loud reactions and at least one sw
 
 | # | Do this | You should see |
 |---|---|---|
-| 7.1 | Close ClipForge, then double-click **`Start ClipForge.bat`** in the clipforge folder | A window that sets things up (first time only), then the browser opens ClipForge |
+| 7.1 | Close RJClip, then double-click **`Start RJClip.bat`** in the rjclip folder | A window that sets things up (first time only), then the browser opens RJClip |
 | 7.2 | Editor → **Effects** → *My sounds & images* → **Record sound**. Allow the microphone, say something funny, then **Stop** | A player with your take. Silence at the start and end is trimmed after saving |
 | 7.3 | Name it → **Save** | It appears under *Sounds* with its length and a "mic" tag |
 | 7.4 | Press **Bleep** on your sound, then **Find & bleep swears** | Swears are bleeped with *your* sound. The bleep sound list shows it as ★ name |
@@ -93,7 +93,7 @@ Use a project whose recording has been **analysed** (AI Auto Editor → Analyse)
 | 8.11 | Thumbnails → add your own image or *From my library* → **Cut out subject** | The person/object is cut out from the background as a new layer |
 | 8.12 | Export a project, then export it again without changes | The second export is much faster; the report says all blocks were reused |
 | 8.13 | Add one flash in the middle, export again | Faster than the first export; the report says most blocks were reused; the flash is in the video |
-| 8.14 | *(Portable package)* GitHub → Actions → latest green **CI** run → *Artifacts* → download **ClipForge-portable-win64**, unzip, double-click `ClipForge.bat` | ClipForge opens without using your installed Python/FFmpeg (Windows may warn first: *More info → Run anyway*). Your projects are there (same workspace) |
+| 8.14 | *(Portable package)* GitHub → Actions → latest green **CI** run → *Artifacts* → download **RJClip-portable-win64**, unzip, double-click `RJClip.bat` | RJClip opens without using your installed Python/FFmpeg (Windows may warn first: *More info → Run anyway*). Your projects are there (same workspace) |
 
 ## Phase 9: face cam, smoother jump cuts, new transitions
 
@@ -165,7 +165,7 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 12.6 | Press **Shift+←** / **Shift+→**; drag a flag; select one and press **Delete** | Jumps between markers; the marker moves; it's gone |
 | 12.7 | Ripple delete a clip before a marker | The marker moves left with the video |
 | 12.8 | **Publish** → Chapters: *From my timeline markers* → **Write it for me** | Chapters named like your markers, the first at 0:00 (an "Intro" is added if needed). Works even without a transcript. YouTube's rules are still checked (3+ chapters, 10 s apart) |
-| 12.9 | Close ClipForge, rename or move a recording out of `workspace\projects\<project>\media\original`, reopen | "file missing" in the Media panel and a note at the top |
+| 12.9 | Close RJClip, rename or move a recording out of `workspace\projects\<project>\media\original`, reopen | "file missing" in the Media panel and a note at the top |
 | 12.10 | Click **Find file** and pick the recording (any name) | "Relinked", the clips play again. A different or too-short file is refused with the reason |
 
 **Notes:** moving several clips keeps each on its own track (drag one clip on its own to move it to another track). If you relink to a *different* file (for example a re-export), its old transcript and analysis are reset, so check the cuts still line up.

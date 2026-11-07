@@ -327,7 +327,7 @@ class Services:
 
 def language_setup_help() -> str:
     return ("It's optional and free: install Ollama (https://ollama.com), run `ollama pull llama3.1`, and keep "
-            "Ollama running — ClipForge finds it automatically.")
+            "Ollama running — RJClip finds it automatically.")
 
 
 def build_routes(svc: Services) -> list[Route]:
@@ -955,10 +955,10 @@ def build_routes(svc: Services) -> list[Route]:
 
         def page(title: str, msg: str, ok: bool) -> HTMLResponse:
             return HTMLResponse(
-                "<!doctype html><meta charset=utf-8><title>ClipForge</title><body style='font:16px system-ui;"
+                "<!doctype html><meta charset=utf-8><title>RJClip</title><body style='font:16px system-ui;"
                 "max-width:560px;margin:60px auto;text-align:center'>"
                 f"<h2>{'✅' if ok else '⚠️'} {_html.escape(title)}</h2><p>{_html.escape(msg)}</p>"
-                "<p>You can close this tab and go back to ClipForge.</p>", status_code=200 if ok else 400)
+                "<p>You can close this tab and go back to RJClip.</p>", status_code=200 if ok else 400)
         if q.get("error"):
             return page("Not connected", f"Google said: {q.get('error')}.", False)
         try:
@@ -1395,7 +1395,7 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         if available_transcriber() is None:
             return err(409, "Speech-to-text isn't installed. In the backend folder run: "
-                            "pip install -r requirements-ai.txt  — then restart ClipForge. (Free, runs on your PC.)")
+                            "pip install -r requirements-ai.txt  — then restart RJClip. (Free, runs on your PC.)")
         ids = body.media_ids or fx.transcript_status(p, store.dir(pid))["missing"] or \
             sorted({c.media_id for t in p.timeline.tracks if t.kind == "audio" for c in t.clips})
         if not ids:

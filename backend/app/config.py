@@ -1,6 +1,6 @@
 """Application configuration.
 
-All settings come from environment variables (prefix ``CLIPFORGE_``) so nothing
+All settings come from environment variables (prefix ``RJCLIP_``) so nothing
 user-controlled from the HTTP layer can change where files are read or written.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ class Settings:
 def find_tool(name: str) -> str:
     """Locate ffmpeg/ffprobe: PATH first, then common Windows/macOS install folders
     (manual C:\\ffmpeg, winget, Chocolatey, Scoop, Homebrew) so a PATH problem
-    doesn't stop ClipForge from working."""
+    doesn't stop RJClip from working."""
     found = shutil.which(name)
     if found:
         return found
@@ -77,29 +77,36 @@ def find_tool(name: str) -> str:
     return name
 
 
+def default_workspace() -> Path:
+    """~/RJClipWorkspace; a workspace from before the rename (~/ClipForgeWorkspace) keeps
+    being used, so nobody's projects seem to vanish after updating."""
+    new, old = Path.home() / "RJClipWorkspace", Path.home() / "ClipForgeWorkspace"
+    return old if old.is_dir() and not new.exists() else new
+
+
 def load_settings() -> Settings:
     workspace = Path(
-        os.environ.get("CLIPFORGE_WORKSPACE", str(Path.home() / "ClipForgeWorkspace"))
+        os.environ.get("RJCLIP_WORKSPACE", str(default_workspace()))
     ).expanduser().resolve()
-    port = _env_int("CLIPFORGE_PORT", 8765)
-    host = os.environ.get("CLIPFORGE_HOST", "127.0.0.1")
+    port = _env_int("RJCLIP_PORT", 8765)
+    host = os.environ.get("RJCLIP_HOST", "127.0.0.1")
     origins = tuple(
         o.strip()
-        for o in os.environ.get("CLIPFORGE_ALLOWED_ORIGINS", "").split(",")
+        for o in os.environ.get("RJCLIP_ALLOWED_ORIGINS", "").split(",")
         if o.strip()
     ) or (f"http://127.0.0.1:{port}", f"http://localhost:{port}")
     return Settings(
         workspace=workspace,
         host=host,
         port=port,
-        max_upload_bytes=_env_int("CLIPFORGE_MAX_UPLOAD_MB", 20 * 1024) * 1024**2,
-        max_workspace_bytes=_env_int("CLIPFORGE_MAX_WORKSPACE_GB", 200) * 1024**3,
-        render_timeout_s=_env_int("CLIPFORGE_RENDER_TIMEOUT_S", 6 * 3600),
-        job_workers=max(1, _env_int("CLIPFORGE_JOB_WORKERS", 1)),
-        render_cache_bytes=max(0, _env_int("CLIPFORGE_RENDER_CACHE_MB", 4096)) * 1024**2,
-        block_render=os.environ.get("CLIPFORGE_BLOCK_RENDER", "1").strip().lower() not in ("0", "false", "no", "off"),
-        ffmpeg_bin=os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
-        ffprobe_bin=os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"),
+        max_upload_bytes=_env_int("RJCLIP_MAX_UPLOAD_MB", 20 * 1024) * 1024**2,
+        max_workspace_bytes=_env_int("RJCLIP_MAX_WORKSPACE_GB", 200) * 1024**3,
+        render_timeout_s=_env_int("RJCLIP_RENDER_TIMEOUT_S", 6 * 3600),
+        job_workers=max(1, _env_int("RJCLIP_JOB_WORKERS", 1)),
+        render_cache_bytes=max(0, _env_int("RJCLIP_RENDER_CACHE_MB", 4096)) * 1024**2,
+        block_render=os.environ.get("RJCLIP_BLOCK_RENDER", "1").strip().lower() not in ("0", "false", "no", "off"),
+        ffmpeg_bin=os.environ.get("RJCLIP_FFMPEG") or find_tool("ffmpeg"),
+        ffprobe_bin=os.environ.get("RJCLIP_FFPROBE") or find_tool("ffprobe"),
         allowed_origins=origins,
     )
 

@@ -28,7 +28,7 @@ def test_spec_covers_every_route_and_bodies(server):
     for path, o in ops.items():
         for m, op in o.items():
             if m in ("post", "put"):
-                assert any(p["name"] == "X-ClipForge" for p in op["parameters"]), (path, m)
+                assert any(p["name"] == "X-RJClip" for p in op["parameters"]), (path, m)
     assert "Project" in spec["components"]["schemas"] and "Effect" in spec["components"]["schemas"]
 
 

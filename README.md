@@ -1,4 +1,6 @@
-# ClipForge
+# RJClip
+
+> **Renamed:** RJClip was called **ClipForge** before November 2026. Old settings (`CLIPFORGE_*`), your `ClipForgeWorkspace` folder and the old `Start/Update ClipForge.bat` files keep working; the next update renames your `clipforge` folder to `RJClip` after you close the window.
 
 A local-first, AI-assisted video editor for making YouTube videos. Import a raw recording, let the AI Auto Editor cut it down to a target length (e.g. 2 hours → 30 minutes), refine it on a real multitrack timeline, and export a validated, YouTube-ready MP4.
 
@@ -54,7 +56,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 - **Background music**: put your own song under any stretch of the video (it loops if shorter, fades, and goes quieter while you talk).
 - **Captions** from your transcript, shown in the preview while you edit; fix misheard words by double-clicking them in the Script tab.
-- **Relink**: if a recording goes missing from the project folder, point ClipForge at any copy of it and the edit works again.
+- **Relink**: if a recording goes missing from the project folder, point RJClip at any copy of it and the edit works again.
 - **Import** video/audio (MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A, FLAC, OGG) with streaming upload and real progress. Files are validated with FFprobe, checksummed, de-duplicated and stored read-only.
 - **Background preparation**: thumbnails, audio waveforms, and browser-playable preview proxies for formats like MKV.
 - **Multitrack timeline**: video and audio tracks, linked picture + sound, move (including across tracks), trim both edges, split, delete, ripple delete, duplicate, snapping, zoom and scroll, track mute/hide/lock, add/remove tracks, undo/redo. Select several clips (Ctrl/Shift-click, Ctrl+A) and drag them together; unlink/link picture and sound (Ctrl+L); **markers** (M) you can name and turn into YouTube chapters.
@@ -71,7 +73,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ## Quick start
 
-**Windows, no installing at all:** download the **portable package** (GitHub → Actions → the latest green *CI* run → *Artifacts* → `ClipForge-portable-win64`), unzip it and double-click **`ClipForge.bat`**. It has Python, FFmpeg and speech-to-text inside. It isn't code-signed yet, so Windows may warn the first time (*More info → Run anyway*). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
+**Windows, no installing at all:** download the **portable package** (GitHub → Actions → the latest green *CI* run → *Artifacts* → `RJClip-portable-win64`), unzip it and double-click **`RJClip.bat`**. It has Python, FFmpeg and speech-to-text inside. It isn't code-signed yet, so Windows may warn the first time (*More info → Run anyway*). Details: [docs/PACKAGING.md](docs/PACKAGING.md).
 
 **Windows, from source:** install the three tools once:
 
@@ -81,12 +83,12 @@ winget install OpenJS.NodeJS.LTS
 winget install Gyan.FFmpeg
 ```
 
-Then double-click **`Start ClipForge.bat`** in the `clipforge` folder. The first run sets everything up (a few minutes); later runs start in seconds and open the browser. **`Update ClipForge.bat`** gets the latest version from GitHub (and the free speech-to-text) and then starts ClipForge.
+Then double-click **`Start RJClip.bat`** in the `rjclip` folder. The first run sets everything up (a few minutes); later runs start in seconds and open the browser. **`Update RJClip.bat`** gets the latest version from GitHub (and the free speech-to-text) and then starts RJClip.
 
 **Manual setup (any OS).** Requirements: **Python 3.11+**, **Node.js 18+**, **FFmpeg 6+** (with `ffprobe`) on your PATH.
 
 ```bash
-git clone https://github.com/rileyyes/clipforge && cd clipforge
+git clone https://github.com/rileyyes/rjclip && cd rjclip
 
 # backend
 cd backend
@@ -104,7 +106,7 @@ cd ../backend
 python -m app.main
 ```
 
-Open **http://127.0.0.1:8765**. Media and projects go to `~/ClipForgeWorkspace` by default.
+Open **http://127.0.0.1:8765**. Media and projects go to `~/RJClipWorkspace` by default (if you used it before the rename, your existing `~/ClipForgeWorkspace` keeps being used).
 
 **Installing FFmpeg:** Windows `winget install Gyan.FFmpeg` · macOS `brew install ffmpeg` · Ubuntu `sudo apt install ffmpeg`.
 
@@ -136,19 +138,19 @@ python scripts/e2e_audio.py             # browser E2E: transitions, fades, ducki
 All settings are environment variables, read at startup (the web UI can't change where files go). Example `.env`-style values:
 
 ```bash
-CLIPFORGE_WORKSPACE=D:\ClipForgeWorkspace   # where projects/media/exports live
-CLIPFORGE_PORT=8765
-CLIPFORGE_MAX_UPLOAD_MB=20480               # 20 GB per file
-CLIPFORGE_MAX_WORKSPACE_GB=200              # soft storage quota
-CLIPFORGE_RENDER_TIMEOUT_S=21600            # max time for one processing step
-CLIPFORGE_JOB_WORKERS=1                     # parallel background jobs
-CLIPFORGE_FFMPEG=/opt/ffmpeg/bin/ffmpeg     # optional custom binaries
-CLIPFORGE_FFPROBE=/opt/ffmpeg/bin/ffprobe
-CLIPFORGE_TRANSCRIBER=auto                 # 'off' to skip transcription even if installed
-CLIPFORGE_WHISPER_MODEL=small              # faster-whisper model size
-CLIPFORGE_SDWEBUI_URL=http://127.0.0.1:7860 # optional free local AI thumbnail art
-CLIPFORGE_WHISPER_DEVICE=cpu               # 'cuda' to transcribe on an NVIDIA GPU
-CLIPFORGE_FONT=C:\\Windows\\Fonts\\impact.ttf  # font for pop-ups and captions
+RJCLIP_WORKSPACE=D:\RJClipWorkspace   # where projects/media/exports live
+RJCLIP_PORT=8765
+RJCLIP_MAX_UPLOAD_MB=20480               # 20 GB per file
+RJCLIP_MAX_WORKSPACE_GB=200              # soft storage quota
+RJCLIP_RENDER_TIMEOUT_S=21600            # max time for one processing step
+RJCLIP_JOB_WORKERS=1                     # parallel background jobs
+RJCLIP_FFMPEG=/opt/ffmpeg/bin/ffmpeg     # optional custom binaries
+RJCLIP_FFPROBE=/opt/ffmpeg/bin/ffprobe
+RJCLIP_TRANSCRIBER=auto                 # 'off' to skip transcription even if installed
+RJCLIP_WHISPER_MODEL=small              # faster-whisper model size
+RJCLIP_SDWEBUI_URL=http://127.0.0.1:7860 # optional free local AI thumbnail art
+RJCLIP_WHISPER_DEVICE=cpu               # 'cuda' to transcribe on an NVIDIA GPU
+RJCLIP_FONT=C:\\Windows\\Fonts\\impact.ttf  # font for pop-ups and captions
 ```
 
 ## Keyboard shortcuts (editor)

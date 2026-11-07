@@ -5,7 +5,7 @@ import { activeEffects, effectTime, moveEffectTo, newEffectAt, parseTime } from 
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
 
-const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
+const H = { "X-RJClip": "1", "Content-Type": "application/json" };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, { method, headers: H, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = await r.json().catch(() => ({}));
@@ -127,7 +127,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
         {!status ? <span className="muted">…</span> : (<>
           <div style={{ fontSize: 12 }}>{tr.transcribed} of {tr.media_in_edit} clip source(s) transcribed{tr.missing.length === 0 && tr.media_in_edit > 0 ? " ✓" : ""}</div>
           {!status.transcriber ? (
-            <div className="muted" style={{ fontSize: 12 }}>Speech-to-text isn't installed (needed for bleeps & captions). Free: in the <span className="mono">backend</span> folder run <span className="mono">pip install -r requirements-ai.txt</span> and restart ClipForge.</div>
+            <div className="muted" style={{ fontSize: 12 }}>Speech-to-text isn't installed (needed for bleeps & captions). Free: in the <span className="mono">backend</span> folder run <span className="mono">pip install -r requirements-ai.txt</span> and restart RJClip.</div>
           ) : (<>
             {tJob && (tActive || tFailed) && <JobRow job={tJob} onChange={onJobs} />}
             {!tActive && <button className="btn sm" disabled={tr.media_in_edit === 0} onClick={async () => {
@@ -198,7 +198,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = "";
             if (!f) return;
-            const r = await fetch(`/api/projects/${projectId}/fx/images`, { method: "POST", headers: { "X-ClipForge": "1" }, body: f });
+            const r = await fetch(`/api/projects/${projectId}/fx/images`, { method: "POST", headers: { "X-RJClip": "1" }, body: f });
             const d = await r.json();
             if (!r.ok) return toast(d.error, true);
             loadImages(); add("image", { asset: d.id });

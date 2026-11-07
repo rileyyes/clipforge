@@ -8,7 +8,7 @@ jumps. Three ways to hide that, applied to every jump cut on the bottom video tr
 
 The same rules are implemented in the Editor (frontend/src/timeline/ops.ts,
 smoothJumpCuts) and both are checked against tests/data/jumpcut_vectors.json.
-Only changes ClipForge made itself are undone when switching mode or turning it off.
+Only changes RJClip made itself are undone when switching mode or turning it off.
 """
 from __future__ import annotations
 

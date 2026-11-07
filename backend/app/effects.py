@@ -329,7 +329,7 @@ FONT_CANDIDATES = [
 
 
 def find_font() -> Optional[str]:
-    env = os.environ.get("CLIPFORGE_FONT")
+    env = os.environ.get("RJCLIP_FONT")
     if env and Path(env).is_file():
         return env
     return next((f for f in FONT_CANDIDATES if Path(f).is_file()), None)

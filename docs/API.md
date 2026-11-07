@@ -1,6 +1,6 @@
 # API reference
 
-Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send header **`X-ClipForge: 1`**. Errors are `{"error": "message"}` with a meaningful status (400, 403, 404, 409, 413, 415, 422, 507).
+Base URL `http://127.0.0.1:8765`. JSON in/out. Every non-GET request must send header **`X-RJClip: 1`**. Errors are `{"error": "message"}` with a meaningful status (400, 403, 404, 409, 413, 415, 422, 507).
 
 ## System
 | Method | Path | Description |

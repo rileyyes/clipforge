@@ -89,7 +89,7 @@ export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged 
           const prep = preparing(m);
           return (
             <div key={m.id} className="media-item" draggable title="Drag onto the timeline, or double-click to append"
-              onDragStart={(e) => { e.dataTransfer.setData("application/x-clipforge-media", m.id); e.dataTransfer.effectAllowed = "copy"; }}
+              onDragStart={(e) => { e.dataTransfer.setData("application/x-rjclip-media", m.id); e.dataTransfer.effectAllowed = "copy"; }}
               onDoubleClick={() => onAdd(m)}>
               <div className="media-thumb" style={m.thumbnail ? { backgroundImage: `url(${thumbUrl(project.id, m.id)})` } : {}}>
                 {!m.thumbnail && <Icon name={m.has_video ? "film" : "music"} size={20} />}

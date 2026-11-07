@@ -20,7 +20,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-TMP = Path(tempfile.mkdtemp(prefix="clipforge-e2e-p13-"))
+TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-p13-"))
 PORT = 8807
 B = f"http://127.0.0.1:{PORT}"
 FX = "e" * 32
@@ -28,7 +28,7 @@ FX = "e" * 32
 
 def api(method, path, body=None, raw=None):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-    hd = {"X-ClipForge": "1"}
+    hd = {"X-RJClip": "1"}
     if body is not None:
         hd["Content-Type"] = "application/json"
     with urllib.request.urlopen(urllib.request.Request(B + path, data=data, method=method, headers=hd)) as r:
@@ -160,7 +160,7 @@ async def main(pid):
 
 
 if __name__ == "__main__":
-    env = {**os.environ, "CLIPFORGE_WORKSPACE": str(TMP / "ws"), "CLIPFORGE_PORT": str(PORT), "CLIPFORGE_TRANSCRIBER": "off"}
+    env = {**os.environ, "RJCLIP_WORKSPACE": str(TMP / "ws"), "RJCLIP_PORT": str(PORT), "RJCLIP_TRANSCRIBER": "off"}
     srv = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT / "backend", env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

@@ -68,7 +68,7 @@ export default function FaceCamPanel({ projectId, project, timeline, media, outp
                 catch (e: any) { toast(e.message, true); }
               }
             }}><Icon name="webcam" size={14} />Add face cam</button>
-            <div className="muted" style={{ fontSize: 11 }}>If both have sound, ClipForge lines them up by matching it.</div>
+            <div className="muted" style={{ fontSize: 11 }}>If both have sound, RJClip lines them up by matching it.</div>
           </>)}
         </div>
       </div>
@@ -218,7 +218,7 @@ export default function FaceCamPanel({ projectId, project, timeline, media, outp
         <button className="btn xs" disabled={!!busy} title="Uses the loud reactions found when the recording was analysed" onClick={async () => {
           setBusy("react");
           try {
-            const res = await fetch(`/api/projects/${projectId}/fx/fun/suggest`, { method: "POST", headers: { "X-ClipForge": "1", "Content-Type": "application/json" }, body: JSON.stringify({ intensity: "minimal" }) });
+            const res = await fetch(`/api/projects/${projectId}/fx/fun/suggest`, { method: "POST", headers: { "X-RJClip": "1", "Content-Type": "application/json" }, body: JSON.stringify({ intensity: "minimal" }) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Couldn't find reactions");
             const full = [...fc.full];

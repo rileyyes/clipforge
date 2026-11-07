@@ -27,6 +27,6 @@
 
 | Candidate | License | Purpose | Notes |
 |---|---|---|---|
-| faster-whisper (CTranslate2) | MIT | transcription with word timestamps | CPU works. A GPU is ~5–10× faster. Model download ~150 MB–1.5 GB (default "small" ≈ 480 MB). ClipForge decodes audio with FFmpeg and passes samples, so faster-whisper's PyAV decoder isn't used; `av<19` is pinned anyway (PyAV 19 broke faster-whisper 1.2.x). |
+| faster-whisper (CTranslate2) | MIT | transcription with word timestamps | CPU works. A GPU is ~5–10× faster. Model download ~150 MB–1.5 GB (default "small" ≈ 480 MB). RJClip decodes audio with FFmpeg and passes samples, so faster-whisper's PyAV decoder isn't used; `av<19` is pinned anyway (PyAV 19 broke faster-whisper 1.2.x). |
 | PySceneDetect | BSD-3 | shot detection | or a custom OpenCV frame-diff |
 | Optional LLM provider | varies | context reasoning | Off by default. A local model (e.g. via Ollama) or a paid API **only with your approval**. |

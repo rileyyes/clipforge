@@ -21,7 +21,7 @@ Measured with `scripts/benchmark.py` on 2026-11-03. A **120-minute** synthetic 7
 
 ## Faster re-exports (block rendering, Phase 8)
 
-Measured 2026-11-04 on the same 2-core VM: a 10-minute 720p source cut to a **3-minute** 720p edit (30 cuts), run twice, once with block rendering and once with it turned off (`CLIPFORGE_BLOCK_RENDER=0`, the old one-pass final encode):
+Measured 2026-11-04 on the same 2-core VM: a 10-minute 720p source cut to a **3-minute** 720p edit (30 cuts), run twice, once with block rendering and once with it turned off (`RJCLIP_BLOCK_RENDER=0`, the old one-pass final encode):
 
 | | One-pass final encode (before) | Block rendering (now) |
 |---|---|---|
@@ -45,7 +45,7 @@ Measured 2026-11-05 on the same 2-core VM: preparing background removal for a 60
 
 ## Transcription (not in the table)
 
-Not measured: faster-whisper can't be installed in the environment these benchmarks ran in. Its speed depends heavily on the CPU (or GPU, with `CLIPFORGE_WHISPER_DEVICE=cuda`). On a 2-hour recording, expect it to take longer than the sound/picture analysis above, plus a one-time ~480 MB model download. The progress bar shows the real rate on your machine.
+Not measured: faster-whisper can't be installed in the environment these benchmarks ran in. Its speed depends heavily on the CPU (or GPU, with `RJCLIP_WHISPER_DEVICE=cuda`). On a 2-hour recording, expect it to take longer than the sound/picture analysis above, plus a one-time ~480 MB model download. The progress bar shows the real rate on your machine.
 
 ## Re-running
 

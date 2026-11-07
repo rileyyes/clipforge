@@ -152,7 +152,7 @@ def test_ollama_autodetect_prefers_a_chat_model(fake_llm, monkeypatch):
 def test_api_ai_rate_flow(server, fake_llm, monkeypatch, tmp_path):
     import subprocess
     c = server
-    monkeypatch.setenv("CLIPFORGE_LLM_BASE_URL", fake_llm + "/v1")
+    monkeypatch.setenv("RJCLIP_LLM_BASE_URL", fake_llm + "/v1")
     vid = tmp_path / "t.mp4"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=gray:s=160x90:r=25:d=40", "-f", "lavfi",
                     "-i", "aevalsrc='0.2*sin(2*PI*200*t)*lt(mod(t,10),8)':s=48000:d=40", "-shortest", "-c:v", "libx264",
@@ -182,6 +182,6 @@ def test_api_ai_rate_flow(server, fake_llm, monkeypatch, tmp_path):
     _, pl, _ = c.req("POST", f"/api/projects/{pid}/autoedit/plan",
                      {"media_id": mid, "settings": {"target_mode": "duration", "target_seconds": 10, "style": "humor"}})
     assert any(x.startswith("AI: funny bit") for b in pl["beats"] for x in b["reasons"])
-    monkeypatch.setenv("CLIPFORGE_LLM", "off")
+    monkeypatch.setenv("RJCLIP_LLM", "off")
     st, r, _ = c.req("POST", f"/api/projects/{pid}/autoedit/ai-rate", {"media_id": mid})
     assert st == 409 and "Ollama" in r["error"]

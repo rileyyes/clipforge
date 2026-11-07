@@ -22,17 +22,17 @@ Needs an NVIDIA GPU (≈ 6–8 GB VRAM recommended; 4 GB works with SD 1.5 model
 
 1. Install **Stable Diffusion WebUI Forge** (or AUTOMATIC1111) and a model/checkpoint.
 2. Start it with the API enabled: add `--api` to its launch arguments.
-3. Start ClipForge with `CLIPFORGE_SDWEBUI_URL=http://127.0.0.1:7860`.
+3. Start RJClip with `RJCLIP_SDWEBUI_URL=http://127.0.0.1:7860`.
 
-Nothing leaves your computer. `CLIPFORGE_SDWEBUI_STEPS` (default 28) trades speed for quality.
+Nothing leaves your computer. `RJCLIP_SDWEBUI_STEPS` (default 28) trades speed for quality.
 
 ## Free smarter concepts (optional): Ollama
 
-Install Ollama, run `ollama pull llama3.1` and keep Ollama running: ClipForge finds it automatically. A **Use local AI for ideas** box then appears above *Get 3 concepts*. `CLIPFORGE_LLM_BASE_URL` / `CLIPFORGE_LLM_MODEL` point it at another server or model. The built-in director works without it.
+Install Ollama, run `ollama pull llama3.1` and keep Ollama running: RJClip finds it automatically. A **Use local AI for ideas** box then appears above *Get 3 concepts*. `RJCLIP_LLM_BASE_URL` / `RJCLIP_LLM_MODEL` point it at another server or model. The built-in director works without it.
 
 ## Paid option (off unless you turn it on)
 
-`CLIPFORGE_IMAGE_PROVIDER=openai` + `OPENAI_API_KEY=…` uses OpenAI Images (`gpt-image-1`), billed per image. An `OPENAI_API_KEY` alone does **not** enable it. External providers require a consent tick before any prompt or frame is sent.
+`RJCLIP_IMAGE_PROVIDER=openai` + `OPENAI_API_KEY=…` uses OpenAI Images (`gpt-image-1`), billed per image. An `OPENAI_API_KEY` alone does **not** enable it. External providers require a consent tick before any prompt or frame is sent.
 
 ## Testing status
 

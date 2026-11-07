@@ -43,7 +43,7 @@ function App() {
   return (
     <div className={"shell" + (inEditor ? " collapsed" : "")}>
       <nav className="sidebar" aria-label="Main">
-        <div className="brand"><div className="brand-mark">▶</div>{!inEditor && "ClipForge"}</div>
+        <div className="brand"><div className="brand-mark">▶</div>{!inEditor && "RJClip"}</div>
         {NAV.map((n) => {
           const target = (n.page === "editor" || n.page === "export" || n.page === "thumbs" || n.page === "publish") && lastProject ? `${n.page}/${lastProject}` : n.page;
           return (

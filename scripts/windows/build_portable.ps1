@@ -1,5 +1,5 @@
 <#
-  Builds the Windows portable package: a folder (and zip) that runs ClipForge with
+  Builds the Windows portable package: a folder (and zip) that runs RJClip with
   nothing installed — no Python, Node, Git or FFmpeg needed on the PC.
 
     powershell -ExecutionPolicy Bypass -File scripts\windows\build_portable.ps1 [-NoAI] [-Out portable]
@@ -9,9 +9,9 @@
   CI builds it on a clean Windows runner and smoke-tests the result (see ci.yml).
 
   Contents:
-    ClipForge.bat           double-click to start
+    RJClip.bat           double-click to start
     python\                 the official Windows "embeddable" Python, with the packages
-    backend\app\            ClipForge itself
+    backend\app\            RJClip itself
     frontend\dist\          the built web UI
     ffmpeg\                 ffmpeg.exe + ffprobe.exe (GPL build by BtbN) + their licence
     THIRD-PARTY.txt         where everything came from + licences
@@ -25,7 +25,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"  # Invoke-WebRequest is 10x slower with the progress bar
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$Pkg = Join-Path $Root "$Out\ClipForge"
+$Pkg = Join-Path $Root "$Out\RJClip"
 $Tmp = Join-Path $Root "$Out\_download"
 
 function Say($m) { Write-Host "[portable] $m" }
@@ -69,7 +69,7 @@ Expand-Archive $pyZip $PyDir
 $pth = Get-ChildItem $PyDir -Filter "python*._pth" | Select-Object -First 1
 if (-not $pth) { throw "no ._pth file in the embeddable Python" }
 $zipName = (Get-ChildItem $PyDir -Filter "python*.zip" | Select-Object -First 1).Name
-# search path: the stdlib zip, the folder itself, site-packages, and ClipForge's backend
+# search path: the stdlib zip, the folder itself, site-packages, and RJClip's backend
 Set-Content -Encoding ASCII $pth.FullName "$zipName`r`n.`r`nLib\site-packages`r`n..\backend`r`nimport site`r`n"
 
 # ---- 2. packages (only the runtime ones; tests aren't shipped)
@@ -86,7 +86,7 @@ $site = Join-Path $PyDir "Lib\site-packages"
 Native "pip install" { python -m pip install --disable-pip-version-check --no-warn-script-location --only-binary=:all: --target $site -r $req }
 Native "pip freeze" { python -m pip freeze --path $site } | Set-Content -Encoding UTF8 (Join-Path $Pkg "packages.txt")
 
-# ---- 3. ClipForge + built UI
+# ---- 3. RJClip + built UI
 Say "building the UI"
 Push-Location (Join-Path $Root "frontend")
 try {
@@ -105,7 +105,7 @@ try { $ffHash = Download $FfmpegZip $ffZip }
 catch {
   # release file names change now and then: ask GitHub for the current GPL win64 build
   Say "  not found ($($_.Exception.Message)); looking up the current BtbN release"
-  $rel = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "clipforge-build" }
+  $rel = Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest" -Headers @{ "User-Agent" = "rjclip-build" }
   $asset = $rel.assets | Where-Object { $_.name -match "^ffmpeg-n[0-9.]+-latest-win64-gpl-[0-9.]+\.zip$" } | Sort-Object name -Descending | Select-Object -First 1
   if (-not $asset) { $asset = $rel.assets | Where-Object { $_.name -eq "ffmpeg-master-latest-win64-gpl.zip" } | Select-Object -First 1 }
   if (-not $asset) { throw "no Windows GPL FFmpeg build found in the BtbN release" }
@@ -130,37 +130,37 @@ if ($enc -notmatch "libx264") { throw "this FFmpeg build has no libx264" }
 # ---- 5. launcher + notes
 $bat = @'
 @echo off
-rem ClipForge portable: double-click to start. Close this window to stop ClipForge.
+rem RJClip portable: double-click to start. Close this window to stop RJClip.
 setlocal
 set "HERE=%~dp0"
-set "CLIPFORGE_FFMPEG=%HERE%ffmpeg\ffmpeg.exe"
-set "CLIPFORGE_FFPROBE=%HERE%ffmpeg\ffprobe.exe"
+set "RJCLIP_FFMPEG=%HERE%ffmpeg\ffmpeg.exe"
+set "RJCLIP_FFPROBE=%HERE%ffmpeg\ffprobe.exe"
 set "PATH=%HERE%ffmpeg;%PATH%"
 set "PYTHONUTF8=1"
-if "%CLIPFORGE_PORT%"=="" set "CLIPFORGE_PORT=8765"
-set "URL=http://127.0.0.1:%CLIPFORGE_PORT%"
+if "%RJCLIP_PORT%"=="" set "RJCLIP_PORT=8765"
+set "URL=http://127.0.0.1:%RJCLIP_PORT%"
 powershell -NoProfile -Command "try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%URL%/api/health').StatusCode -eq 200) { exit 0 } } catch { }; exit 1" >nul 2>&1
 if not errorlevel 1 (
-  echo ClipForge is already running: %URL%
+  echo RJClip is already running: %URL%
   if /i not "%~1"=="-NoBrowser" start "" "%URL%"
   exit /b 0
 )
 if /i not "%~1"=="-NoBrowser" start "" /b powershell -NoProfile -WindowStyle Hidden -Command "for ($i = 0; $i -lt 90; $i++) { try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 '%URL%/api/health').StatusCode -eq 200) { Start-Process '%URL%'; break } } catch { }; Start-Sleep 1 }"
 echo.
-echo   ClipForge is starting at %URL%  (close this window to stop it)
+echo   RJClip is starting at %URL%  (close this window to stop it)
 echo.
 cd /d "%HERE%backend"
 "%HERE%python\python.exe" -m app.main
 if errorlevel 1 if not defined CI pause
 '@
-Set-Content -Encoding ASCII (Join-Path $Pkg "ClipForge.bat") $bat
+Set-Content -Encoding ASCII (Join-Path $Pkg "RJClip.bat") $bat
 
 $commit = ""
 try { $commit = (Native "git" { git -C $Root rev-parse --short HEAD } | Select-Object -Last 1).Trim() } catch { }
 $third = @"
-ClipForge portable package (commit $commit, built $(Get-Date -Format yyyy-MM-dd))
+RJClip portable package (commit $commit, built $(Get-Date -Format yyyy-MM-dd))
 
-Your projects are stored in %USERPROFILE%\ClipForgeWorkspace (set CLIPFORGE_WORKSPACE
+Your projects are stored in %USERPROFILE%\RJClipWorkspace (or ClipForgeWorkspace from before the rename) (set RJCLIP_WORKSPACE
 to change it), not in this folder, so you can replace this folder with a newer one.
 
 Bundled software
@@ -176,7 +176,7 @@ $(if ($NoAI) { "- Speech-to-text is NOT included in this build." } else { "- fas
 Set-Content -Encoding UTF8 (Join-Path $Pkg "THIRD-PARTY.txt") $third
 
 # ---- 6. zip
-$zip = Join-Path $Root "$Out\ClipForge-portable-win64.zip"
+$zip = Join-Path $Root "$Out\RJClip-portable-win64.zip"
 Say "zipping"
 Compress-Archive -Path $Pkg -DestinationPath $zip -CompressionLevel Optimal
 Remove-Item -Recurse -Force $Tmp

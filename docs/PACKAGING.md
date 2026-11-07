@@ -1,25 +1,25 @@
 # Packaging & distribution
 
-**Status:** two ways to run ClipForge on Windows, both tested by CI on a clean Windows machine on every push:
+**Status:** two ways to run RJClip on Windows, both tested by CI on a clean Windows machine on every push:
 
 1. **Portable package** (nothing to install), described below. Not code-signed yet.
-2. **From source** with the one-click launcher (`Start ClipForge.bat`).
+2. **From source** with the one-click launcher (`Start RJClip.bat`).
 
 ## Portable package (shipped, Phase 8)
 
-A zip (`ClipForge-portable-win64.zip`, built by `scripts/windows/build_portable.ps1`) containing:
+A zip (`RJClip-portable-win64.zip`, built by `scripts/windows/build_portable.ps1`) containing:
 
 | Folder | What |
 |---|---|
-| `ClipForge.bat` | Double-click to start; opens the browser. Close the window to stop ClipForge |
-| `python\` | The official Windows "embeddable" Python 3.13 from python.org, with ClipForge's packages (and faster-whisper for speech-to-text) installed inside |
-| `backend\app\`, `frontend\dist\` | ClipForge and its built web UI |
+| `RJClip.bat` | Double-click to start; opens the browser. Close the window to stop RJClip |
+| `python\` | The official Windows "embeddable" Python 3.13 from python.org, with RJClip's packages (and faster-whisper for speech-to-text) installed inside |
+| `backend\app\`, `frontend\dist\` | RJClip and its built web UI |
 | `ffmpeg\` | `ffmpeg.exe` + `ffprobe.exe` (GPL build by BtbN, with libx264) and its licence |
 | `THIRD-PARTY.txt`, `packages.txt` | Where everything came from (with download checksums), and every bundled package version |
 
-**How to get it:** open the latest green run of the CI workflow on GitHub (Actions tab → *CI* → the run → *Artifacts*) and download **ClipForge-portable-win64**. You need to be signed in to GitHub to download artifacts; they're kept 14 days. Unzip anywhere and double-click `ClipForge.bat`.
+**How to get it:** open the latest green run of the CI workflow on GitHub (Actions tab → *CI* → the run → *Artifacts*) and download **RJClip-portable-win64**. You need to be signed in to GitHub to download artifacts; they're kept 14 days. Unzip anywhere and double-click `RJClip.bat`.
 
-**Your projects are not inside the folder.** They stay in `%USERPROFILE%\ClipForgeWorkspace`, shared with the from-source version, so updating means deleting the old folder and unzipping the new one.
+**Your projects are not inside the folder.** They stay in `%USERPROFILE%\RJClipWorkspace` (or your existing `ClipForgeWorkspace` from before the rename), shared with the from-source version, so updating means deleting the old folder and unzipping the new one.
 
 **How it's tested:** CI unzips the package into a fresh folder and starts it with PATH set to Windows' own folders only, so no Python, Node or FFmpeg from the build machine can be used. Then `scripts/smoke_export.py` drives the real API: imports a generated clip, exports it, checks the validation report, exports again and checks every block came from the cache.
 
@@ -27,18 +27,18 @@ A zip (`ClipForge-portable-win64.zip`, built by `scripts/windows/build_portable.
 - Not code-signed, so SmartScreen warns the first time: *More info → Run anyway*. Signing needs a certificate.
 - Size: about 280 MB zipped (278.5 MB on 2026-11-04), mostly FFmpeg, OpenCV and the speech-to-text engine. `-NoAI` builds a smaller one without speech-to-text. CI prints the exact size on every run.
 - Local AI (Ollama) and Stable Diffusion aren't bundled; they're separate apps you install if you want them.
-- "Update ClipForge.bat" is a from-source feature. The portable package is updated by downloading a new zip.
+- "Update RJClip.bat" is a from-source feature. The portable package is updated by downloading a new zip.
 
 ## Today: the launcher (shipped)
 
-`Start ClipForge.bat` runs `scripts/windows/start.ps1`, which:
+`Start RJClip.bat` runs `scripts/windows/start.ps1`, which:
 
 - checks for Python ≥ 3.11, Node.js and FFmpeg, with exact `winget` commands if one is missing
 - creates `backend\.venv` and installs packages, again only when `requirements.txt` changes
 - runs `npm install` when `package.json` changes and rebuilds the UI when its source changes
-- opens the existing window if ClipForge is already running; otherwise it starts ClipForge and opens the browser
+- opens the existing window if RJClip is already running; otherwise it starts RJClip and opens the browser
 
-`Update ClipForge.bat` does `git pull` first and also installs the free speech-to-text.
+`Update RJClip.bat` does `git pull` first and also installs the free speech-to-text.
 
 **Trade-off:** you need Python, Node and Git installed. One `winget` line each, but it's still three tools.
 

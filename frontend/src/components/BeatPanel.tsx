@@ -27,7 +27,7 @@ export default function BeatPanel({ projectId, timeline, media, commit, beats, s
         <h3 style={{ margin: 0 }}>Beat sync</h3>
         {!songs.length ? (
           <div className="muted" style={{ fontSize: 12 }}>
-            Import a song and put it on a music track (the audio track with ♪ — A2 by default). Then ClipForge can find its beat
+            Import a song and put it on a music track (the audio track with ♪ — A2 by default). Then RJClip can find its beat
             and line your cuts up with it. Free music you're allowed to use on YouTube: YouTube Studio → <b>Audio Library</b>.
           </div>
         ) : (<>
@@ -42,7 +42,7 @@ export default function BeatPanel({ projectId, timeline, media, commit, beats, s
             try {
               const next = { ...beats };
               for (const m of songs) {
-                const r = await fetch(`/api/projects/${projectId}/beats`, { method: "POST", headers: { "X-ClipForge": "1", "Content-Type": "application/json" }, body: JSON.stringify({ media_id: m }) });
+                const r = await fetch(`/api/projects/${projectId}/beats`, { method: "POST", headers: { "X-RJClip": "1", "Content-Type": "application/json" }, body: JSON.stringify({ media_id: m }) });
                 const d = await r.json();
                 if (!r.ok) throw new ApiError(d.error || "Couldn't find the beat", r.status);
                 next[m] = { bpm: d.bpm, beats: d.beats };

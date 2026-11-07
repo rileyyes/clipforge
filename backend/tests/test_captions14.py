@@ -56,14 +56,14 @@ def _project_with_transcript(c, tmp_path):
 def test_fix_a_misheard_word(server, tmp_path):
     c = server
     pid, mid = _project_with_transcript(c, tmp_path)
-    st, r, _ = c.req("POST", f"/api/projects/{pid}/words/fix", {"media_id": mid, "start": 0.8, "text": " ClipForge "})
-    assert st == 200 and r["word"]["text"] == " ClipForge" and r["word"]["old"] == " click"
+    st, r, _ = c.req("POST", f"/api/projects/{pid}/words/fix", {"media_id": mid, "start": 0.8, "text": " RJClip "})
+    assert st == 200 and r["word"]["text"] == " RJClip" and r["word"]["old"] == " click"
     _, w, _ = c.req("GET", f"/api/projects/{pid}/words")
-    assert [x["text"] for x in w["media"][mid]] == [" Welcome", " to", " ClipForge", " forge."]
+    assert [x["text"] for x in w["media"][mid]] == [" Welcome", " to", " RJClip", " forge."]
     assert w["media"][mid][2]["fixed"] is True and "fixed" not in w["media"][mid][0]
     assert w["media"][mid][2]["start"] == 0.8 and w["media"][mid][2]["end"] == 1.1      # timing unchanged
     st, srt, _ = c.req("GET", f"/api/projects/{pid}/captions.srt")
-    assert st == 200 and b"CLIPFORGE FORGE." in srt and b"CLICK" not in srt
+    assert st == 200 and b"RJCLIP FORGE." in srt and b"CLICK" not in srt
     # a tiny rounding difference in the start time still finds the word
     assert c.req("POST", f"/api/projects/{pid}/words/fix", {"media_id": mid, "start": 1.1505, "text": "Forge."})[0] == 200
 

@@ -33,7 +33,7 @@ B = f"http://127.0.0.1:{PORT}"
 
 
 def api(method, path, body=None, raw_file: Path | None = None, timeout=600):
-    hd = {"X-ClipForge": "1"}
+    hd = {"X-RJClip": "1"}
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -108,8 +108,8 @@ def main():
     make_source(src, a.minutes)
     print(f"  {src.stat().st_size / 1e6:.0f} MB in {time.time() - t:.0f} s", flush=True)
 
-    env = {**os.environ, "CLIPFORGE_WORKSPACE": str(tmp / "ws"), "CLIPFORGE_PORT": str(PORT),
-           "CLIPFORGE_TRANSCRIBER": "off", "CLIPFORGE_MAX_UPLOAD_MB": str(100 * 1024)}
+    env = {**os.environ, "RJCLIP_WORKSPACE": str(tmp / "ws"), "RJCLIP_PORT": str(PORT),
+           "RJCLIP_TRANSCRIBER": "off", "RJCLIP_MAX_UPLOAD_MB": str(100 * 1024)}
     srv = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT / "backend", env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     results: dict = {"source_minutes": a.minutes, "target_minutes": a.target, "export_height": a.export_height,

@@ -22,7 +22,7 @@ import numpy as np
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-TMP = Path(tempfile.mkdtemp(prefix="clipforge-e2e-p14-"))
+TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-p14-"))
 PORT = 8808
 B = f"http://127.0.0.1:{PORT}"
 SONG_HZ, VOICE_HZ = 880, 220
@@ -30,7 +30,7 @@ SONG_HZ, VOICE_HZ = 880, 220
 
 def api(method, path, body=None, raw=None):
     data = raw if raw is not None else (json.dumps(body).encode() if body is not None else None)
-    hd = {"X-ClipForge": "1"}
+    hd = {"X-RJClip": "1"}
     if body is not None:
         hd["Content-Type"] = "application/json"
     with urllib.request.urlopen(urllib.request.Request(B + path, data=data, method=method, headers=hd)) as r:
@@ -166,22 +166,22 @@ async def main(pid, mid):
                   "| focus-outs:", await pg.evaluate("window.__blurs"),
                   "| toasts:", await pg.locator(".toast").all_inner_texts())
             raise
-        await box.fill("ClipForge")
+        await box.fill("RJClip")
         await box.press("Enter")
         await toast("Fixed")
         await pg.keyboard.press("Home")
         for _ in range(12):
             await pg.keyboard.press("ArrowRight")
-        await pg.wait_for_function("() => document.querySelector('[data-testid=caption-preview]')?.innerText.includes('CLIPFORGE')", timeout=10000)
+        await pg.wait_for_function("() => document.querySelector('[data-testid=caption-preview]')?.innerText.includes('RJCLIP')", timeout=10000)
         print("caption preview after the fix:", await cap.inner_text())
         assert "CLICK" not in await cap.inner_text()
-        assert await pg.locator(".script-word", has_text="ClipForge").count() == 1
+        assert await pg.locator(".script-word", has_text="RJClip").count() == 1
         await pg.screenshot(path=str(TMP / "captions_fixed.png"))
         assert not errs, errs
         await b.close()
 
     srt = api("GET", f"/api/projects/{pid}/captions.srt").decode()
-    assert "CLIPFORGE" in srt and "CLICK" not in srt, srt
+    assert "RJCLIP" in srt and "CLICK" not in srt, srt
 
     # ---- export: the song is heard from 5 to 25 s only
     j = api("POST", f"/api/projects/{pid}/exports", {"filename": "music", "quality": "draft"})
@@ -208,7 +208,7 @@ async def main(pid, mid):
 
 
 if __name__ == "__main__":
-    env = {**os.environ, "CLIPFORGE_WORKSPACE": str(TMP / "ws"), "CLIPFORGE_PORT": str(PORT), "CLIPFORGE_TRANSCRIBER": "off"}
+    env = {**os.environ, "RJCLIP_WORKSPACE": str(TMP / "ws"), "RJCLIP_PORT": str(PORT), "RJCLIP_TRANSCRIBER": "off"}
     srv = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT / "backend", env=env,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

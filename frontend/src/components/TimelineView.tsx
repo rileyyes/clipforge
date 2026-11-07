@@ -399,12 +399,12 @@ export default function TimelineView(p: TimelineProps) {
                 style={{ height: ROW_H[t.kind], ["--grid" as any]: `${ticks.step * pps}px`, backgroundPosition: `${-(view.left % (ticks.step * pps))}px 0` }}
                 onPointerDown={(e) => { if (e.button === 0 && e.target === e.currentTarget) { p.setSelection([]); p.seek(timeAt(e.clientX)); } }}
                 onDragOver={(e) => {
-                  if (!e.dataTransfer.types.includes("application/x-clipforge-media")) return;
+                  if (!e.dataTransfer.types.includes("application/x-rjclip-media")) return;
                   e.preventDefault(); setDropTrack(t.id);
                 }}
                 onDragLeave={() => setDropTrack(null)}
                 onDrop={(e) => {
-                  const mid = e.dataTransfer.getData("application/x-clipforge-media");
+                  const mid = e.dataTransfer.getData("application/x-rjclip-media");
                   setDropTrack(null);
                   if (!mid) return;
                   e.preventDefault();

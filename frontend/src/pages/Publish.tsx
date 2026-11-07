@@ -3,7 +3,7 @@ import { api, ApiError, fmtBytes, type ExportItem, type Job, type ProjectSummary
 import { Icon, JobRow, useJobs, useToast } from "../components/ui";
 import { go } from "../router";
 
-const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
+const H = { "X-RJClip": "1", "Content-Type": "application/json" };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, { method, headers: H, body: body === undefined ? undefined : JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));
@@ -220,7 +220,7 @@ function Workspace({ projectId }: { projectId: string }) {
               <input ref={clientFile} type="file" accept=".json,application/json" hidden onChange={async (e) => {
                 const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
                 try {
-                  const r = await fetch("/api/youtube/client", { method: "POST", headers: { "X-ClipForge": "1" }, body: f });
+                  const r = await fetch("/api/youtube/client", { method: "POST", headers: { "X-RJClip": "1" }, body: f });
                   const d = await r.json(); if (!r.ok) throw new Error(d.error); setYt(d); toast("Client added — now connect your channel");
                 } catch (err: any) { toast(err.message, true); }
               }} />
@@ -238,7 +238,7 @@ function Workspace({ projectId }: { projectId: string }) {
           ) : (
             <>
               <div className="row" style={{ gap: 6 }}><Icon name="check" size={14} /><span style={{ fontSize: 12 }}>Connected: <strong>{yt.channel?.title ?? "your channel"}</strong></span><span className="spacer" />
-                <button className="btn xs ghost" onClick={async () => { if (confirm("Disconnect YouTube? ClipForge forgets its access (you can connect again any time).")) setYt(await call<YTStatus>("POST", "/api/youtube/disconnect")); }}>Disconnect</button></div>
+                <button className="btn xs ghost" onClick={async () => { if (confirm("Disconnect YouTube? RJClip forgets its access (you can connect again any time).")) setYt(await call<YTStatus>("POST", "/api/youtube/disconnect")); }}>Disconnect</button></div>
               <label className="field">Video
                 <select value={draft.export_file ?? ""} onChange={(e) => set({ export_file: e.target.value || null })} aria-label="Video to upload">
                   <option value="">Choose an export…</option>

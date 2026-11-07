@@ -3,10 +3,10 @@
 Setup, once (free, ~5 minutes; see docs/YOUTUBE.md):
   Google Cloud Console → new project → enable "YouTube Data API v3" → OAuth consent screen
   (External, add yourself as a test user) → Credentials → OAuth client ID → *Desktop app*
-  → download the JSON → ClipForge → Publish → "Connect YouTube" → choose that file.
+  → download the JSON → RJClip → Publish → "Connect YouTube" → choose that file.
 
 * Sign-in uses Google's installed-app flow with PKCE and a one-time ``state``; Google
-  redirects back to ClipForge on 127.0.0.1. Only the upload + read-only scopes are asked
+  redirects back to RJClip on 127.0.0.1. Only the upload + read-only scopes are asked
   for. The refresh token is stored in ``<workspace>/secrets`` (owner-only permissions)
   and never sent to the browser.
 * Uploads are *resumable*: 8 MB chunks, retries with back-off on 5xx/network errors,
@@ -16,7 +16,7 @@ Setup, once (free, ~5 minutes; see docs/YOUTUBE.md):
 * Quota: YouTube gives each project 10,000 units/day; an upload costs ~1,600, so about
   6 uploads a day per Google project.
 
-Endpoints are overridable (CLIPFORGE_GOOGLE_*), which the tests use to talk to a fake
+Endpoints are overridable (RJCLIP_GOOGLE_*), which the tests use to talk to a fake
 Google. This module is contract-tested only; it has not been run against real YouTube
 from the development environment.
 """
@@ -36,11 +36,11 @@ from typing import Callable, Optional
 
 from .storage import atomic_write_json
 
-AUTH_URL = os.environ.get("CLIPFORGE_GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth")
-TOKEN_URL = os.environ.get("CLIPFORGE_GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token")
-REVOKE_URL = os.environ.get("CLIPFORGE_GOOGLE_REVOKE_URL", "https://oauth2.googleapis.com/revoke")
-API_URL = os.environ.get("CLIPFORGE_YOUTUBE_API_URL", "https://www.googleapis.com/youtube/v3")
-UPLOAD_URL = os.environ.get("CLIPFORGE_YOUTUBE_UPLOAD_URL", "https://www.googleapis.com/upload/youtube/v3")
+AUTH_URL = os.environ.get("RJCLIP_GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth")
+TOKEN_URL = os.environ.get("RJCLIP_GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token")
+REVOKE_URL = os.environ.get("RJCLIP_GOOGLE_REVOKE_URL", "https://oauth2.googleapis.com/revoke")
+API_URL = os.environ.get("RJCLIP_YOUTUBE_API_URL", "https://www.googleapis.com/youtube/v3")
+UPLOAD_URL = os.environ.get("RJCLIP_YOUTUBE_UPLOAD_URL", "https://www.googleapis.com/upload/youtube/v3")
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"]
 CHUNK = 8 * 1024 * 1024  # multiple of 256 KiB, as the resumable protocol requires
 TIMEOUT = 60
@@ -51,11 +51,11 @@ class YouTubeError(RuntimeError):
 
 
 def _urls() -> dict:  # read at call time so tests (and power users) can point elsewhere
-    return {"auth": os.environ.get("CLIPFORGE_GOOGLE_AUTH_URL", AUTH_URL),
-            "token": os.environ.get("CLIPFORGE_GOOGLE_TOKEN_URL", TOKEN_URL),
-            "revoke": os.environ.get("CLIPFORGE_GOOGLE_REVOKE_URL", REVOKE_URL),
-            "api": os.environ.get("CLIPFORGE_YOUTUBE_API_URL", API_URL),
-            "upload": os.environ.get("CLIPFORGE_YOUTUBE_UPLOAD_URL", UPLOAD_URL)}
+    return {"auth": os.environ.get("RJCLIP_GOOGLE_AUTH_URL", AUTH_URL),
+            "token": os.environ.get("RJCLIP_GOOGLE_TOKEN_URL", TOKEN_URL),
+            "revoke": os.environ.get("RJCLIP_GOOGLE_REVOKE_URL", REVOKE_URL),
+            "api": os.environ.get("RJCLIP_YOUTUBE_API_URL", API_URL),
+            "upload": os.environ.get("RJCLIP_YOUTUBE_UPLOAD_URL", UPLOAD_URL)}
 
 
 def _req(method: str, url: str, *, data: Optional[bytes] = None, headers: Optional[dict] = None,
@@ -166,7 +166,7 @@ class YouTube:
             raise YouTubeError("Google didn't accept the sign-in: " + _err_message(data, f"HTTP {st}"))
         tok = json.loads(data)
         if not tok.get("refresh_token"):
-            raise YouTubeError("Google didn't return a refresh token. Remove ClipForge's access in your Google "
+            raise YouTubeError("Google didn't return a refresh token. Remove RJClip's access in your Google "
                                "account settings, then connect again.")
         tok["expires_at"] = time.time() + float(tok.get("expires_in", 3600)) - 60
         self._write(self.token_file, tok)

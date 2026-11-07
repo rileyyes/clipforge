@@ -1,12 +1,12 @@
 # Cloud deployment design (not built)
 
-ClipForge is designed and tested as a **single-user app on your own computer**, and that's how it should be run today. This document sets out what a hosted, multi-user version would need. **Don't expose the current server to the internet.** It has no accounts and trusts anyone who can reach it. That's safe on `127.0.0.1` and unsafe anywhere else.
+RJClip is designed and tested as a **single-user app on your own computer**, and that's how it should be run today. This document sets out what a hosted, multi-user version would need. **Don't expose the current server to the internet.** It has no accounts and trusts anyone who can reach it. That's safe on `127.0.0.1` and unsafe anywhere else.
 
 ## Why the local app is safe, and what changes in the cloud
 
 | Local today | Why it's enough locally | Cloud requirement |
 |---|---|---|
-| Binds to `127.0.0.1`; Host and Origin allow-lists; `X-ClipForge` CSRF header | Only your own browser can reach it | Real accounts (OIDC), sessions or tokens, per-request authorisation on every project/media/job id |
+| Binds to `127.0.0.1`; Host and Origin allow-lists; `X-RJClip` CSRF header | Only your own browser can reach it | Real accounts (OIDC), sessions or tokens, per-request authorisation on every project/media/job id |
 | One workspace folder | It's your disk | Per-tenant storage (S3/GCS) with per-object authorisation; no shared filesystem paths in the API |
 | FFmpeg runs in-process with input format and protocol allow-lists | You only upload your own files | **Untrusted media is the main risk**: run FFmpeg/OpenCV/Pillow in sandboxed, network-less workers (gVisor/Firecracker or a locked-down container: no network, read-only root, seccomp, CPU/memory/time limits, and a fresh worker per job) |
 | Thread-pool job queue, JSON job files | One user | A durable queue (e.g. Postgres + workers, or SQS); per-user quotas and concurrency limits; idempotent retries |
@@ -32,7 +32,7 @@ Browser ──HTTPS──► CDN (static UI)
 | Threat | Mitigation |
 |---|---|
 | Malicious media exploiting FFmpeg/OpenCV/libav parsers | Sandboxed, network-less, short-lived workers; format/protocol allow-lists (existing); keep FFmpeg patched; resource limits |
-| SSRF/LFI through FFmpeg protocols or playlists (`concat`, `http`, `file` tricks) | `-protocol_whitelist file` (existing) plus no network in workers; concat lists are written by ClipForge only (existing) |
+| SSRF/LFI through FFmpeg protocols or playlists (`concat`, `http`, `file` tricks) | `-protocol_whitelist file` (existing) plus no network in workers; concat lists are written by RJClip only (existing) |
 | IDOR: guessing another user's project/media ids | Ids are random 128-bit (existing), but **authorise every lookup by tenant**; never rely on unguessable ids alone |
 | XSS through file names, captions, labels | React escaping (existing), strict CSP (existing), `nosniff` (existing); images re-encoded (existing) |
 | Zip bombs / huge uploads / decode bombs | Size caps (existing), duration/pixel caps before decode, per-job time and memory limits |

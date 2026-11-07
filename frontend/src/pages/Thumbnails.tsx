@@ -9,7 +9,7 @@ import {
 import { drawDesign, exportBlob, loadImages, type ImageMap } from "../thumbs/render";
 import Projects from "./Projects";
 
-const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
+const H = { "X-RJClip": "1", "Content-Type": "application/json" };
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, { method, headers: H, body: body === undefined ? undefined : JSON.stringify(body) });
   if (r.status === 204) return undefined as T;
@@ -151,7 +151,7 @@ function Studio({ pid, designId, onClose }: { pid: string; designId: string; onC
     setExportRes(null);
     try {
       const blob = await exportBlob(design, images, fmt);
-      const r = await fetch(`/api/projects/${pid}/thumbnails/designs/${design.id}/export?format=${fmt}`, { method: "POST", headers: { "X-ClipForge": "1" }, body: blob });
+      const r = await fetch(`/api/projects/${pid}/thumbnails/designs/${design.id}/export?format=${fmt}`, { method: "POST", headers: { "X-RJClip": "1" }, body: blob });
       const data = await r.json();
       setExportRes(data);
       if (!r.ok) toast(data.error, true);
@@ -223,7 +223,7 @@ function Studio({ pid, designId, onClose }: { pid: string; designId: string; onC
               <input ref={imgFile} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={async (e) => {
                 const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
                 try {
-                  const r = await fetch(`/api/projects/${pid}/thumbnails/assets`, { method: "POST", headers: { "X-ClipForge": "1" }, body: f });
+                  const r = await fetch(`/api/projects/${pid}/thumbnails/assets`, { method: "POST", headers: { "X-RJClip": "1" }, body: f });
                   const d = await r.json(); if (!r.ok) throw new Error(d.error); placeAsset({ ...d, label: f.name.replace(/\.[^.]+$/, "") });
                 } catch (err: any) { toast(err.message, true); }
               }} />

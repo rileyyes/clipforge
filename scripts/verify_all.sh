@@ -43,7 +43,7 @@ python3 scripts/e2e_phase14.py 2>&1 | grep -E "OK|caption|music pieces|overflow|
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null
-CLIPFORGE_WORKSPACE="$SMOKE_WS" CLIPFORGE_PORT=8798 python3 -m app.main >/dev/null 2>&1 &
+RJCLIP_WORKSPACE="$SMOKE_WS" RJCLIP_PORT=8798 python3 -m app.main >/dev/null 2>&1 &
 SMOKE_PID=$!   # the server itself (not a subshell), so kill really stops it
 popd >/dev/null
 for _ in $(seq 60); do curl -fs http://127.0.0.1:8798/api/health >/dev/null 2>&1 && break; sleep 0.5; done

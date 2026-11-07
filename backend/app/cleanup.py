@@ -1,6 +1,6 @@
 """Filler words and retakes, found in a transcript.
 
-* fillers: "um", "uh", "er", "hmm"… (ClipForge asks the transcriber to write them down;
+* fillers: "um", "uh", "er", "hmm"… (RJClip asks the transcriber to write them down;
   how many it catches depends on the speech)
 * retakes: you start a sentence, stop, and say it again. Found when the same 3–5 words
   (ignoring fillers) come again within 15 seconds; the first, abandoned try is removed

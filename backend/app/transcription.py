@@ -37,7 +37,7 @@ class FasterWhisperTranscriber:
     def _load(self):
         if self._model is None:
             from faster_whisper import WhisperModel  # type: ignore
-            device = os.environ.get("CLIPFORGE_WHISPER_DEVICE", "cpu")
+            device = os.environ.get("RJCLIP_WHISPER_DEVICE", "cpu")
             try:
                 self._model = WhisperModel(self.model_size, device=device,
                                            compute_type="int8" if device == "cpu" else "float16")
@@ -53,7 +53,7 @@ class FasterWhisperTranscriber:
         self._load()
 
     def transcribe(self, src, on_progress, cancel):
-        """Audio is decoded by ClipForge's own FFmpeg and handed to Whisper as samples,
+        """Audio is decoded by RJClip's own FFmpeg and handed to Whisper as samples,
         in chunks (bounded memory for long recordings). faster-whisper's built-in decoder
         (PyAV) is not used: PyAV 19 removed an argument faster-whisper 1.2.x still passes,
         which broke every transcription with "unexpected keyword argument 'metadata_errors'"."""
@@ -84,8 +84,8 @@ FILLER_PROMPT = "Umm, so, uh, let me think. Hmm, okay, um, like this."
 
 def _ffmpeg_bins() -> tuple[str, str]:
     from .config import find_tool
-    return (os.environ.get("CLIPFORGE_FFMPEG") or find_tool("ffmpeg"),
-            os.environ.get("CLIPFORGE_FFPROBE") or find_tool("ffprobe"))
+    return (os.environ.get("RJCLIP_FFMPEG") or find_tool("ffmpeg"),
+            os.environ.get("RJCLIP_FFPROBE") or find_tool("ffprobe"))
 
 
 def media_duration(src: Path) -> float:
@@ -142,10 +142,10 @@ def decode_chunks(src: Path, chunk_s: float, cancel: Optional[threading.Event]):
 
 
 def available_transcriber() -> Optional[Transcriber]:
-    if os.environ.get("CLIPFORGE_TRANSCRIBER", "auto") == "off":
+    if os.environ.get("RJCLIP_TRANSCRIBER", "auto") == "off":
         return None
     try:
         import faster_whisper  # type: ignore  # noqa: F401
     except ImportError:
         return None
-    return FasterWhisperTranscriber(os.environ.get("CLIPFORGE_WHISPER_MODEL", "small"))
+    return FasterWhisperTranscriber(os.environ.get("RJCLIP_WHISPER_MODEL", "small"))

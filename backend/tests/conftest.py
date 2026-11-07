@@ -60,7 +60,7 @@ class Client:
 
     def req(self, method: str, path: str, body=None, raw: bytes | None = None,
             headers: dict | None = None, csrf: bool = True):
-        hd = {"X-ClipForge": "1"} if csrf else {}
+        hd = {"X-RJClip": "1"} if csrf else {}
         hd.update(headers or {})
         data = raw
         if body is not None:

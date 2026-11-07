@@ -102,11 +102,11 @@ def google(monkeypatch):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{srv.server_address[1]}"
     Google.state = {}
-    monkeypatch.setenv("CLIPFORGE_GOOGLE_AUTH_URL", base + "/auth")
-    monkeypatch.setenv("CLIPFORGE_GOOGLE_TOKEN_URL", base + "/token")
-    monkeypatch.setenv("CLIPFORGE_GOOGLE_REVOKE_URL", base + "/revoke")
-    monkeypatch.setenv("CLIPFORGE_YOUTUBE_API_URL", base + "/api")
-    monkeypatch.setenv("CLIPFORGE_YOUTUBE_UPLOAD_URL", base + "/upload")
+    monkeypatch.setenv("RJCLIP_GOOGLE_AUTH_URL", base + "/auth")
+    monkeypatch.setenv("RJCLIP_GOOGLE_TOKEN_URL", base + "/token")
+    monkeypatch.setenv("RJCLIP_GOOGLE_REVOKE_URL", base + "/revoke")
+    monkeypatch.setenv("RJCLIP_YOUTUBE_API_URL", base + "/api")
+    monkeypatch.setenv("RJCLIP_YOUTUBE_UPLOAD_URL", base + "/upload")
     yield base
     srv.shutdown()
 

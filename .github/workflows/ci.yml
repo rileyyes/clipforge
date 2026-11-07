@@ -137,7 +137,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots
-          path: /tmp/clipforge-e2e-*/*.png
+          path: /tmp/rjclip-e2e-*/*.png
           retention-days: 5
 
   security:
@@ -187,11 +187,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Start ClipForge with the launcher, like a double-click would
+      - name: Start RJClip with the launcher, like a double-click would
         shell: powershell  # Windows PowerShell 5.1, as on a normal PC (not pwsh 7)
         run: |
-          # exactly what "Start ClipForge.bat" runs
-          $p = Start-Process cmd.exe -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt -ArgumentList '/c "Start ClipForge.bat" -NoBrowser'
+          # exactly what "Start RJClip.bat" runs
+          $p = Start-Process cmd.exe -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt -ArgumentList '/c "Start RJClip.bat" -NoBrowser'
           $ok = $false
           for ($i = 0; $i -lt 300; $i++) {
             if ($p.HasExited) { break }  # launcher stopped (error): don't wait for nothing
@@ -203,11 +203,11 @@ jobs:
           # the launcher's own output as one annotation (readable without opening the log)
           $tail = (($log -split "`n") | Select-Object -Last 60) -join "%0A"
           Write-Output "::warning title=launcher output::$tail"
-          if (-not $ok) { Write-Output "::error title=launcher::ClipForge didn't start from the launcher"; exit 1 }
+          if (-not $ok) { Write-Output "::error title=launcher::RJClip didn't start from the launcher"; exit 1 }
           $page = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8765/
           if ($page.Content -notmatch "<div id=`"root`"") { Write-Output "::error title=launcher::UI not served"; exit 1 }
           # running it again must just detect the running app and exit cleanly
-          cmd.exe /c "Start ClipForge.bat" -NoBrowser
+          cmd.exe /c "Start RJClip.bat" -NoBrowser
           if ($LASTEXITCODE -ne 0) { Write-Output "::error title=launcher::second start failed"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -241,13 +241,13 @@ jobs:
         run: |
           $ErrorActionPreference = "Continue"
           $dest = Join-Path $env:RUNNER_TEMP "pp"
-          Expand-Archive portable\ClipForge-portable-win64.zip $dest
+          Expand-Archive portable\RJClip-portable-win64.zip $dest
           $hostPy = (Get-Command python).Source
-          $env:CLIPFORGE_WORKSPACE = Join-Path $env:RUNNER_TEMP "ws"
+          $env:RJCLIP_WORKSPACE = Join-Path $env:RUNNER_TEMP "ws"
           # only Windows itself on PATH: proves nothing installed on the runner is used
           $clean = "C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
-          $p = Start-Process cmd.exe -PassThru -WorkingDirectory "$dest\ClipForge" -RedirectStandardOutput out.txt -RedirectStandardError err.txt `
-                 -ArgumentList '/c', "set PATH=$clean&& ClipForge.bat -NoBrowser"
+          $p = Start-Process cmd.exe -PassThru -WorkingDirectory "$dest\RJClip" -RedirectStandardOutput out.txt -RedirectStandardError err.txt `
+                 -ArgumentList '/c', "set PATH=$clean&& RJClip.bat -NoBrowser"
           $ok = $false
           for ($i = 0; $i -lt 120; $i++) {
             if ($p.HasExited) { break }
@@ -260,17 +260,17 @@ jobs:
             $tail = (($log -split "`n") | Select-Object -Last 40) -join "%0A"
             Write-Output "::error title=portable::didn't start%0A$tail"; exit 1
           }
-          & $hostPy scripts\smoke_export.py --base http://127.0.0.1:8765 --ffmpeg "$dest\ClipForge\ffmpeg\ffmpeg.exe" 2>&1 | Tee-Object smoke.txt
+          & $hostPy scripts\smoke_export.py --base http://127.0.0.1:8765 --ffmpeg "$dest\RJClip\ffmpeg\ffmpeg.exe" 2>&1 | Tee-Object smoke.txt
           $code = $LASTEXITCODE
           $s = ((Get-Content smoke.txt) | Select-Object -Last 30) -join "%0A"
           if ($code -ne 0) { Write-Output "::error title=portable smoke test::$s"; exit 1 }
           Write-Output "::notice title=portable smoke test::$s"
-          $zipMb = [math]::Round((Get-Item portable\ClipForge-portable-win64.zip).Length / 1MB, 1)
+          $zipMb = [math]::Round((Get-Item portable\RJClip-portable-win64.zip).Length / 1MB, 1)
           Write-Output "::notice title=portable size::$zipMb MB zipped"
           Stop-Process -Id $p.Id -Force
           Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
       - uses: actions/upload-artifact@v4
         with:
-          name: ClipForge-portable-win64
-          path: portable/ClipForge-portable-win64.zip
+          name: RJClip-portable-win64
+          path: portable/RJClip-portable-win64.zip
           retention-days: 14

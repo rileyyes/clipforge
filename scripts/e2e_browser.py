@@ -12,7 +12,7 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
-TMP = Path(tempfile.mkdtemp(prefix="clipforge-e2e-"))
+TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-"))
 OUT = TMP / "screens"; OUT.mkdir()
 SAMPLE, PORTRAIT = TMP / "sample.mp4", TMP / "portrait.mp4"
 PORT = 8791
@@ -99,7 +99,7 @@ async def main():
 if __name__ == "__main__":
     gen(SAMPLE, "1280x720", 30, 12, 440)
     gen(PORTRAIT, "720x1280", 25, 6, 660)
-    env = {**os.environ, "CLIPFORGE_WORKSPACE": str(TMP / "ws"), "CLIPFORGE_PORT": str(PORT)}
+    env = {**os.environ, "RJCLIP_WORKSPACE": str(TMP / "ws"), "RJCLIP_PORT": str(PORT)}
     srv = subprocess.Popen([sys.executable, "-m", "app.main"], cwd=ROOT / "backend", env=env)
     try:
         for _ in range(50):

@@ -112,7 +112,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
   - a crash in FFmpeg's denoiser, now with a fallback
 - ✅ OpenAPI 3.1 at `/api/openapi.json` and a readable page at `/api/docs`, generated from the routes so they can't drift (the goal of the planned FastAPI move)
 - ✅ Performance benchmark on a 2-hour source (`scripts/benchmark.py`; results in [docs/BENCHMARKS.md](docs/BENCHMARKS.md))
-- ✅ One-click Windows launcher (`Start ClipForge.bat` / `Update ClipForge.bat`); packaging options evaluated in [docs/PACKAGING.md](docs/PACKAGING.md)
+- ✅ One-click Windows launcher (`Start RJClip.bat` / `Update RJClip.bat`); packaging options evaluated in [docs/PACKAGING.md](docs/PACKAGING.md)
 - ✅ Cloud deployment design and threat model ([docs/CLOUD.md](docs/CLOUD.md)); design only, not built
 - ⬜ FastAPI migration. **Blocked here:** FastAPI can't be installed in this development environment, and a framework swap that can't be run can't be tested. The generated OpenAPI spec already covers its main benefit
 - ⬜ Vite dev server + React types + component tests. **Blocked the same way** (no `vite`, `@types/react` or Testing Library packages available). Typechecking covers the engine; the UI is covered by the 8 browser E2E flows
@@ -124,16 +124,16 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 - ✅ **8.2 Reads what's said**: with a transcript the AI scores laughs, punchlines, questions, exclamations and story beats. Optional **local AI** (Ollama, or any OpenAI-compatible server on your PC) rates moments 0–10 on top; found automatically, off when not running, nothing is sent online
 - ✅ **8.3 Publish page**: chapters (from topic changes, checked against YouTube's rules: first at 0:00, ≥ 3, ≥ 10 s apart), title ideas, a description with chapters, and tags (≤ 15, under YouTube's 500-character limit). The local AI can polish them if you run one
 - ✅ **8.4 Upload to YouTube**: connect your own Google account with your own free API client (step-by-step in [docs/YOUTUBE.md](docs/YOUTUBE.md)); resumable upload with title, description, tags, category, thumbnail. **Private by default** and it asks before every upload. Your login stays on your PC (owner-only file, never sent to the browser). Tested against a fake Google server, **not yet against the real YouTube**
-- ✅ **8.5 Suggestions from your library**: tag your sounds/images ("laugh", "fail", "wow"…) and ClipForge suggests where to drop them, from what's said and the loud reactions
+- ✅ **8.5 Suggestions from your library**: tag your sounds/images ("laugh", "fail", "wow"…) and RJClip suggests where to drop them, from what's said and the loud reactions
 - ✅ **8.6 Thumbnail Maker**: cut out the subject (no AI download needed), use your own images or library images, real face detection (bundled model), title prefilled from Publish, optional local AI for headline ideas
 - ✅ **8.7 Faster re-exports**: the final video is encoded in 20-second blocks, each cached. After a small change only the blocks that changed are encoded again; the rest are copied. Checked frame by frame against a one-pass render (identical apart from encoder noise, no dropped/doubled frames at block edges)
-- ✅ **8.7 Windows portable package**: a zip with Python, FFmpeg, the UI and speech-to-text inside. Nothing to install: unzip, double-click `ClipForge.bat`. Built on every push by CI, then unzipped on a clean runner with **nothing on PATH** and used to import, export and re-export a video. Unsigned, so Windows SmartScreen will warn the first time ("More info → Run anyway"). See [docs/PACKAGING.md](docs/PACKAGING.md)
+- ✅ **8.7 Windows portable package**: a zip with Python, FFmpeg, the UI and speech-to-text inside. Nothing to install: unzip, double-click `RJClip.bat`. Built on every push by CI, then unzipped on a clean runner with **nothing on PATH** and used to import, export and re-export a video. Unsigned, so Windows SmartScreen will warn the first time ("More info → Run anyway"). See [docs/PACKAGING.md](docs/PACKAGING.md)
 - ⬜ Code-signed installer (needs a signing certificate)
 
 ## Phase 9 — Face cam & transitions 🟡 (built and tested automatically; waiting for your hands-on test)
 
 - ✅ **Face cam** (Editor → **Cam**): import your webcam video and it sits over the main recording, **following every cut** (yours and the AI's), so it never drifts out of sync
-  - **Line up by sound**: if the cam was recorded separately, ClipForge matches the two microphones (accurate to a few ms in tests) and says how sure it is; nudge by a frame or type an offset
+  - **Line up by sound**: if the cam was recorded separately, RJClip matches the two microphones (accurate to a few ms in tests) and says how sure it is; nudge by a frame or type an offset
   - corner presets (top/bottom, left/right), size, gap to the edge
   - square corners, rounded or **circle**; border colour/width; soft shadow
   - **Crop to my face** (head and shoulders, found with the bundled face detector)
@@ -148,7 +148,7 @@ Legend: ✅ done & tested · 🟡 partial (see note) · ⬜ not started
 ## Phase 10 — Modern editing essentials 🟡 (built and tested automatically; waiting for your hands-on test)
 
 - ✅ **Edit by transcript** (Editor → **Script**): your edit as text. Click a word to jump there; drag or Shift+click to select words and **Cut** (or press Delete). Picture and sound are cut together and the gap closes; the music keeps playing (and is trimmed with a fade if it now runs past the end). Titles and blurs move along. Undo works
-- ✅ **Filler words & retakes**: "um", "uh", "hmm"… and sentences you started, stopped and said again (the same 3–5 words within 15 s; the later take is kept). Marked in the Script tab, removed in one click there, or as AI finishing touches. ClipForge asks the speech-to-text to write fillers down, but how many it catches depends on the speech
+- ✅ **Filler words & retakes**: "um", "uh", "hmm"… and sentences you started, stopped and said again (the same 3–5 words within 15 s; the later take is kept). Marked in the Script tab, removed in one click there, or as AI finishing touches. RJClip asks the speech-to-text to write fillers down, but how many it catches depends on the speech
 - ✅ **Titles** (Editor → **Text**): lower third, big title, top banner, subscribe button, chapter card; text, second line, colours, position, size; animated in and out. Rendered sharply by the same subtitle engine as captions; previewed in the monitor
 - ✅ **Privacy blur** (Editor → **Blur**): blur, pixelate or black box; box or oval; **draw it on the preview**, or **Blur faces here** in one click; **Follow it** tracks what moves (and finds it again after a cut). Works best on things with clear detail; check the preview
 - ✅ **Music beat sync** (Editor → **Beat**): finds the tempo and beats of the song on your music track (within about a frame in tests), shows them on the timeline, **snaps nearby cuts onto the beat** (roll edits: nothing else shifts, linked sound follows), and ends the music with the video. No built-in music library (licences); YouTube Studio's Audio Library has free music you can import
@@ -181,6 +181,12 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ **Nudge** −0.1 s / +0.1 s, or **To playhead**
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
+
+## Rename — ClipForge → RJClip ✅ (Nov 2026)
+
+- App, docs, launchers (`Start RJClip.bat`, `Update RJClip.bat`), portable zip, CI and the GitHub repo (`rileyyes/rjclip`; the old address redirects)
+- Kept working: `CLIPFORGE_*` settings (copied to `RJCLIP_*`), an existing `~/ClipForgeWorkspace`, the old `X-ClipForge` header, the old `.bat` files (left unchanged so an update running from them doesn't break)
+- The launcher points git at the new repo and renames the `clipforge` folder to `RJClip` once its window is closed
 
 ## Phase 14 — Background music & captions 🟡 (built and tested automatically; waiting for your hands-on test)
 

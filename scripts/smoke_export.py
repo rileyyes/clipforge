@@ -1,4 +1,4 @@
-"""Smoke test against a RUNNING ClipForge: import a clip, edit, export twice.
+"""Smoke test against a RUNNING RJClip: import a clip, edit, export twice.
 
 Used by CI to check the Windows portable package works on a clean machine, and handy
 for checking any install by hand:
@@ -32,7 +32,7 @@ def main() -> int:
     a = ap.parse_args()
 
     def req(method, path, body=None, raw=None):
-        hd = {"X-ClipForge": "1"}
+        hd = {"X-RJClip": "1"}
         data = raw
         if body is not None:
             data = json.dumps(body).encode()
@@ -59,7 +59,7 @@ def main() -> int:
     st, sysinfo = req("GET", "/api/system")
     assert st == 200, sysinfo
     step(f"ffmpeg: {sysinfo['ffmpeg']} | encoder: {sysinfo['h264_encoder']} | workspace: {sysinfo['workspace']}")
-    assert sysinfo["ffmpeg"] and "unknown" not in str(sysinfo["ffmpeg"]).lower(), "FFmpeg not found by ClipForge"
+    assert sysinfo["ffmpeg"] and "unknown" not in str(sysinfo["ffmpeg"]).lower(), "FFmpeg not found by RJClip"
 
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "smoke.mp4"

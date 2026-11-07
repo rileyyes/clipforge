@@ -1,9 +1,9 @@
 <#
-  ClipForge launcher for Windows. Double-click "Start ClipForge.bat" in the repo folder,
+  RJClip launcher for Windows. Double-click "Start RJClip.bat" in the repo folder,
   or run:  powershell -ExecutionPolicy Bypass -File scripts\windows\start.ps1 [-Update] [-WithAI] [-NoBrowser]
 
   First run: creates backend\.venv, installs Python packages, installs + builds the UI.
-  Later runs: only reinstalls/rebuilds when something changed, then starts ClipForge and
+  Later runs: only reinstalls/rebuilds when something changed, then starts RJClip and
   opens http://127.0.0.1:8765.  -Update pulls the latest version from GitHub first.
   -WithAI also installs the free speech-to-text (for bleeps and captions).
   Everything stays on this computer.
@@ -12,7 +12,7 @@ param([switch]$Update, [switch]$WithAI, [switch]$NoBrowser)
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
-$Port = if ($env:CLIPFORGE_PORT) { $env:CLIPFORGE_PORT } else { "8765" }
+$Port = if ($env:RJCLIP_PORT) { $env:RJCLIP_PORT } else { "8765" }
 $Url = "http://127.0.0.1:$Port"
 
 function Say($msg) { Write-Host "  $msg" -ForegroundColor Cyan }
@@ -35,23 +35,49 @@ function Changed($name, $value) { -not (Test-Path (Stamp $name)) -or (Get-Conten
 function Mark($name, $value) { Set-Content -Path (Stamp $name) -Value $value -NoNewline }
 
 Write-Host ""
-Write-Host "  ClipForge" -ForegroundColor White
+Write-Host "  RJClip" -ForegroundColor White
 Write-Host ""
 
 # ---- already running? just open it
 try {
   $r = Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "$Url/api/health"
   if ($r.StatusCode -eq 200) {
-    Say "ClipForge is already running."
+    Say "RJClip is already running."
     if (-not $NoBrowser) { Start-Process $Url }
     exit 0
   }
 } catch { }
 
+# ---- the app was renamed ClipForge -> RJClip: rename this folder too, once this window is closed
+# (it can't be renamed while RJClip runs from inside it). Projects aren't in here, so nothing moves.
+$Leaf = Split-Path $Root -Leaf
+$NewRoot = Join-Path (Split-Path $Root -Parent) "RJClip"
+if ($Leaf -ieq "clipforge" -and -not (Test-Path $NewRoot) -and -not $env:CI) {
+  $helper = @"
+Wait-Process -Id $PID -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+for (`$i = 0; `$i -lt 20; `$i++) {
+  try { Rename-Item -LiteralPath '$Root' -NewName 'RJClip' -ErrorAction Stop; break } catch { Start-Sleep -Seconds 3 }
+}
+"@
+  $enc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($helper))
+  Start-Process powershell -WindowStyle Hidden -ArgumentList "-NoProfile", "-EncodedCommand", $enc
+  Write-Host "  ClipForge is now called RJClip. When you close this window, this folder becomes" -ForegroundColor Yellow
+  Write-Host "  $NewRoot  -  next time, double-click 'Start RJClip.bat' in there." -ForegroundColor Yellow
+  Write-Host ""
+}
+
 # ---- update
 if ($Update) {
   if (-not (Have git)) { Fail "Git isn't installed, so -Update can't pull. Install it: winget install Git.Git" }
   Say "Getting the latest version from GitHub..."
+  # the GitHub repo was renamed clipforge -> rjclip (GitHub redirects the old address too)
+  $origin = (git remote get-url origin 2>$null)
+  if ($origin -match "rileyyes/clipforge(\.git)?$") {
+    # only switch once the renamed repo exists (until then, keep pulling from the old address)
+    git ls-remote --exit-code "https://github.com/rileyyes/rjclip.git" HEAD *> $null
+    if ($LASTEXITCODE -eq 0) { git remote set-url origin "https://github.com/rileyyes/rjclip.git" }
+  }
   git pull --ff-only
   if ($LASTEXITCODE -ne 0) { Fail "git pull failed (see above). If you changed files yourself, run 'git status' to see them." }
 }
@@ -108,7 +134,7 @@ if ($WithAI) {
   if (Changed "pip-ai" $ai) {
     Say "Installing the free speech-to-text (one time; the first transcription also downloads its model)..."
     & $VenvPy -m pip install --disable-pip-version-check -q -r backend\requirements-ai.txt
-    if ($LASTEXITCODE -ne 0) { Fail "Installing speech-to-text failed (see above). ClipForge still works without it." }
+    if ($LASTEXITCODE -ne 0) { Fail "Installing speech-to-text failed (see above). RJClip still works without it." }
     Mark "pip-ai" $ai
   }
 }
@@ -133,14 +159,14 @@ try {
   }
 } finally { Pop-Location }
 
-# ---- FFmpeg (ClipForge also finds winget/Chocolatey/Scoop installs that aren't on PATH)
+# ---- FFmpeg (RJClip also finds winget/Chocolatey/Scoop installs that aren't on PATH)
 $ff = & $VenvPy -c "import sys; sys.path.insert(0, 'backend'); from app.config import find_tool; print(find_tool('ffmpeg'))"
 if (-not (Have $ff) -and -not (Test-Path $ff)) {
-  Write-Host "  FFmpeg wasn't found. Install it with:  winget install Gyan.FFmpeg   (ClipForge finds it automatically)" -ForegroundColor Yellow
+  Write-Host "  FFmpeg wasn't found. Install it with:  winget install Gyan.FFmpeg   (RJClip finds it automatically)" -ForegroundColor Yellow
 }
 
 # ---- start
-Say "Starting ClipForge at $Url  (close this window or press Ctrl+C to stop)"
+Say "Starting RJClip at $Url  (close this window or press Ctrl+C to stop)"
 if (-not $NoBrowser) {
   Start-Job -ScriptBlock {
     param($u)

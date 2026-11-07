@@ -4,7 +4,7 @@ import { addBlur, blurAt, clipAt, removeBlur, sourceTimeAt, updateBlur, type OpR
 import type { Blur, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
 
-const H = { "X-ClipForge": "1", "Content-Type": "application/json" };
+const H = { "X-RJClip": "1", "Content-Type": "application/json" };
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, { method: "POST", headers: H, body: JSON.stringify(body) });
   const d = await r.json().catch(() => ({}));

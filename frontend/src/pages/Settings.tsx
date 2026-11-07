@@ -3,13 +3,13 @@ import { api, fmtBytes, type SystemInfo } from "../api";
 import { useToast } from "../components/ui";
 
 const ENV = [
-  ["CLIPFORGE_WORKSPACE", "Where projects, media and exports are stored", "~/ClipForgeWorkspace"],
-  ["CLIPFORGE_PORT", "Local port", "8765"],
-  ["CLIPFORGE_MAX_UPLOAD_MB", "Largest single import", "20480"],
-  ["CLIPFORGE_MAX_WORKSPACE_GB", "Workspace storage quota", "200"],
-  ["CLIPFORGE_RENDER_TIMEOUT_S", "Max time for one processing step", "21600"],
-  ["CLIPFORGE_JOB_WORKERS", "Parallel background jobs", "1"],
-  ["CLIPFORGE_FFMPEG / CLIPFORGE_FFPROBE", "Custom FFmpeg binaries", "from PATH"],
+  ["RJCLIP_WORKSPACE", "Where projects, media and exports are stored", "~/RJClipWorkspace (or an existing ~/ClipForgeWorkspace)"],
+  ["RJCLIP_PORT", "Local port", "8765"],
+  ["RJCLIP_MAX_UPLOAD_MB", "Largest single import", "20480"],
+  ["RJCLIP_MAX_WORKSPACE_GB", "Workspace storage quota", "200"],
+  ["RJCLIP_RENDER_TIMEOUT_S", "Max time for one processing step", "21600"],
+  ["RJCLIP_JOB_WORKERS", "Parallel background jobs", "1"],
+  ["RJCLIP_FFMPEG / RJCLIP_FFPROBE", "Custom FFmpeg binaries", "from PATH"],
 ];
 
 export default function SettingsPage() {

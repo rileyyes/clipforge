@@ -116,7 +116,7 @@ def build_spec(app_routes, version: str = "0.7.0") -> dict:
                 op["parameters"] = params
             if method not in ("GET", "DELETE"):
                 op["parameters"] = op.get("parameters", []) + [
-                    {"name": "X-ClipForge", "in": "header", "required": True, "schema": {"const": "1"},
+                    {"name": "X-RJClip", "in": "header", "required": True, "schema": {"const": "1"},
                      "description": "CSRF guard: required on every state-changing request"}]
                 model = _body_model(fn)
                 if model is not None:
@@ -127,8 +127,8 @@ def build_spec(app_routes, version: str = "0.7.0") -> dict:
             paths.setdefault(path, {})[method.lower()] = op
     return {
         "openapi": "3.1.0",
-        "info": {"title": "ClipForge local API", "version": version,
-                 "description": "Local-only API of the ClipForge editor (http://127.0.0.1). "
+        "info": {"title": "RJClip local API", "version": version,
+                 "description": "Local-only API of the RJClip editor (http://127.0.0.1). "
                                 "Generated from the server's routes; see docs/API.md for behaviour notes."},
         "servers": [{"url": "/"}],
         "tags": [{"name": k, "description": v} for k, v in TAGS],
@@ -145,7 +145,7 @@ def docs_html(spec: dict) -> str:
     for path, ops in spec["paths"].items():
         for method, op in ops.items():
             by_tag.setdefault(op["tags"][0], []).append((path, method, op))
-    out = ["<!doctype html><html><head><meta charset='utf-8'><title>ClipForge API</title><style>",
+    out = ["<!doctype html><html><head><meta charset='utf-8'><title>RJClip API</title><style>",
            "body{font:14px system-ui,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px;color:#222}",
            "h2{margin-top:28px;border-bottom:1px solid #ddd}code,pre{font:12px ui-monospace,monospace}",
            ".m{display:inline-block;width:58px;font-weight:700}.get{color:#1a7f37}.post{color:#0969da}",

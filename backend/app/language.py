@@ -12,7 +12,7 @@ Deterministic features (no AI needed), computed from Whisper word timestamps:
 All are rates per minute of the moment. They feed the style weights in ``autoedit``.
 
 Optional: a local LLM (free Ollama, auto-detected on 127.0.0.1:11434, or
-``CLIPFORGE_LLM_BASE_URL``) rates transcript chunks for how funny / interesting they are.
+``RJCLIP_LLM_BASE_URL``) rates transcript chunks for how funny / interesting they are.
 Its scores become one more feature ("ai") with its one-line reason shown to you.
 Nothing is sent anywhere unless such a server is configured; a non-local URL is flagged.
 """
@@ -149,16 +149,16 @@ def detect_ollama(base: str = "http://127.0.0.1:11434", timeout: float = 0.6) ->
 
 
 def text_model():
-    """The configured text model (CLIPFORGE_LLM_BASE_URL), else a running local Ollama, else None."""
+    """The configured text model (RJCLIP_LLM_BASE_URL), else a running local Ollama, else None."""
     from .thumb_providers import TextModel, text_model as configured
-    if os.environ.get("CLIPFORGE_LLM", "auto").lower() == "off":
+    if os.environ.get("RJCLIP_LLM", "auto").lower() == "off":
         return None
     m = configured()
     if m is not None:
         return m
     found = detect_ollama()
     if found:
-        return TextModel("http://127.0.0.1:11434/v1", os.environ.get("CLIPFORGE_LLM_MODEL", found), "", False)
+        return TextModel("http://127.0.0.1:11434/v1", os.environ.get("RJCLIP_LLM_MODEL", found), "", False)
     return None
 
 

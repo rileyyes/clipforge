@@ -10,7 +10,7 @@ Image providers
 
 Text model (creative director / refinement / optional vision)
 * OpenAI-compatible ``/chat/completions`` — OpenAI, or a local Ollama / LM Studio
-  server via ``CLIPFORGE_LLM_BASE_URL``.
+  server via ``RJCLIP_LLM_BASE_URL``.
 
 Configuration is environment-only (keys never reach the browser). Provider base
 URLs come from configuration, never from user input (no SSRF).
@@ -96,7 +96,7 @@ def _http(method: str, url: str, *, headers: dict, body: Optional[bytes], timeou
 
 
 def _multipart(fields: dict[str, str], files: list[tuple[str, str, bytes, str]]) -> tuple[bytes, str]:
-    boundary = "----clipforge" + uuid.uuid4().hex
+    boundary = "----rjclip" + uuid.uuid4().hex
     out = bytearray()
     for k, v in fields.items():
         out += f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode()
@@ -187,19 +187,19 @@ class SDWebUI(ImageProvider):
 def image_provider() -> Optional[ImageProvider]:
     """Free/local first: Stable Diffusion WebUI is used automatically when its URL is
     set. The paid OpenAI provider is only used when explicitly chosen."""
-    choice = os.environ.get("CLIPFORGE_IMAGE_PROVIDER", "auto").lower()
-    sd = os.environ.get("CLIPFORGE_SDWEBUI_URL", "")
+    choice = os.environ.get("RJCLIP_IMAGE_PROVIDER", "auto").lower()
+    sd = os.environ.get("RJCLIP_SDWEBUI_URL", "")
     if choice == "off":
         return None
     if choice in ("auto", "sdwebui") and sd:
-        return SDWebUI(sd, int(os.environ.get("CLIPFORGE_SDWEBUI_STEPS", "28")))
+        return SDWebUI(sd, int(os.environ.get("RJCLIP_SDWEBUI_STEPS", "28")))
     if choice == "openai":
         key = os.environ.get("OPENAI_API_KEY", "")
         if not key:
             return None
-        return OpenAIImages(key, os.environ.get("CLIPFORGE_OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                            os.environ.get("CLIPFORGE_OPENAI_IMAGE_MODEL", "gpt-image-1"),
-                            os.environ.get("CLIPFORGE_OPENAI_IMAGE_QUALITY", "medium"))
+        return OpenAIImages(key, os.environ.get("RJCLIP_OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                            os.environ.get("RJCLIP_OPENAI_IMAGE_MODEL", "gpt-image-1"),
+                            os.environ.get("RJCLIP_OPENAI_IMAGE_QUALITY", "medium"))
     return None
 
 
@@ -224,7 +224,7 @@ class TextModel:
         content: list | str = user
         if images:
             if not self.vision:
-                raise ProviderError("This text model isn't configured for images (CLIPFORGE_LLM_VISION=1).")
+                raise ProviderError("This text model isn't configured for images (RJCLIP_LLM_VISION=1).")
             content = [{"type": "text", "text": user}] + [
                 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(i).decode()}}
                 for i in images[:6]]
@@ -249,22 +249,22 @@ class TextModel:
 
 
 def text_model() -> Optional[TextModel]:
-    """Optional. Uses CLIPFORGE_LLM_BASE_URL (e.g. a free local Ollama server).
+    """Optional. Uses RJCLIP_LLM_BASE_URL (e.g. a free local Ollama server).
     A paid API is only used if you point the base URL at one and give a key."""
-    if os.environ.get("CLIPFORGE_LLM", "auto").lower() == "off":
+    if os.environ.get("RJCLIP_LLM", "auto").lower() == "off":
         return None
-    base = os.environ.get("CLIPFORGE_LLM_BASE_URL", "")
+    base = os.environ.get("RJCLIP_LLM_BASE_URL", "")
     if not base:
         return None
-    return TextModel(base, os.environ.get("CLIPFORGE_LLM_MODEL", "llama3.1"),
-                     os.environ.get("CLIPFORGE_LLM_API_KEY", ""),
-                     os.environ.get("CLIPFORGE_LLM_VISION", "0") == "1")
+    return TextModel(base, os.environ.get("RJCLIP_LLM_MODEL", "llama3.1"),
+                     os.environ.get("RJCLIP_LLM_API_KEY", ""),
+                     os.environ.get("RJCLIP_LLM_VISION", "0") == "1")
 
 
 SETUP_HELP = {
     "sdwebui": "Free: install Stable Diffusion WebUI Forge (needs an NVIDIA GPU, ~6-8 GB VRAM recommended), "
-               "start it with the --api flag, then start ClipForge with CLIPFORGE_SDWEBUI_URL=http://127.0.0.1:7860.",
-    "llm": "Optional and free: install Ollama, run `ollama pull llama3.1`, then start ClipForge with "
-           "CLIPFORGE_LLM_BASE_URL=http://127.0.0.1:11434/v1.",
-    "openai": "Optional, paid: CLIPFORGE_IMAGE_PROVIDER=openai and OPENAI_API_KEY=... (billed per image by OpenAI).",
+               "start it with the --api flag, then start RJClip with RJCLIP_SDWEBUI_URL=http://127.0.0.1:7860.",
+    "llm": "Optional and free: install Ollama, run `ollama pull llama3.1`, then start RJClip with "
+           "RJCLIP_LLM_BASE_URL=http://127.0.0.1:11434/v1.",
+    "openai": "Optional, paid: RJCLIP_IMAGE_PROVIDER=openai and OPENAI_API_KEY=... (billed per image by OpenAI).",
 }

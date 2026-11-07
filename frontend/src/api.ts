@@ -4,7 +4,7 @@ export class ApiError extends Error {
   constructor(message: string, public status: number, public data?: any) { super(message); }
 }
 
-const H = { "X-ClipForge": "1" };
+const H = { "X-RJClip": "1" };
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
@@ -197,7 +197,7 @@ function sendFile<T>(url: string, file: File, onProgress: (f: number) => void): 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
-    xhr.setRequestHeader("X-ClipForge", "1");
+    xhr.setRequestHeader("X-RJClip", "1");
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = () => {
@@ -205,7 +205,7 @@ function sendFile<T>(url: string, file: File, onProgress: (f: number) => void): 
       try { data = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
       else reject(new ApiError(data.error || (xhr.status === 413 ? "File is too large" :
-        `Upload failed (server error ${xhr.status}) — check the terminal running ClipForge for details`), xhr.status));
+        `Upload failed (server error ${xhr.status}) — check the terminal running RJClip for details`), xhr.status));
     };
     xhr.onerror = () => reject(new ApiError("Network error during upload", 0));
     xhr.send(file);

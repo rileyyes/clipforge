@@ -33,7 +33,7 @@ CSP = ("default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; 
 class LocalSecurityMiddleware:
     """CSRF / cross-site protection for a localhost app.
 
-    * State-changing requests must carry ``X-ClipForge: 1``. Browsers cannot add
+    * State-changing requests must carry ``X-RJClip: 1``. Browsers cannot add
       custom headers cross-origin without a CORS preflight, which we never grant.
     * If an Origin header is present it must be one of our own origins.
     * Adds strict security headers to every response.
@@ -53,8 +53,9 @@ class LocalSecurityMiddleware:
         if origin and origin not in self.allowed:
             await JSONResponse({"error": "cross-origin request blocked"}, 403)(scope, receive, send)
             return
-        if method not in SAFE_METHODS and headers.get("x-clipforge") != "1":
-            await JSONResponse({"error": "missing X-ClipForge header"}, 403)(scope, receive, send)
+        # X-ClipForge is the header's name from before the rename (old scripts)
+        if method not in SAFE_METHODS and headers.get("x-rjclip") != "1" and headers.get("x-clipforge") != "1":
+            await JSONResponse({"error": "missing X-RJClip header"}, 403)(scope, receive, send)
             return
 
         async def send_with_headers(message):
@@ -157,7 +158,7 @@ def main() -> None:
         print("\n*** WARNING: " + MISSING_FFMPEG + "\n*** Importing and exporting videos won't work until it's fixed.\n")
     else:
         print(f"Using FFmpeg: {settings.ffmpeg_bin}")
-    print(f"ClipForge workspace: {settings.workspace}")
+    print(f"RJClip workspace: {settings.workspace}")
     print(f"Open http://{settings.host}:{settings.port}")
     uvicorn.run(create_app(settings), host=settings.host, port=settings.port,
                 log_level="info", access_log=False)
