@@ -96,9 +96,27 @@ def track(env: np.ndarray, bpm: float, tightness: float = 100) -> np.ndarray:
     return np.array(beats[::-1]) / FPS
 
 
+def mood(x: np.ndarray, bpm: float) -> dict:
+    """How energetic a song is, 0 (calm) .. 1 (hype): tempo, loudness, and how much of the
+    song is busy (drums, strong attacks). A rough guide for matching songs to scenes."""
+    if x.size < SR:
+        return {"energy": 0.0, "label": "calm"}
+    blk = SR // 2
+    n = x.size // blk
+    rms = np.sqrt((x[: n * blk].reshape(n, blk) ** 2).mean(axis=1) + 1e-12)
+    db = 20 * np.log10(rms)
+    loud = float(np.percentile(db, 75))
+    busy = float((np.abs(np.diff(x[: n * blk].reshape(n, blk), axis=1)).mean(axis=1) / (rms + 1e-9)).mean())
+    e_tempo = np.clip((bpm - 70) / 80, 0, 1)
+    e_loud = np.clip((loud + 30) / 22, 0, 1)
+    e_busy = np.clip((busy - 0.05) / 0.5, 0, 1)
+    energy = float(round(0.4 * e_tempo + 0.35 * e_loud + 0.25 * e_busy, 3))
+    return {"energy": energy, "label": "calm" if energy < 0.38 else "medium" if energy < 0.62 else "hype"}
+
+
 def detect(x: np.ndarray) -> dict:
     env = onset_envelope(x)
     bpm = tempo(env)
     # onset frame i covers samples [i*HOP, i*HOP+WIN): its time is the window's centre
     beats = track(env, bpm) + WIN / 2 / SR
-    return {"bpm": round(bpm, 1), "beats": [round(float(b), 3) for b in beats if b >= 0]}
+    return {"bpm": round(bpm, 1), "beats": [round(float(b), 3) for b in beats if b >= 0], **mood(x, bpm)}

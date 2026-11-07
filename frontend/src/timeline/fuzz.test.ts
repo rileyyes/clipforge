@@ -3,7 +3,7 @@
 // invariants after every step. Also writes sample timelines so the backend can
 // confirm it accepts everything the engine produces (scripts/crosscheck.py).
 import { test } from "node:test";
-import { applyLayout, insertFreeze, RAMP_SLOWMO, RAMP_SPEEDUP, speedRamp } from "./pro";
+import { applyLayout, insertFreeze, insertTeaser, RAMP_SLOWMO, RAMP_SPEEDUP, speedRamp } from "./pro";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
@@ -95,7 +95,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 31);
+      const op = Math.floor(r() * 32);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -154,10 +154,11 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
           : linkClips(tl, [c.id, ...tl.tracks.flatMap((tr) => tr.clips.filter((x) => x.id !== c.id && Math.abs(x.start - c.start) < 1e-4
               && Math.abs(clipDuration(x) - clipDuration(c)) < 1e-4).slice(0, 1).map((x) => x.id))]); break;
         case 26: res = r() < 0.6 ? addMarker(tl, t) : (tl.markers?.length ? removeMarker(tl, pick(tl.markers).id) : { error: "none" }); break;
-        case 27: res = addMusic(tl, pick(MEDIA), t, t + r() * 40, { ...MUSIC_DEFAULTS, loop: r() < 0.7, songStart: r() < 0.3 ? r() * 5 : 0, volume: r() * 1.5 }); break;
+        case 27: res = addMusic(tl, pick(MEDIA), t, t + r() * 40, { ...MUSIC_DEFAULTS, crossfade: r() < 0.5 ? r() * 2 : 0, beats: r() < 0.5 ? Array.from({ length: 40 }, (_, i) => 0.3 + i * (0.35 + r() * 0.3)) : undefined, loop: r() < 0.7, songStart: r() < 0.3 ? r() * 5 : 0, volume: r() * 1.5 }); break;
         case 28: res = c ? insertFreeze(tl, c.id, t, { ...MEDIA[0], id: MEDIA[0].id, duration: 0.5 + r() * 3 }) : { error: "none" }; break;
         case 29: res = c ? speedRamp(tl, c.id, t, r() < 0.5 ? RAMP_SLOWMO : { ...RAMP_SPEEDUP, hold: r() * 3 + 0.2 }) : { error: "none" }; break;
         case 30: res = applyLayout(tl, t, 1280, 720, pick(["side_by_side", "top_bottom", "pip", "reset"] as const), pick(["tl", "tr", "bl", "br"] as const), 0.2 + r() * 0.3); break;
+        case 31: { const a = r() * 30; res = insertTeaser(tl, a, a + 0.3 + r() * 6); break; }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

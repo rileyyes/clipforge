@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Runs every automated check. Usage: scripts/verify_all.sh
 set -euo pipefail
+# real offline-voice tests when a local Piper copy is there (see CI)
+[ -d /tmp/piper ] && export RJCLIP_TEST_PIPER_DIR=/tmp/piper
 cd "$(dirname "$0")/.."
 echo "== frontend: engine unit + fuzz tests, typecheck, build"
 (cd frontend && npm test --silent 2>&1 | grep -E "^# (pass|fail)" && npm run --silent typecheck && node build.mjs >/dev/null 2>&1 && echo "build ok")
@@ -42,6 +44,8 @@ echo "== browser E2E: Phase 14 (background music for a time range, caption previ
 python3 scripts/e2e_phase14.py 2>&1 | grep -E "OK|caption|music pieces|overflow|song vs|Error|assert"
 echo "== browser E2E: Phase 15 (brand kit, shapes, green screen, layouts, freeze, speed ramp, reverse, export check)"
 python3 scripts/e2e_phase15.py 2>&1 | grep -E "OK|brand kit|arrow at|V1 after|intro pixel|Error|assert"
+echo "== browser E2E: Phase 16 (hook checker, teaser, B-roll from your clips, voiceover, songs matched to the video)"
+python3 scripts/e2e_phase16.py 2>&1 | grep -E "OK|hook score|teaser|B-roll|voiceover|music plan|export ok|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

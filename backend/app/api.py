@@ -102,6 +102,8 @@ class Services:
         self.jobs.register("facecam_sync", self._facecam_sync)
         self.jobs.register("facecam_matte", self._facecam_matte)
         self.jobs.register("blur_track", self._blur_track)
+        self.jobs.register("voice_setup", self._voice_setup)
+        self.jobs.register("voiceover", self._voiceover)
         try:  # the thumbnail maker is optional: never let it stop the editor starting
             from .thumb_api import register_thumb_jobs
             register_thumb_jobs(self)
@@ -254,6 +256,33 @@ class Services:
         ctx.stage(1, 1, "Finding you in every frame")
         path = matte.ensure(self.settings, self.store.dir(pid), asset, ctx.cancel_event, ctx.progress)
         return {"media_id": asset.id, "bytes": path.stat().st_size}
+
+    def _voice_setup(self, ctx: JobContext) -> dict:
+        """Download the free offline voice (Piper + one voice model), once."""
+        from . import voiceover as VO
+        ctx.stage(1, 1, "Downloading the voice")
+        return VO.setup(self.settings.workspace, ctx.progress, ctx.cancel_event)  # VoiceError messages are shown as-is
+
+    def _voiceover(self, ctx: JobContext) -> dict:
+        """Read a line of text aloud and add it to the project as a sound file."""
+        from . import voiceover as VO
+        pid, prm = ctx.job.project_id, ctx.job.params
+        orig = media_svc.media_dir(self.store.dir(pid), "original")
+        mid = new_id()
+        dest = orig / f"{mid}.wav"
+        ctx.stage(1, 1, "Speaking")
+        try:
+            VO.speak(self.settings.workspace, prm["text"], dest, prm.get("speaker", "Voice 1"), float(prm.get("speed", 1.0)))
+        except VO.VoiceError:
+            dest.unlink(missing_ok=True)
+            raise
+        words = " ".join(prm["text"].split()[:5])
+        asset = media_svc.build_asset(self.settings, mid, dest, display_name(f"Voiceover - {words}.wav"))
+        h = hashlib.sha256(dest.read_bytes())
+        asset.sha256 = h.hexdigest()
+        media_svc.mark_read_only(dest)
+        self.store.update(pid, lambda d: {**d, "media": d["media"] + [asset.model_dump(mode="json")]})
+        return {"media": asset.model_dump(mode="json")}
 
     def _blur_track(self, ctx: JobContext) -> dict:
         """Follow a blurred area through the clip(s) under it (template matching)."""
@@ -493,6 +522,19 @@ def build_routes(svc: Services) -> list[Route]:
         return Response(status_code=204)
 
     # -- media ------------------------------------------------------------
+    async def refuse_upload(request: Request, status: int, msg: str) -> Response:
+        """Turn an upload down, but read (and throw away) a small one first: answering before
+        the file has been sent can make the sender see a dropped connection instead of the
+        message (seen in tests; browsers can do the same)."""
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) <= 64 * 1024**2:
+            try:
+                async for _ in request.stream():
+                    pass
+            except Exception:  # noqa: BLE001 - the client went away: nothing to tell it
+                pass
+        return err(status, msg)
+
     async def upload_media(request: Request):
         pid = pid_of(request)
         load(pid)
@@ -500,18 +542,18 @@ def build_routes(svc: Services) -> list[Route]:
         try:
             ext = media_extension(filename)
         except PathSecurityError as exc:
-            return err(415, str(exc))
+            return await refuse_upload(request, 415, str(exc))
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > S.max_upload_bytes:
             return err(413, f"file exceeds the {S.max_upload_bytes // 1024**2} MB upload limit")
         if dir_size(S.workspace) > S.max_workspace_bytes:
-            return err(507, "workspace storage quota reached; delete projects or run cleanup")
+            return await refuse_upload(request, 507, "workspace storage quota reached; delete projects or run cleanup")
         du = shutil.disk_usage(S.workspace)
         if declared and declared.isdigit() and int(declared) > du.free - 2 * 1024**3:
             return err(507, "not enough free disk space for this file")
 
         if not ff.tools_available(S.ffmpeg_bin, S.ffprobe_bin):
-            return err(503, ff.MISSING_FFMPEG)
+            return await refuse_upload(request, 503, ff.MISSING_FFMPEG)
         mid = new_id()
         odir = media_svc.media_dir(store.dir(pid), "original")
         partial = odir / f"{mid}{ext}.partial"
@@ -716,6 +758,82 @@ def build_routes(svc: Services) -> list[Route]:
         job = svc.jobs.submit("derive_media", pid, {"media_id": mid})
         return JSONResponse({"media": asset.model_dump(mode="json"), "job_id": job.id}, status_code=201)
 
+    # ---------------------------------------------------------------- smarter AI (Phase 16)
+    async def hook_check(request: Request):
+        pid = pid_of(request)
+        from . import hook
+        return JSONResponse(hook.check(load(pid), store.dir(pid)))
+
+    async def music_plan(request: Request):
+        """Which of your songs fits each part of the video (calm talking vs action)."""
+        pid = pid_of(request)
+        from . import beats as BT, hook
+        from starlette.concurrency import run_in_threadpool
+        p = load(pid)
+        main = {c.media_id for t in p.timeline.tracks if t.role != "music" for c in t.clips}
+        cands = [m for m in p.media if m.has_audio and m.id not in main]   # songs: anything with sound not used as the main video
+        if not cands:
+            return JSONResponse({"sections": hook.sections(p, store.dir(pid)), "songs": [], "plan": [],
+                                 "note": "Import a few songs first (Music tab → Import)."})
+        songs = []
+        for m in cands[:12]:
+            cache = store.dir(pid) / "analysis" / f"beats-{m.id}.json"
+            res = json.loads(cache.read_bytes()) if cache.exists() else {}
+            if "energy" not in res:
+                src = store.dir(pid) / "media" / "original" / m.stored_name
+                if not src.exists():
+                    continue
+                res = await run_in_threadpool(lambda s=src: BT.detect(BT.decode(S.ffmpeg_bin, s)))
+                res["media_id"] = m.id
+                cache.parent.mkdir(exist_ok=True)
+                atomic_write_json(cache, res)
+            songs.append({"media_id": m.id, "name": m.original_name, "duration": m.duration, "bpm": res["bpm"],
+                          "energy": res["energy"], "label": res["label"], "beats": res["beats"]})
+        secs = hook.sections(p, store.dir(pid))
+        return JSONResponse({"sections": secs, "songs": songs, "plan": hook.music_plan(secs, songs), "note": None})
+
+    async def broll_clips(request: Request):
+        pid = pid_of(request)
+        from . import brollclips
+        return JSONResponse(brollclips.suggest(load(pid), store.dir(pid)))
+
+    async def voice_status(request: Request):
+        from . import voiceover as VO
+        st = VO.status(S.workspace)
+        st["job"] = next((j.id for j in svc.jobs.list(None) if j.kind == "voice_setup" and j.status in ("queued", "running")), None)
+        return JSONResponse(st)
+
+    async def voice_setup(request: Request):
+        from . import voiceover as VO
+        st = VO.status(S.workspace)
+        if st["ready"]:
+            return JSONResponse({**st, "job_id": None})
+        if not st["supported"]:
+            return err(422, "The offline voice isn't available for this kind of computer yet.")
+        running = next((j for j in svc.jobs.list(None) if j.kind == "voice_setup" and j.status in ("queued", "running")), None)
+        job = running or svc.jobs.submit("voice_setup", None, {})
+        return JSONResponse({**st, "job_id": job.id}, status_code=202)
+
+    class VoiceBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        text: str = Field(min_length=1, max_length=2000)
+        speaker: str = Field(default="Voice 1", max_length=20)
+        speed: float = Field(default=1.0, ge=0.5, le=2.0)
+
+    async def voiceover(request: Request):
+        from . import voiceover as VO
+        pid = pid_of(request)
+        body = await body_model(request, VoiceBody)
+        load(pid)
+        if not body.text.strip():
+            return err(422, "Type something to say")
+        if body.speaker not in VO.SPEAKERS:
+            return err(422, "unknown voice")
+        if not VO.status(S.workspace)["ready"]:
+            return err(409, "Download the voice first (one time, about 95 MB).")
+        job = svc.jobs.submit("voiceover", pid, body.model_dump())
+        return JSONResponse({"job_id": job.id}, status_code=202)
+
     def fmt_clock(t: float) -> str:
         return f"{int(t // 60)}:{t % 60:04.1f}"
 
@@ -822,18 +940,18 @@ def build_routes(svc: Services) -> list[Route]:
         p = load(pid)
         orig = media_svc.media_dir(store.dir(pid), "original")
         if (orig / asset.stored_name).exists():
-            return err(409, "This file isn't missing, so there is nothing to relink.")
+            return await refuse_upload(request, 409, "This file isn't missing, so there is nothing to relink.")
         try:
             ext = media_extension(request.query_params.get("filename", ""))
         except PathSecurityError as exc:
-            return err(415, str(exc))
+            return await refuse_upload(request, 415, str(exc))
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > S.max_upload_bytes:
             return err(413, f"file exceeds the {S.max_upload_bytes // 1024**2} MB upload limit")
         if dir_size(S.workspace) > S.max_workspace_bytes:
-            return err(507, "workspace storage quota reached; delete projects or run cleanup")
+            return await refuse_upload(request, 507, "workspace storage quota reached; delete projects or run cleanup")
         if not ff.tools_available(S.ffmpeg_bin, S.ffprobe_bin):
-            return err(503, ff.MISSING_FFMPEG)
+            return await refuse_upload(request, 503, ff.MISSING_FFMPEG)
         # what the edit needs from this file
         kinds = {t.kind for t in p.timeline.tracks for c in t.clips if c.media_id == asset.id}
         need_until = max((c.source_out for t in p.timeline.tracks for c in t.clips if c.media_id == asset.id), default=0.0)
@@ -1422,7 +1540,9 @@ def build_routes(svc: Services) -> list[Route]:
             return err(404, "That file has no sound.")
         cache = store.dir(pid) / "analysis" / f"beats-{m.id}.json"
         if cache.exists():
-            return JSONResponse(json.loads(cache.read_bytes()))
+            old = json.loads(cache.read_bytes())
+            if "energy" in old:  # older caches lack the song's energy: work it out again
+                return JSONResponse(old)
         from . import beats as BT
         from starlette.concurrency import run_in_threadpool
         src = store.dir(pid) / "media" / "original" / m.stored_name
@@ -2031,6 +2151,12 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/media/{mid}/relink", relink_media, methods=["POST"]),
         Route(P + "/media/{mid}/derive", derive_media, methods=["POST"]),
         Route(P + "/brand/watermark", project_watermark, methods=["POST"]),
+        Route(P + "/hook", hook_check, methods=["GET"]),
+        Route(P + "/broll/clips", broll_clips, methods=["GET"]),
+        Route(P + "/music/plan", music_plan, methods=["GET"]),
+        Route(P + "/voiceover", voiceover, methods=["POST"]),
+        Route("/api/voice", voice_status, methods=["GET"]),
+        Route("/api/voice/setup", voice_setup, methods=["POST"]),
         Route(P + "/brand/watermark.png", project_watermark_image, methods=["GET"]),
         Route(P + "/brand/import", project_brand_import, methods=["POST"]),
         Route("/api/brand", brand_get, methods=["GET"]),

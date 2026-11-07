@@ -22,17 +22,28 @@ export default function MusicSection({ projectId, timeline, media, playhead, see
   const song = media[songId] ?? songs.find((m) => m.kind === "audio") ?? null;
   const [from, setFrom] = useState("0:00.00");
   const [to, setTo] = useState<string | null>(null);   // null = end of the video
-  const [o, setO] = useState<MusicOptions>(MUSIC_DEFAULTS);
+  const [o, setO] = useState<MusicOptions>({ ...MUSIC_DEFAULTS, crossfade: 1 });
+  const [plan, setPlan] = useState<{ plan: { start: number; end: number; media_id: string }[]; songs: { media_id: string; name: string; bpm: number; energy: number; label: string; beats: number[] }[];
+    sections: { start: number; end: number; label: string }[]; note: string | null } | null>(null);
+  const [planning, setPlanning] = useState(false);
+  const beatsOf = useRef<Record<string, number[]>>({});
   const [uploading, setUploading] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const items = musicItems(timeline);
 
   const toText = to ?? fmtTime(end);
   const fromT = parseTime(from), toT = parseTime(toText);
-  const add = () => {
+  const add = async () => {
     if (!song) return toast("Pick a song first (or import one)", true);
     if (fromT === null || toT === null) return toast("Type the times like 0:12 or 12.5", true);
-    const r = addMusic(timeline, song, fromT, toT, o);
+    let beats = beatsOf.current[song.id];
+    if (o.crossfade && !beats && song.duration < toT - fromT) {  // loops line up on whole bars when we know the beat
+      try {
+        const res = await fetch(`/api/projects/${projectId}/beats`, { method: "POST", headers: { "X-RJClip": "1", "Content-Type": "application/json" }, body: JSON.stringify({ media_id: song.id }) });
+        if (res.ok) beats = beatsOf.current[song.id] = (await res.json()).beats;
+      } catch { /* no beat info: plain crossfade */ }
+    }
+    const r = addMusic(timeline, song, fromT, toT, { ...o, beats });
     if (commit(r, "Add music")) {
       const loops = (r.created?.length ?? 1);
       toast(`Added “${song.original_name}” from ${fmtTime(fromT)} to ${fmtTime(toT)}${loops > 1 ? ` (looped ${loops}×)` : ""}`);
@@ -92,8 +103,49 @@ export default function MusicSection({ projectId, timeline, media, playhead, see
           <input type="number" min={0} step={1} value={o.songStart} onChange={(e) => setO({ ...o, songStart: Math.max(0, +e.target.value) })} /></label>
         <label className="row" style={{ fontSize: 12, alignSelf: "end" }}>
           <input type="checkbox" checked={o.loop} onChange={(e) => setO({ ...o, loop: e.target.checked })} />Loop if shorter</label>
+        <label className="row" style={{ fontSize: 12, alignSelf: "end" }} title="Loops overlap and fade into each other, starting on the beat and lasting whole bars (uses a second music track)">
+          <input type="checkbox" aria-label="Smooth loops" checked={!!o.crossfade} disabled={!o.loop} onChange={(e) => setO({ ...o, crossfade: e.target.checked ? 1 : 0 })} />Smooth loops</label>
       </div>
       <button className="btn primary" disabled={!song} onClick={add}><Icon name="music" size={14} />Add music</button>
+      <div className="insp-section" style={{ margin: 0, padding: 0, border: 0, display: "grid", gap: 6 }}>
+        <button className="btn sm" disabled={planning} title="Splits your video into calm and lively parts (or uses your markers) and picks one of your songs for each"
+          onClick={async () => {
+            setPlanning(true);
+            try { const r = await fetch(`/api/projects/${projectId}/music/plan`); const d = await r.json(); if (!r.ok) throw new Error(d.error); setPlan(d);
+              for (const s of d.songs) beatsOf.current[s.media_id] = s.beats; }
+            catch (e: any) { toast(e.message, true); } finally { setPlanning(false); }
+          }}><Icon name="wand" size={13} />{planning ? "Listening to your songs…" : "Match songs to the video"}</button>
+        {plan?.note && <div className="dim" style={{ fontSize: 12 }}>{plan.note}</div>}
+        {plan && plan.plan.length > 0 && (
+          <div data-testid="music-plan" style={{ display: "grid", gap: 4 }}>
+            {plan.plan.map((row, i) => {
+              const song = plan.songs.find((s) => s.media_id === row.media_id)!;
+              const part = plan.sections.find((s) => s.start <= row.start + 0.01 && s.end > row.start)?.label ?? "";
+              return (
+                <div key={i} className="row" style={{ gap: 6, fontSize: 12, minWidth: 0 }}>
+                  <span className="mono dim">{fmtTime(row.start)}–{fmtTime(row.end)}</span>
+                  <span className="chip">{part}</span>
+                  <select aria-label={`Song for part ${i + 1}`} value={row.media_id} style={{ flex: 1, minWidth: 0 }}
+                    onChange={(e) => setPlan({ ...plan, plan: plan.plan.map((r, j) => (j === i ? { ...r, media_id: e.target.value } : r)) })}>
+                    {plan.songs.map((s) => <option key={s.media_id} value={s.media_id}>{s.name} ({s.label}, {Math.round(s.bpm)} bpm)</option>)}
+                  </select>
+                </div>
+              );
+            })}
+            <button className="btn sm primary" onClick={() => {
+              let tl = timeline;
+              for (const row of plan.plan) {
+                const m = media[row.media_id];
+                if (!m) continue;
+                const r = addMusic(tl, m, row.start, row.end, { ...o, loop: true, crossfade: 1, beats: beatsOf.current[m.id] });
+                if (r.error) { toast(r.error, true); return; }
+                tl = r.timeline!;
+              }
+              if (commit({ timeline: tl }, "Add matched music")) { toast(`Added ${plan.plan.length} song part${plan.plan.length === 1 ? "" : "s"}`); setPlan(null); }
+            }}>Use these songs</button>
+          </div>
+        )}
+      </div>
       <label className="field">Lower the music while you talk
         <select aria-label="Ducking" value={audio.ducking} onChange={(e) => setAudio({ ...audio, ducking: e.target.value as AudioSettings["ducking"] }, "Ducking")}>
           <option value="off">Off</option><option value="light">A little</option><option value="medium">Medium</option><option value="strong">A lot</option>

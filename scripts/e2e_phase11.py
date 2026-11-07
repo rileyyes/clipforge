@@ -88,8 +88,9 @@ async def main(pid):
         exp = await pg.get_by_role("button", name="Export").bounding_box()
         assert exp["x"] + exp["width"] <= 1280
         tabs = pg.get_by_role("tab")
-        assert await tabs.count() == 8
-        last = await tabs.nth(7).bounding_box()
+        n = await tabs.count()
+        assert n == 9, n  # every side tab fits, including the AI tab (Phase 16)
+        last = await tabs.nth(n - 1).bounding_box()
         assert last["x"] + last["width"] <= 1281
 
         # ---- overlay lane: click selects, drag moves, edge resizes

@@ -17,6 +17,7 @@ import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
 import ProTools from "../components/ProTools";
 import BrandApply from "../components/BrandApply";
+import SmartPanel from "../components/SmartPanel";
 import type { Word } from "../timeline/cleanup";
 import { History } from "../timeline/history";
 import {
@@ -39,7 +40,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [audio, setAudioState] = useState<AudioSettings | null>(null);
   const [facecam, setFacecamState] = useState<FaceCam | null>(null);
   const [lightPreview, setLightPreview] = useState(() => { try { return localStorage.getItem("cf:lightPreview") === "1"; } catch { return false; } });
-  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "history">("clip");
+  const [rightTab, setRightTab] = useState<"clip" | "fx" | "text" | "blur" | "beat" | "script" | "cam" | "ai" | "history">("clip");
   const [overlaySel, setOverlaySel] = useState<string | null>(null);
   const [markerSel, setMarkerSel] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
@@ -427,6 +428,7 @@ export default function Editor({ projectId }: { projectId: string }) {
               ["blur", "blur", "Blur", "Privacy blur"],
               ["beat", "music", "Music", "Background music and beat sync"],
               ["cam", "webcam", "Cam", "Face cam"],
+              ["ai", "ai", "AI", "Hook checker, B-roll from your clips, voiceover"],
               ["history", "undo", "History", "Saved versions"],
             ] as const).map(([id, icon, label, tip]) => (
               <button key={id} role="tab" aria-selected={rightTab === id} aria-label={id === "fx" ? "Effects" : id === "cam" ? "Face cam" : label}
@@ -456,6 +458,10 @@ export default function Editor({ projectId }: { projectId: string }) {
             <FaceCamPanel projectId={projectId} project={project} timeline={timeline} media={media} output={project.output}
               facecam={facecam} setFacecam={setFacecam} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               jobs={jobs} onJobs={() => { refreshJobs(); setTimeout(reloadMedia, 600); }} />
+          ) : rightTab === "ai" ? (
+            <SmartPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+              commit={commit} jobs={jobs} onJobs={refreshJobs} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }}
+              saved={!dirty.current && save === "saved"} />
           ) : rightTab === "history" ? (
             <HistoryPanel projectId={projectId} beforeChange={flushNow} onRestored={onRestored} revision={editRev.current} />
           ) : rightTab === "clip" ? (

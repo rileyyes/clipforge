@@ -930,6 +930,11 @@ export interface MusicOptions {
   fadeOut: number;       // s, at the end
   songStart: number;     // s into the song to begin (skip an intro); loops restart here too
   loop: boolean;         // repeat the song if it's shorter than the stretch
+  /** Phase 16: overlap each loop with the next by this many seconds (rounded to whole beats
+   *  when `beats` is given) on a second music track, instead of a dip. 0 = the old dip. */
+  crossfade?: number;
+  /** the song's beat times (seconds): loops then start on a beat and last whole bars */
+  beats?: number[];
 }
 export const MUSIC_DEFAULTS: MusicOptions = { volume: 0.3, fadeIn: 1, fadeOut: 2, songStart: 0, loop: true };
 /** fade at each loop join (out and back in), so the jump back isn't a click */
@@ -944,6 +949,10 @@ export function videoEnd(tl: Timeline): number {
  *  shorter, on a music track (one that's free there, else a new "Music" track). Music
  *  tracks are lowered under speech when ducking is on. */
 export function addMusic(tl: Timeline, media: MediaAsset, from: number, to: number, o: MusicOptions = MUSIC_DEFAULTS): OpResult {
+  if (o.loop && (o.crossfade ?? 0) > 0) {
+    const r = addMusicCrossfaded(tl, media, from, to, o);
+    if (r) return r;      // null: the song is too short for a crossfaded loop; fall back to the dip
+  }
   if (!media.has_audio) return { error: `“${media.original_name}” has no sound` };
   from = round6(Math.max(0, from)); to = round6(to);
   if (!(to - from >= 0.5)) return { error: "Pick an end time at least half a second after the start" };
@@ -995,15 +1004,24 @@ export function addMusic(tl: Timeline, media: MediaAsset, from: number, to: numb
 export interface MusicItem { track: Track; clips: Clip[]; media_id: string; start: number; end: number; volume: number }
 export function musicItems(tl: Timeline): MusicItem[] {
   const out: MusicItem[] = [];
+  const loops = new Map<string, MusicItem>();   // crossfaded loops (label "♪ …"), across two tracks
+  for (const t of tl.tracks.filter(isMusicTrack)) for (const c of t.clips) {
+    if (!c.label?.startsWith("♪ ")) continue;
+    const it = loops.get(c.label);
+    if (it) { it.clips.push(c); it.start = Math.min(it.start, c.start); it.end = Math.max(it.end, clipEnd(c)); }
+    else loops.set(c.label, { track: t, clips: [c], media_id: c.media_id, start: c.start, end: clipEnd(c), volume: c.volume });
+  }
   for (const t of tl.tracks.filter(isMusicTrack)) {
     for (const c of [...t.clips].sort((a, b) => a.start - b.start)) {
+      if (c.label?.startsWith("♪ ")) continue;
       const last = out[out.length - 1];
       if (last && last.track.id === t.id && last.media_id === c.media_id && Math.abs(last.end - c.start) < 1e-3) {
         last.clips.push(c); last.end = clipEnd(c);
       } else out.push({ track: t, clips: [c], media_id: c.media_id, start: c.start, end: clipEnd(c), volume: c.volume });
     }
   }
-  return out;
+  for (const it of loops.values()) it.clips.sort((a, b) => a.start - b.start);
+  return [...out, ...loops.values()].sort((a, b) => a.start - b.start);
 }
 
 /** Change the volume of every piece of a music item. */
@@ -1014,5 +1032,66 @@ export function setMusicVolume(tl: Timeline, ids: string[], volume: number): OpR
   const le = lockedError(refs);
   if (le) return { error: le };
   return { timeline: withTracks(tl, (t) => t.clips.some((c) => set.has(c.id)) ? { ...t, clips: t.clips.map((c) => (set.has(c.id) ? { ...c, volume: v } : c)) } : t) };
+}
+
+/** Beat-aligned loop with real crossfades: the loop runs from the first beat at or after
+ *  "start song at" for a whole number of bars (4 beats), and each repeat starts `xf` before the
+ *  previous one ends, alternating between two music tracks, so they fade into each other.
+ *  Pieces of one stretch share a label ("♪ name #id") so they're listed as one song. */
+function addMusicCrossfaded(tl: Timeline, media: MediaAsset, from: number, to: number, o: MusicOptions): OpResult | null {
+  if (!media.has_audio) return { error: `“${media.original_name}” has no sound` };
+  from = round6(Math.max(0, from)); to = round6(to);
+  if (!(to - from >= 0.5)) return { error: "Pick an end time at least half a second after the start" };
+  if (!(o.volume >= 0 && o.volume <= 2)) return { error: "Volume must be between 0 and 200 %" };
+  const beats = (o.beats ?? []).filter((b) => b >= 0 && b < media.duration - 0.05);
+  let s0 = Math.max(0, o.songStart), s1 = media.duration - 0.05, xf = o.crossfade!;
+  if (beats.length >= 9) {
+    const period = beats.slice(1).map((b, i) => b - beats[i]).sort((a, b) => a - b)[Math.floor((beats.length - 1) / 2)];
+    const k0 = beats.findIndex((b) => b >= s0 - 0.02);
+    if (k0 >= 0) {
+      s0 = beats[k0];
+      let k1 = beats.length - 1;
+      while (k1 > k0 && (k1 - k0) % 4 !== 0) k1--;
+      if (k1 - k0 >= 8) s1 = beats[k1];
+      xf = Math.max(period, Math.round(xf / period) * period);
+    }
+  }
+  const loopLen = s1 - s0;
+  if (to - from <= loopLen + 1e-6) return null;                // no loop needed
+  if (loopLen < 2 * xf + 1) return null;
+  // two music tracks free over the whole stretch
+  const free = (t: Track) => isMusicTrack(t) && !t.locked && !t.clips.some((c) => c.start < to - EPS && clipEnd(c) > from + EPS);
+  let base = tl;
+  const ids: string[] = [];
+  for (const t of base.tracks) if (free(t) && ids.length < 2) ids.push(t.id);
+  while (ids.length < 2) {
+    if (base.tracks.length >= 32) return { error: "Track limit reached" };
+    const n = base.tracks.filter(isMusicTrack).length;
+    const t: Track = { id: newId(), kind: "audio", name: n ? `Music ${n + 1}` : "Music", muted: false, hidden: false, locked: false, clips: [], role: "music" };
+    base = { ...base, tracks: [...base.tracks, t] };
+    ids.push(t.id);
+  }
+  const label = `♪ ${media.original_name.slice(0, 60)} #${newId().slice(0, 4)}`;
+  const pieces: Clip[][] = [[], []];
+  const created: string[] = [];
+  let t = from, i = 0;
+  while (to - t > MIN_CLIP - EPS) {
+    const len = Math.min(to - t, loopLen);
+    const last = t + len >= to - EPS;
+    const c: Clip = { id: newId(), media_id: media.id, start: round6(t), source_in: round6(s0), source_out: round6(s0 + len), speed: 1,
+      volume: round6(o.volume), transform: { x: 0, y: 0, scale: 1, rotation: 0 }, link_id: null, label,
+      fade_in: round6(Math.min(len / 2, i === 0 ? Math.max(0, o.fadeIn) : xf)),
+      fade_out: round6(Math.min(len / 2, last ? Math.max(0, o.fadeOut) : xf)) } as Clip;
+    pieces[i % 2].push(c);
+    created.push(c.id);
+    if (last) break;
+    t = round6(t + loopLen - xf);
+    if (++i > 400) return { error: "That song is too short to loop over such a long stretch" };
+  }
+  return {
+    timeline: withTracks(base, (tr) => (tr.id === ids[0] ? { ...tr, clips: sortClips([...tr.clips, ...pieces[0]]) }
+      : tr.id === ids[1] ? { ...tr, clips: sortClips([...tr.clips, ...pieces[1]]) } : tr)),
+    created,
+  };
 }
 

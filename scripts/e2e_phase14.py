@@ -110,6 +110,7 @@ async def main(pid, mid):
         await pg.wait_for_function("() => [...document.querySelectorAll('select[aria-label=Song] option')].some(o => o.selected && o.textContent.includes('my song.mp3'))", timeout=15000)
         await pg.get_by_label("Music from").fill("0:05")
         await pg.get_by_label("Music to").fill("0:25")
+        await pg.get_by_label("Smooth loops").uncheck()                 # this test covers the simple loop (Phase 16 tests smooth loops)
         await sec.get_by_role("button", name="Add music").click()
         await toast("looped 3×")
         await until(lambda: len(music_clips()) == 3, "music not saved")

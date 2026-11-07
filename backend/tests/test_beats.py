@@ -44,7 +44,8 @@ def test_finds_tempo_and_beats(bpm):
 
 
 def test_silence_and_short():
-    assert BT.detect(np.zeros(1000)) == {"bpm": 0.0, "beats": []}
+    r0 = BT.detect(np.zeros(1000))
+    assert (r0["bpm"], r0["beats"]) == (0.0, [])
     r = BT.detect(np.random.default_rng(0).normal(0, 0.01, BT.SR * 10))  # just hiss: no steady beat claimed
     assert isinstance(r["beats"], list)
 

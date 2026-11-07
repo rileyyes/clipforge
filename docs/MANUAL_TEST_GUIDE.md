@@ -198,6 +198,22 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 16: smarter AI help
+
+Needs a recording with a transcript (Script tab → Transcribe) for the best results.
+
+| # | Do this | You should see |
+|---|---|---|
+| 16.1 | Editor → **AI** tab → **Check my hook** | A score out of 100, a verdict, and tips about your first 10 seconds |
+| 16.2 | If offered, click **Cut slow start**, then **Check my hook** again | The silence before your first word is gone and the score goes up. Ctrl+Z undoes it |
+| 16.3 | If offered, click **Add teaser** | A few seconds of your best moment play at the very start, then the video as before |
+| 16.4 | Import a second recording that mentions something you also say (or is named after it, e.g. `castle tour.mp4`) → **Find B-roll** | Suggestions like “castle” → castle tour.mp4; **Preview it** jumps there; **Add B-roll** puts the clip on V2 over that moment |
+| 16.5 | Voiceover → **Download the voice** (once, about 95 MB) | Progress, then the voice box appears. Turn off your internet after this to check it works offline |
+| 16.6 | Type a sentence, pick a voice and speed → **Add voiceover** | A new audio clip at the playhead that says your sentence |
+| 16.7 | Music tab → add a short song to the whole video with **Smooth loops** ticked | The song repeats with no gap or dip at each join |
+| 16.8 | Import a calm song and an energetic one → **Match songs to the video** → **Use these songs** | Calmer stretches get the calm song, busier ones the energetic one |
+| 16.9 | Export | Teaser, B-roll, voiceover and music all in the video |
+
 ## Phase 15: pro look
 
 | # | Do this | You should see |

@@ -16,6 +16,8 @@ export function rippleInsert(tl: Timeline, at: number, delta: number): Timeline 
   const moving = new Set<string>(), links = new Set<string>();
   for (const t of tl.tracks) if (!isMusicTrack(t)) for (const c of t.clips) if (c.start >= at - EPS) { moving.add(c.id); if (c.link_id) links.add(c.link_id); }
   for (const t of tl.tracks) for (const c of t.clips) if (c.link_id && links.has(c.link_id)) moving.add(c.id);
+  // a music track that has to move a linked clip moves everything after it too (no collisions)
+  for (const t of tl.tracks) if (isMusicTrack(t) && t.clips.some((c) => moving.has(c.id))) for (const c of t.clips) if (c.start >= at - EPS) moving.add(c.id);
   return {
     ...withTracks(tl, (t) => ({ ...t, clips: t.clips.map((c) => (moving.has(c.id) ? { ...c, start: round6(c.start + delta) } : c)) })),
     ...(tl.titles ? { titles: tl.titles.map((x) => ({ ...x, start: shift(x.start) })) } : {}),
@@ -232,5 +234,35 @@ export function placeBrandClip(tl: Timeline, m: MediaAsset, where: "start" | "en
     timeline: withTracks(base, (t) => t.id === v.id ? { ...t, clips: sortClips([...t.clips, vc]) }
       : link && t.id === a!.id ? { ...t, clips: sortClips([...t.clips, ac]) } : t),
     created: link ? [vc.id, ac.id] : [vc.id],
+  };
+}
+
+// ---------------------------------------------------------------- teaser (Phase 16 hook checker)
+/** Copy what's in [a, b] of the edit (all tracks except music) to the very start as a teaser;
+ *  everything (titles, markers…) moves later by its length. Linked picture+sound stay linked. */
+export function insertTeaser(tl: Timeline, a: number, b: number): OpResult {
+  const len = round6(b - a);
+  if (!(len >= 0.5)) return { error: "A teaser needs to be at least half a second long" };
+  const parts: { track: string; clip: Clip }[] = [];
+  const links = new Map<string, string>();
+  for (const t of tl.tracks) {
+    if (isMusicTrack(t)) continue;
+    for (const c of t.clips) {
+      const s = Math.max(a, c.start), e = Math.min(b, clipEnd(c));
+      if (e - s < MIN_CLIP) continue;
+      const si = c.source_in + (s - c.start) * c.speed;
+      const link = c.link_id ? (links.get(c.link_id) ?? (links.set(c.link_id, newId()), links.get(c.link_id)!)) : null;
+      parts.push({ track: t.id, clip: { ...c, id: newId(), start: round6(s - a), source_in: round6(si), source_out: round6(si + (e - s) * c.speed),
+        link_id: link, transition_in: null } as Clip });
+    }
+  }
+  if (!parts.length) return { error: "There's nothing in that part of the video" };
+  const moved = rippleInsert(tl, 0, len);
+  return {
+    timeline: withTracks(moved, (t) => {
+      const add = parts.filter((p) => p.track === t.id).map((p) => p.clip);
+      return add.length ? { ...t, clips: sortClips([...t.clips, ...add]) } : t;
+    }),
+    created: parts.map((p) => p.clip.id),
   };
 }

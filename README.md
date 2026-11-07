@@ -54,6 +54,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **Smarter AI help** (AI tab): a hook checker that scores your first 10 seconds with one-click fixes (cut the slow start, add a teaser), B-roll suggested from your own recordings, offline voiceover (free Piper voice, downloaded once), and songs matched to calm/busy parts with smooth beat-aligned loops.
 - **Pro look**: a brand kit (logo watermark, intro/outro, colours, caption style) applied in one click; pop-up words, arrows, circles and boxes with animations; green screen; side-by-side / picture-in-picture layouts; freeze frame, reverse and smooth speed ramps.
 - **Background music**: put your own song under any stretch of the video (it loops if shorter, fades, and goes quieter while you talk).
 - **Captions** from your transcript, shown in the preview while you edit; fix misheard words by double-clicking them in the Script tab.
