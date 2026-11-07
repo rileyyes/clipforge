@@ -87,7 +87,9 @@ function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
   );
 }
 
-export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades, playhead, seek }: {
+export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades, playhead, seek, extra }: {
+  /** more tools shown at the end (Phase 15: freeze, reverse, ramps, layouts, green screen) */
+  extra?: React.ReactNode;
   timeline: Timeline; media: MediaMap; selection: string[]; playhead: number; seek: (t: number) => void;
   onPatch: (id: string, p: ClipPatch, label: string) => void;
   onTrim: (id: string, edge: "start" | "end", t: number) => void;
@@ -109,6 +111,7 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
               <div key={k} className="row"><span className="kbd">{k}</span><span>{d}</span></div>
             ))}
           </div>
+          {extra && <div style={{ marginTop: 18, color: "var(--text)" }}>{extra}</div>}
         </div>
       </div>
     );
@@ -228,6 +231,7 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
             </div>
           </>
         )}
+        {extra}
       </div>
     </div>
   );

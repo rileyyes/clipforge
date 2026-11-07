@@ -59,19 +59,19 @@ export function expandLinked(tl: Timeline, ids: string[]): Set<string> {
   return s;
 }
 
-function overlaps(track: Track, start: number, end: number, ignore: Set<string>): boolean {
+export function overlaps(track: Track, start: number, end: number, ignore: Set<string>): boolean {
   return track.clips.some((c) => !ignore.has(c.id) && start < clipEnd(c) - EPS && end > c.start + EPS);
 }
 
-function sortClips(clips: Clip[]): Clip[] {
+export function sortClips(clips: Clip[]): Clip[] {
   return [...clips].sort((a, b) => a.start - b.start);
 }
 
-function withTracks(tl: Timeline, map: (t: Track, i: number) => Track): Timeline {
+export function withTracks(tl: Timeline, map: (t: Track, i: number) => Track): Timeline {
   return { ...tl, tracks: tl.tracks.map(map) };
 }
 
-function lockedError(refs: ClipRef[]): string | null {
+export function lockedError(refs: ClipRef[]): string | null {
   return refs.some((r) => r.track.locked) ? `Track ${refs.find((r) => r.track.locked)!.track.name} is locked` : null;
 }
 
@@ -420,6 +420,8 @@ export function duplicateClip(tl: Timeline, id: string): OpResult {
 export interface ClipPatch {
   volume?: number; speed?: number; label?: string | null; transform?: Partial<Clip["transform"]>;
   crop?: Clip["crop"]; color?: Clip["color"]; keyframes?: Clip["keyframes"];
+  /** green screen (null turns it off) */
+  chroma?: Clip["chroma"];
 }
 
 /** Same rules as the server: known properties, time order ≥ 1 ms apart, values in range, ≤ 64 each. */
@@ -462,6 +464,9 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
       || c.gamma < 0.1 || c.gamma > 4 || Math.abs(c.temperature) > 1) return { error: "Colour value out of range" };
   }
   if (patch.crop && Object.values(patch.crop).some((v) => !(v >= 0 && v <= 0.9))) return { error: "Crop must be between 0 and 90%" };
+  if (patch.chroma && (!/^#[0-9a-fA-F]{6}$/.test(patch.chroma.color) || !(patch.chroma.similarity >= 0.01 && patch.chroma.similarity <= 0.8)
+    || !(patch.chroma.blend >= 0 && patch.chroma.blend <= 0.5))) return { error: "Green screen value out of range" };
+  if (patch.chroma && ref.track.kind !== "video") return { error: "Green screen is for video clips" };
   if (patch.keyframes && Object.keys(patch.keyframes).some((k) => (ref.track.kind === "video") === (k === "volume"))) return { error: ref.track.kind === "video" ? "Volume keyframes go on the audio clip" : "Only volume can be keyframed on audio" };
   if (patch.speed !== undefined && targets.some((r) => (r.clip.source_out - r.clip.source_in) / patch.speed! < MIN_CLIP - EPS))
     return { error: "Clip would be too short at that speed" };
@@ -478,6 +483,7 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
         if (patch.transform) u.transform = { ...c.transform, ...patch.transform };
         if (patch.crop) u.crop = patch.crop;
         if (patch.color) u.color = patch.color;
+        if (patch.chroma !== undefined) u.chroma = patch.chroma;
         if (patch.keyframes) {
           const kf = { ...(c.keyframes ?? {}), ...patch.keyframes };
           for (const k of Object.keys(kf) as (keyof typeof kf)[]) if (!kf[k]?.length) delete kf[k];
@@ -747,6 +753,10 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["top_banner", "Top banner", { text: "Breaking news", subtext: "", align: "center", duration: 5 }],
   ["subscribe", "Subscribe", { text: "SUBSCRIBE", subtext: "", align: "right", duration: 4, accent: "#e62117" }],
   ["chapter", "Chapter card", { text: "Chapter title", subtext: "Part 1", align: "center", duration: 3 }],
+  ["pop_text", "Pop-up words", { text: "NO WAY!", x: 0.5, y: 0.3, rotation: -6, anim: "pop", duration: 2.5, color: "#ffffff" }],
+  ["arrow", "Arrow", { text: "", x: 0.4, y: 0.5, rotation: 30, anim: "pop", duration: 3, accent: "#ff3b30" }],
+  ["circle", "Circle", { text: "", x: 0.5, y: 0.5, rotation: 0, anim: "pop", duration: 3, accent: "#ff3b30" }],
+  ["box", "Box", { text: "", x: 0.5, y: 0.5, rotation: 0, anim: "pop", duration: 3, accent: "#ffde00" }],
 ];
 
 export function addTitle(tl: Timeline, template: TitleTemplate, at: number): OpResult & { id?: string } {

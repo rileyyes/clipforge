@@ -253,7 +253,9 @@ def video_segment_args(src: Path, seg: Seg, out: OutputSettings, fps: Fraction,
     tail = f"{trim}{fades},format=yuv420p[v]"
     if warp:
         m = WARP_MARGIN
-        chain = ",".join([head, "format=yuva444p", *look.crop_filters(c, keep_size=True),
+        key = ([f"chromakey=color=0x{c.chroma.color[1:]}:similarity={c.chroma.similarity:.3f}:blend={c.chroma.blend:.3f}"]
+               if c.chroma is not None else [])
+        chain = ",".join([head, *key, "format=yuva444p", *look.crop_filters(c, keep_size=True),
                           f"pad=w={W + 2 * m}:h={H + 2 * m}:x=(ow-iw)/2:y=(oh-ih)/2:color=black@0",
                           look.perspective_filter(c, W, H, m, f"{seek:.6f}", float(fps)),
                           f"crop={W}:{H}:{m}:{m}",
@@ -867,6 +869,19 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         (work / ass).write_text(titles_mod.ass(tl, W, H, family, str(font) if font else None), encoding="utf-8")
         g.append(f"[{last}]ass={ass}:fontsdir=.[ttl]")
         last, cwd = "ttl", work
+    wm = project.watermark
+    logo = project_dir / "media" / "brand" / wm.file if wm else None
+    if wm and logo and logo.is_file():
+        # the logo (one still image, repeated) on top of everything, in its corner
+        k = n_inputs + sum(1 for a in more if a == "-i")
+        more = more + ["-i", str(logo)]
+        lw = max(8, int(round(W * wm.size / 2)) * 2)
+        mx, my = int(W * 0.03), int(H * 0.03)
+        x = f"{mx}" if wm.corner.endswith("l") else f"W-w-{mx}"
+        y = f"{my}" if wm.corner.startswith("t") else f"H-h-{my}"
+        g.append(f"[{k}:v]scale={lw}:-2,format=rgba,colorchannelmixer=aa={wm.opacity:.3f}[wmi]")
+        g.append(f"[{last}][wmi]overlay=x={x}:y={y}:eof_action=repeat:format=auto[wm]")
+        last = "wm"
     return last, more, cwd
 
 

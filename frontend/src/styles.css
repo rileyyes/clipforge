@@ -352,3 +352,11 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 /* the Script tab's action row never changes height (a wrap would move the words under the mouse) */
 .script-actions { gap: 6px; flex-wrap: nowrap; height: 30px; overflow: hidden; min-width: 0; }
 .script-actions > .btn { flex-shrink: 0; }
+
+/* Phase 15: brand kit */
+.brand-logo { width: 96px; height: 96px; border-radius: 8px; border: 1px dashed var(--line); display: grid; place-items: center; flex: none;
+  background: repeating-conic-gradient(#2a2a2a 0 25%, #1c1c1c 0 50%) 50% / 16px 16px; overflow: hidden; font-size: 11px; }
+.brand-logo img { max-width: 90%; max-height: 90%; object-fit: contain; }
+.pro-tools .insp-section { min-width: 0; }
+.pro-tools .row { flex-wrap: wrap; min-width: 0; }
+.pro-tools .btn { min-width: 0; white-space: normal; text-align: left; }

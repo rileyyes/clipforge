@@ -395,7 +395,7 @@ export default function TimelineView(p: TimelineProps) {
             )}
             {shown.tracks.map((t) => (
               <div key={t.id} ref={(el) => { laneRefs.current[t.id] = el; }}
-                className={"lane" + (t.locked ? " locked" : "") + (dropTrack === t.id ? " drop" : "")}
+                className={"lane" + (t.locked ? " locked" : "") + (dropTrack === t.id ? " drop" : "")} data-track={t.name}
                 style={{ height: ROW_H[t.kind], ["--grid" as any]: `${ticks.step * pps}px`, backgroundPosition: `${-(view.left % (ticks.step * pps))}px 0` }}
                 onPointerDown={(e) => { if (e.button === 0 && e.target === e.currentTarget) { p.setSelection([]); p.seek(timeAt(e.clientX)); } }}
                 onDragOver={(e) => {

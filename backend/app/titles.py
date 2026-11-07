@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter")
+TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box")
+SHAPES = ("arrow", "circle", "box")
+K = 0.5523  # bezier circle constant
 IN, OUT = 0.4, 0.3  # seconds of in / out animation
 
 
@@ -123,6 +125,8 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
         line(1, f"\\an5\\pos({x + w / 2:.0f},{y + h / 2:.0f}){fad}{pop}\\fs{fs}\\b1\\c{_c(col)}\\bord0\\shad0", label)
         if sub:
             line(1, f"\\an8\\pos({x + w / 2:.0f},{y + h + 10 * k:.0f}){fad}\\fs{int(fs * 0.6)}\\c{_c('#ffffff')}\\bord{3 * k:.1f}", sub)
+    elif t["template"] in ("pop_text", *SHAPES):
+        out += _free(t, W, H, k, a, b)
     elif t["template"] == "chapter":
         fs, ss = int(96 * k), int(40 * k)
         line(0, f"\\an7\\pos(0,0)\\fad({ms(IN)},{ms(OUT)})\\p1\\c{_c('#000000')}\\alpha&H50&\\bord0\\shad0", _rect(W, H))
@@ -132,6 +136,85 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
         if sub:
             line(1, f"\\an2\\pos({W / 2:.0f},{H * 0.5 - fs * 0.6:.0f})\\fad({ms(IN)},{ms(OUT)})\\fs{ss}\\b1\\c{_c(acc)}\\bord0\\shad0",
                  sub.upper())
+    return out
+
+
+def _anim(kind: str, x: float, y: float, H: float, n_chars: int = 0) -> tuple[str, str]:
+    """(position + transform tags, per-text prefix) for a free-placed title's in-animation."""
+    ms = lambda s: int(s * 1000)  # noqa: E731
+    pos = f"\\pos({x:.0f},{y:.0f})"
+    if kind == "pop":
+        return pos + f"\\fscx40\\fscy40\\t(0,{ms(IN * 0.6)},\\fscx112\\fscy112)\\t({ms(IN * 0.6)},{ms(IN)},\\fscx100\\fscy100)", ""
+    if kind == "slide_up":
+        return f"\\move({x:.0f},{y + H * 0.08:.0f},{x:.0f},{y:.0f},0,{ms(IN)})", ""
+    if kind == "bounce":
+        return (f"\\move({x:.0f},{y - H * 0.18:.0f},{x:.0f},{y:.0f},0,250)"
+                "\\t(250,330,\\fscx118\\fscy84)\\t(330,430,\\fscx94\\fscy108)\\t(430,520,\\fscx100\\fscy100)"), ""
+    return pos, ""
+
+
+def typewriter(text: str, dur: float) -> str:
+    """Reveal one character at a time (ASS alpha per character), over at most 0.8 s or half the title."""
+    chars = list(text)
+    if not chars:
+        return ""
+    step = min(0.06, min(0.8, dur * 0.5) / len(chars))
+    out = []
+    for i, ch in enumerate(chars):
+        t0 = int(i * step * 1000)
+        out.append(f"{{\\alpha&HFF&\\t({t0},{t0 + 1},\\alpha&H00&)}}{_esc(ch)}")
+    return "".join(out)
+
+
+def _circle(r: float) -> str:
+    c = K * r
+    return (f"m {r:.1f} 0 b {r + c:.1f} 0 {2 * r:.1f} {r - c:.1f} {2 * r:.1f} {r:.1f} "
+            f"b {2 * r:.1f} {r + c:.1f} {r + c:.1f} {2 * r:.1f} {r:.1f} {2 * r:.1f} "
+            f"b {r - c:.1f} {2 * r:.1f} 0 {r + c:.1f} 0 {r:.1f} b 0 {r - c:.1f} {r - c:.1f} 0 {r:.1f} 0")
+
+
+def _arrow(L: float, T: float) -> str:
+    """Arrow pointing right, L long, shaft T thick, head 2.6·T wide."""
+    hw, hl = T * 1.3, T * 2.2
+    return (f"m 0 {hw - T / 2:.1f} l {L - hl:.1f} {hw - T / 2:.1f} l {L - hl:.1f} 0 l {L:.1f} {hw:.1f} "
+            f"l {L - hl:.1f} {2 * hw:.1f} l {L - hl:.1f} {hw + T / 2:.1f} l 0 {hw + T / 2:.1f}")
+
+
+def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
+    """pop_text, arrow, circle, box: placed anywhere (x, y = centre), rotated, animated."""
+    span = f"{_t(a)},{_t(b)}"
+    x, y = t.get("x", 0.5) * W, t.get("y", 0.5) * H
+    rot = -float(t.get("rotation", 0))  # ASS turns anticlockwise; the UI's degrees are clockwise
+    kind = t.get("anim", "pop")
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    fad = f"\\fad(120,{int(OUT * 1000)})"
+    frz = f"\\frz{rot:.1f}" if abs(rot) > 1e-6 else ""
+    out = []
+    if t["template"] == "pop_text":
+        fs = int(96 * k)
+        pos, _ = _anim("none" if kind == "typewriter" else kind, x, y, H)
+        body = typewriter(t.get("text", ""), b - a) if kind == "typewriter" else _esc(t.get("text", ""))
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\fs{fs}\\b1\\c{_c(col)}\\3c{_c('#000000')}"
+                   f"\\bord{max(2.0, 7 * k):.1f}\\shad{3 * k:.1f}}}{body}")
+        return out
+    pos, _ = _anim(kind if kind != "typewriter" else "pop", x, y, H)
+    stroke = max(3.0, 12 * k)
+    if t["template"] == "arrow":
+        L, T = 260 * k, 34 * k
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\p1\\c{_c(acc)}\\3c{_c('#000000')}"
+                   f"\\bord{max(1.5, 4 * k):.1f}\\shad{3 * k:.1f}}}{_arrow(L, T)}")
+    elif t["template"] == "circle":
+        r = 120 * k
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\p1\\1a&HFF&\\3c{_c(acc)}"
+                   f"\\bord{stroke:.1f}\\shad0}}{_circle(r)}")
+    else:  # box
+        w, h = 320 * k, 200 * k
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\p1\\1a&HFF&\\3c{_c(acc)}"
+                   f"\\bord{stroke:.1f}\\shad0}}{_rect(w, h)}")
+    if t.get("text"):  # optional label under the shape
+        fs = int(48 * k)
+        out.append(f"Dialogue: 2,{span},T,,0,0,0,,{{\\an8\\pos({x:.0f},{y + 140 * k:.0f}){fad}\\fs{fs}\\b1\\c{_c(col)}"
+                   f"\\3c{_c('#000000')}\\bord{max(2.0, 5 * k):.1f}}}{_esc(t['text'])}")
     return out
 
 

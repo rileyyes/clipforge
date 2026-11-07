@@ -1,4 +1,4 @@
-# Hands-on test guide: Phases 4–14
+# Hands-on test guide: Phases 4–15
 
 A checklist for trying the new features on your own videos. Each step says what you should see. If something doesn't match, note the step number and what happened. Screenshots help, and so do the **Details** text of any failed job.
 
@@ -197,4 +197,18 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 14.7 | Export, and FX → **Download .srt** | The burned-in captions and the .srt both have the fixed word |
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
+
+## Phase 15: pro look
+
+| # | Do this | You should see |
+|---|---|---|
+| 15.1 | **Settings → Brand kit**: upload a logo (PNG), an intro video, pick a corner, size, colours, caption style | Saved as you go; the logo shows in the box |
+| 15.2 | Editor → **Text** tab → **Apply my brand kit** | Logo on the preview, the intro is first on the timeline, titles/captions recoloured. Ctrl+Z undoes the intro/colours; **Remove logo** takes the logo off |
+| 15.3 | Text tab → **Pop-up words**, **Arrow**, **Circle**, **Box** | Each appears at the playhead; with it selected, drag it on the preview; Turn slider rotates it; try each Animation |
+| 15.4 | Put a green-screen video on **V2** above your gameplay → select it → Clip tab → **Green screen: On** | The green disappears (preview close, export exact); Strength / Soft edge adjust the edge |
+| 15.5 | Two clips at the playhead (V1 + V2) → **Side by side / Top / bottom / Picture-in-picture / Reset** | They rearrange; corner and size for picture-in-picture |
+| 15.6 | Playhead on a clip → **Freeze frame** for 2 s | The picture holds, the sound pauses, then everything carries on |
+| 15.7 | Select a clip, playhead on it → **Slow-mo** (or **Speed-up**) | A smooth slow-down and back up from the playhead; the video gets longer (or shorter) |
+| 15.8 | Select a clip under 60 s → **Reverse this clip** | It plays backwards, sound too |
+| 15.9 | Export | Logo, intro, shapes, green screen, layouts, freeze, ramp and reverse all in the video |
 

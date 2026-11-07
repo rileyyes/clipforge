@@ -9,6 +9,7 @@ export interface Transform {
   rotation: number;   // degrees, clockwise
   opacity?: number;   // 0..1
 }
+export interface Chroma { color: string; similarity: number; blend: number }
 export interface Crop { left: number; right: number; top: number; bottom: number }
 export const LOOKS = ["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir"] as const;
 export type Look = (typeof LOOKS)[number];
@@ -28,6 +29,8 @@ export interface Clip {
   transform: Transform;
   crop?: Crop;
   color?: ColorAdjust;
+  /** green screen: make this colour see-through */
+  chroma?: Chroma | null;
   keyframes?: Partial<Record<KfProp, Keyframe[]>>;
   link_id: string | null;
   label?: string | null;
@@ -61,11 +64,15 @@ export interface Track {
   clips: Clip[];
 }
 
-export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter";
+export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box";
 export interface Title {
   id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
   color: string; accent: string; align: "left" | "center" | "right"; size: number;
+  /** pop_text and shapes: centre (fractions of the frame), rotation (degrees, clockwise), in-animation */
+  x?: number; y?: number; rotation?: number; anim?: TitleAnim;
 }
+export type TitleAnim = "none" | "pop" | "typewriter" | "slide_up" | "bounce";
+export const FREE_TEMPLATES: TitleTemplate[] = ["pop_text", "arrow", "circle", "box"];
 
 export interface BlurKey { t: number; x: number; y: number; w: number; h: number }  // timeline s; frame fractions
 export interface Blur {
@@ -169,6 +176,8 @@ export interface Project {
   captions: CaptionSettings;
   audio: AudioSettings;
   facecam?: FaceCam | null;
+  /** brand kit logo on the whole video (Phase 15) */
+  watermark?: { file: string; corner: "tl" | "tr" | "bl" | "br"; size: number; opacity: number } | null;
   missing_media?: string[];
   /** media ids whose background-removal mask is ready */
   mattes?: string[];

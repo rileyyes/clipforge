@@ -54,6 +54,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **Pro look**: a brand kit (logo watermark, intro/outro, colours, caption style) applied in one click; pop-up words, arrows, circles and boxes with animations; green screen; side-by-side / picture-in-picture layouts; freeze frame, reverse and smooth speed ramps.
 - **Background music**: put your own song under any stretch of the video (it loops if shorter, fades, and goes quieter while you talk).
 - **Captions** from your transcript, shown in the preview while you edit; fix misheard words by double-clicking them in the Script tab.
 - **Relink**: if a recording goes missing from the project folder, point RJClip at any copy of it and the edit works again.

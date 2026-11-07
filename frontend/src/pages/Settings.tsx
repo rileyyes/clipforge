@@ -1,3 +1,4 @@
+import BrandKit from "../components/BrandKit";
 import React, { useEffect, useState } from "react";
 import { api, fmtBytes, type SystemInfo } from "../api";
 import { useToast } from "../components/ui";
@@ -47,6 +48,7 @@ export default function SettingsPage() {
           }}>{busy ? "Cleaning…" : "Clean up temporary files"}</button>
         </div>
       </div>
+      <div style={{ marginTop: 16 }}><BrandKit /></div>
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Configuration</h3>
         <table className="list">

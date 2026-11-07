@@ -182,6 +182,16 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 15 — Pro look 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Brand kit** (Settings → Brand kit, saved once for every project): logo watermark (corner, size, see-through), intro and outro videos, title colours, caption style. **Editor → Text → Apply my brand kit** adds the logo to the whole video, puts the intro first (everything moves later) and the outro last, recolours titles and sets the caption style (undoable, except the logo, which has its own **Remove logo** button). The project keeps its own copy of the logo
+- ✅ **Pop-up words, arrows, circles and boxes** (Text tab): place them anywhere (drag them on the preview, or the Across/Down sliders), turn them, and pick an animation: pop, bounce, slide up, typewriter (words only) or none. Drawn by the same title engine as before, so the export matches the preview closely
+- ✅ **Green screen** (Clip tab): makes a colour see-through (FFmpeg chromakey in the export; a close look-alike in the preview), with strength and soft-edge sliders
+- ✅ **Layouts** (Clip tab): side by side, top/bottom, picture-in-picture in any corner and size, reset — for the top two video clips at the playhead
+- ✅ **Freeze frame** (hold the picture 0.5–10 s; the sound pauses, music keeps playing) and **reverse** (picture and sound, clips up to 60 s). Both are made as new media files, so they preview and edit like any clip
+- ✅ **Speed ramps**: smooth slow-motion or speed-up from the playhead and back, made of short pieces whose speed eases in and out (the sound follows the speed)
+- ✅ Fixes found on the way: a title added at the playhead could be invisible on that exact frame; a freeze right at a clip's edge, a speed ramp on a fast clip, and picture linked to sound on a music track are handled (found by the random-edit test)
+
 ## Rename — ClipForge → RJClip ✅ (Nov 2026)
 
 - App, docs, launchers (`Start RJClip.bat`, `Update RJClip.bat`), portable zip, CI and the GitHub repo (`rileyyes/rjclip`; the old address redirects)

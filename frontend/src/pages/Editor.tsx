@@ -15,11 +15,13 @@ import TimelineView from "../components/TimelineView";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
+import ProTools from "../components/ProTools";
+import BrandApply from "../components/BrandApply";
 import type { Word } from "../timeline/cleanup";
 import { History } from "../timeline/history";
 import {
   addMarker, addMedia, addTrack, beatTimes, cutRanges, deleteClips, duplicateClip, expandLinked, findClip, linkClips, markerNear, moveClip,
-  removeMarker, removeTrack, sanitize, setFades, setTrackRole, unlinkClips, updateMarker,
+  removeMarker, removeTrack, sanitize, updateTitle, setFades, setTrackRole, unlinkClips, updateMarker,
   setTransition, smoothJumpCuts, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type ClipPatch, type JumpCutMode, type OpResult,
 } from "../timeline/ops";
 import { MARKER_COLORS, type AudioSettings, type CaptionSettings, type Effect, type FaceCam, type MediaMap, type Project, type Timeline } from "../timeline/types";
@@ -82,7 +84,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   // ---------------------------------------------------------------- load
   const reloadMedia = useCallback(async () => {
     const p = await api.project(projectId);
-    setProject((cur) => (cur ? { ...cur, media: p.media, missing_media: p.missing_media, mattes: p.mattes, revision: p.revision } : p));
+    setProject((cur) => (cur ? { ...cur, media: p.media, missing_media: p.missing_media, mattes: p.mattes, revision: p.revision, watermark: p.watermark ?? null } : p));
   }, [projectId]);
 
   useEffect(() => {
@@ -407,6 +409,13 @@ export default function Editor({ projectId }: { projectId: string }) {
           drawBox={rightTab === "blur" && drawing ? drawing.onBox : null}
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           captions={captionPreview}
+          watermark={project?.watermark ?? null}
+          titleSel={rightTab === "text" ? overlaySel : null}
+          onTitleMove={(id, x, y, done) => {
+            const r = updateTitle(timeline, id, { x: Math.round(x * 1000) / 1000, y: Math.round(y * 1000) / 1000 });
+            void done;
+            commit(r, "Move title", true);  // one undo step for the whole drag
+          }}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
         <div className="pane">
           <div className="pane-head side-tabs" role="tablist">
@@ -435,7 +444,10 @@ export default function Editor({ projectId }: { projectId: string }) {
             <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "text" ? (
-            <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel} />
+            <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel}
+              top={<BrandApply projectId={projectId} timeline={timeline} captions={captions!} watermarkOn={!!project?.watermark}
+                commit={commit} setCaptions={(c, label) => setFx(effects, c, label)}
+                onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />} />
           ) : rightTab === "script" ? (
             <ScriptPanel timeline={timeline} playhead={playhead} playing={playing} byMedia={byMedia} onFixWord={fixWord}
               seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}
@@ -452,6 +464,10 @@ export default function Editor({ projectId }: { projectId: string }) {
               onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}
               onMove={(id, s) => commit(moveClip(timeline, id, s), "Move clip")}
               onTransition={(id, tr) => commit(setTransition(timeline, id, tr), tr ? "Set transition" : "Remove transition")}
+              extra={<ProTools projectId={projectId} timeline={timeline} media={media} selection={selection} playhead={playhead}
+                W={project!.output.width} H={project!.output.height} commit={commit}
+                onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label, true)}
+                onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />}
               onFades={(id, a, b) => commit(setFades(timeline, id, a, b), "Fades")} />
           ) : captions && audio && (
             <EffectsPanel projectId={projectId} timeline={timeline} effects={effects} captions={captions} playhead={playhead}

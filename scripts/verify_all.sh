@@ -7,7 +7,7 @@ echo "== frontend: engine unit + fuzz tests, typecheck, build"
 echo "== backend <-> engine cross-check"
 python3 scripts/crosscheck.py
 echo "== backend: unit + integration + auto-edit"
-(cd backend && python3 -m pytest -p no:randomly 2>&1 | tail -1)
+(cd backend && python3 -m pytest -p no:randomly -rf 2>&1 | grep -E "^FAILED|passed|failed" | tail -6)
 echo "== browser E2E: manual editor"
 python3 scripts/e2e_browser.py 2>&1 | grep -E "ERRORS|clips after reload"
 echo "== browser E2E: AI auto editor"
@@ -40,6 +40,8 @@ echo "== browser E2E: Phase 13 (type a new time for an effect; nudge; to playhea
 python3 scripts/e2e_phase13.py 2>&1 | grep -E "OK|after|overflow|yellow|Error|assert"
 echo "== browser E2E: Phase 14 (background music for a time range, caption preview, fix a misheard word, export check)"
 python3 scripts/e2e_phase14.py 2>&1 | grep -E "OK|caption|music pieces|overflow|song vs|Error|assert"
+echo "== browser E2E: Phase 15 (brand kit, shapes, green screen, layouts, freeze, speed ramp, reverse, export check)"
+python3 scripts/e2e_phase15.py 2>&1 | grep -E "OK|brand kit|arrow at|V1 after|intro pixel|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

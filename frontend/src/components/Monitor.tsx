@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
-import { blurAt, clipAt, sourceTimeAt, timelineDuration, transitionAt } from "../timeline/ops";
+import { blurAt, clipAt, clipEnd, sourceTimeAt, timelineDuration, transitionAt } from "../timeline/ops";
 import { transitionLook } from "../timeline/transitionCss";
 import { activeEffects } from "../timeline/effects";
 import { colorCss, cropCss, propAt } from "../timeline/keyframes";
@@ -24,9 +24,13 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour and transitions are CSS look-alikes.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview, facecam = null, drawBox, captions = null }: {
+  lightPreview = false, onLightPreview, facecam = null, drawBox, captions = null, titleSel = null, onTitleMove, watermark = null }: {
   /** burned-in captions to preview (only when they're switched on) */
   captions?: { chunks: CapChunk[]; settings: CaptionSettings } | null;
+  /** the selected title (pop-up words and shapes can be dragged on the picture) */
+  titleSel?: string | null; onTitleMove?: (id: string, x: number, y: number, done: boolean) => void;
+  /** brand kit logo (Phase 15) */
+  watermark?: { file: string; corner: "tl" | "tr" | "bl" | "br"; size: number; opacity: number } | null;
   projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[]; facecam?: FaceCam | null;
   /** when set, dragging on the picture draws a box (frame fractions) and calls this */
   drawBox?: ((box: { x: number; y: number; w: number; h: number }) => void) | null;
@@ -273,12 +277,20 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     return {
       left: (scr.w - w) / 2, top: (scr.h - h) / 2, right: "auto", bottom: "auto", width: w, height: h, objectFit: "fill",
       transform: `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`, opacity: o,
-      clipPath: cropCss(c.crop), filter: colorCss(c.color) || undefined,
+      clipPath: cropCss(c.crop), filter: [colorCss(c.color), c.chroma ? `url(#ck-${c.id})` : ""].filter(Boolean).join(" ") || undefined,
+      ...(c.chroma ? { background: "transparent" } : {}),
     };
   };
+  // green screen look-alike: an SVG colour matrix that turns pixels near the key colour see-through
+  const keyed = timeline.tracks.flatMap((t) => t.clips).filter((c) => c.chroma && c.start <= playhead + 1 && clipEnd(c) >= playhead - 1);
 
   return (
     <div className="monitor">
+      {keyed.length > 0 && (
+        <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+          <defs>{keyed.map((c) => <filter key={c.id} id={`ck-${c.id}`} colorInterpolationFilters="sRGB" x="0" y="0" width="1" height="1"><feColorMatrix type="matrix" values={chromaMatrix(c.chroma!)} /></filter>)}</defs>
+        </svg>
+      )}
       <div className="screen-wrap">
         <div className="screen" ref={screenRef} style={{ aspectRatio: `${ar}`, height: ar < 1 ? "100%" : undefined, width: ar >= 1 ? "100%" : undefined }}>
           <div className="stage" style={{ position: "absolute", inset: 0,
@@ -340,7 +352,16 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
           {guides && <SafeGuides vertical={output.height > output.width} k={scr.w / output.width} W={output.width} H={output.height}
             oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
-            W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
+            W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2}
+            sel={titleSel} onMove={onTitleMove} />}
+          {watermark && (() => {
+            const k = scr.w / output.width, oy = (scr.h - output.height * k) / 2;
+            const m = { x: output.width * 0.03 * k, y: output.height * 0.03 * k };
+            return <img data-testid="watermark-preview" src={`/api/projects/${projectId}/brand/watermark.png?f=${watermark.file}`} alt=""
+              style={{ position: "absolute", zIndex: 1700, pointerEvents: "none", opacity: watermark.opacity, width: output.width * watermark.size * k,
+                ...(watermark.corner.endsWith("l") ? { left: m.x } : { right: m.x }),
+                ...(watermark.corner.startsWith("t") ? { top: oy + m.y } : { bottom: oy + m.y }) }} />;
+          })()}
           {captions?.settings.enabled && captions.chunks.length > 0 && <CaptionsPreview chunks={captions.chunks} cs={captions.settings} t={playhead}
             k={scr.w / output.width} W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {active.filter(({ e }) => e.kind === "text" || e.kind === "image").map(({ e }) => (
@@ -421,3 +442,15 @@ function SafeGuides({ vertical, k, W, H, oy }: { vertical: boolean; k: number; W
     </div>
   );
 }
+
+/** Alpha row of a colour matrix for a key colour: the key's strongest channel minus the
+ *  other two, scaled by how strict "similarity" is. Close to green → see-through. */
+export function chromaMatrix(ch: { color: string; similarity: number }): string {
+  const rgb = [1, 3, 5].map((i) => parseInt(ch.color.slice(i, i + 2), 16) / 255);
+  const d = rgb.indexOf(Math.max(...rgb));
+  const k = 0.6 / Math.max(0.05, ch.similarity);
+  const a = [0, 1, 2].map((i) => (i === d ? -2 * k : k));
+  // the +1 comes from the pixel's own alpha (not a constant), so see-through stays see-through
+  return `1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  ${a[0]} ${a[1]} ${a[2]} 1 0`;
+}
+

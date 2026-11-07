@@ -135,6 +135,25 @@ class Transition(Strict):
     duration: float = Field(default=0.5, ge=0.1, le=3.0)
 
 
+COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
+
+
+class Watermark(Strict):
+    """Your logo in a corner of the whole video (from the brand kit; the file is copied into
+    the project's media/brand folder)."""
+    file: str = Field(pattern=r"^logo-[0-9a-f]{16}\.png$")
+    corner: Literal["tl", "tr", "bl", "br"] = "br"
+    size: float = Field(default=0.12, ge=0.03, le=0.4)
+    opacity: float = Field(default=0.8, ge=0.1, le=1.0)
+
+
+class Chroma(Strict):
+    """Green screen: make one colour see-through (FFmpeg chromakey)."""
+    color: str = Field(default="#00ff00", pattern=COLOR_HEX)
+    similarity: float = Field(default=0.3, ge=0.01, le=0.8)   # how close a colour must be to vanish
+    blend: float = Field(default=0.08, ge=0, le=0.5)          # soft edge
+
+
 class Clip(Strict):
     id: str
     media_id: str
@@ -146,6 +165,7 @@ class Clip(Strict):
     transform: Transform = Field(default_factory=Transform)
     crop: Crop = Field(default_factory=Crop)
     color: ColorAdjust = Field(default_factory=ColorAdjust)
+    chroma: Optional[Chroma] = None
     keyframes: dict[str, list[Keyframe]] = Field(default_factory=dict)
     link_id: Optional[str] = None
     label: Optional[str] = Field(default=None, max_length=200)
@@ -213,7 +233,6 @@ class Track(Strict):
         return _check_id(v)
 
 
-COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
 
 
 class Title(Strict):
@@ -221,13 +240,19 @@ class Title(Strict):
     id: str
     start: float = Field(ge=0, le=86400)
     duration: float = Field(default=4.0, ge=0.5, le=600)
-    template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter"] = "lower_third"
+    template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter",
+                      "pop_text", "arrow", "circle", "box"] = "lower_third"
     text: str = Field(default="Your name", max_length=80)
     subtext: str = Field(default="", max_length=100)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
     accent: str = Field(default="#ff5a3c", pattern=COLOR_HEX)
     align: Literal["left", "center", "right"] = "left"
     size: float = Field(default=1.0, ge=0.5, le=2.0)
+    # Phase 15 (pop_text and the shapes; ignored by the older templates)
+    x: float = Field(default=0.5, ge=0, le=1)          # centre, fraction of the width
+    y: float = Field(default=0.5, ge=0, le=1)          # centre, fraction of the height
+    rotation: float = Field(default=0, ge=-180, le=180)
+    anim: Literal["none", "pop", "typewriter", "slide_up", "bounce"] = "pop"
 
     @field_validator("id")
     @classmethod
@@ -452,6 +477,7 @@ class Project(Strict):
     captions: CaptionSettings = Field(default_factory=CaptionSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     facecam: Optional[FaceCam] = None
+    watermark: Optional["Watermark"] = None
 
     @field_validator("id")
     @classmethod

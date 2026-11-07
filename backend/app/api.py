@@ -5,6 +5,7 @@ responses. See ARCHITECTURE.md for the planned FastAPI migration.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -19,6 +20,8 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
+from . import brand as brand_mod
+from . import derive as derive_mod
 from . import ffmpeg as ff
 from . import media as media_svc
 from .config import Settings
@@ -553,6 +556,211 @@ def build_routes(svc: Services) -> list[Route]:
 
     class PreviewBody(BaseModel):
         proxy: bool = False
+
+    class DeriveBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        kind: Literal["freeze", "reverse"]
+        t: float = Field(default=0, ge=0, le=86400)                 # freeze: the frame (seconds into the recording)
+        seconds: float = Field(default=2.0, ge=0.2, le=derive_mod.FREEZE_MAX)
+        start: float = Field(default=0, ge=0, le=86400)             # reverse: the range
+        end: float = Field(default=0, ge=0, le=86400)
+
+    # ---------------------------------------------------------------- brand kit (Phase 15)
+    def brand_payload() -> dict:
+        b = brand_mod.load(S.workspace)
+        return {"brand": b.model_dump(mode="json"), "has_logo": bool(b.logo), "has_intro": bool(b.intro), "has_outro": bool(b.outro)}
+
+    async def brand_get(request: Request):
+        return JSONResponse(brand_payload())
+
+    async def brand_put(request: Request):
+        try:
+            data = await request.json()
+            cur = brand_mod.load(S.workspace)
+            # files are set by uploading them, not here
+            new = brand_mod.Brand.model_validate({**data, "logo": cur.logo, "intro": cur.intro, "outro": cur.outro})
+        except (ValidationError, ValueError) as exc:
+            return err(422, f"invalid brand kit: {exc}")
+        brand_mod.save(S.workspace, new)
+        return JSONResponse(brand_payload())
+
+    async def brand_file_put(request: Request):
+        kind = request.path_params["kind"]
+        if kind not in ("logo", "intro", "outro"):
+            return err(404, "unknown brand file")
+        declared = request.headers.get("content-length")
+        limit = brand_mod.LOGO_MAX_BYTES if kind == "logo" else S.max_upload_bytes
+        if declared and declared.isdigit() and int(declared) > limit:
+            return err(413, "file too large")
+        bdir = brand_mod.brand_dir(S.workspace)
+        b = brand_mod.load(S.workspace)
+        if kind == "logo":
+            data = await request.body()
+            if len(data) > limit:
+                return err(413, "file too large")
+            try:
+                b.logo = brand_mod.store_logo(S.workspace, data)
+            except ValueError as exc:
+                return err(415, str(exc))
+        else:
+            try:
+                ext = media_extension(request.query_params.get("filename", ""))
+            except PathSecurityError as exc:
+                return err(415, str(exc))
+            partial = bdir / f"{kind}.upload.partial"
+            size = 0
+            try:
+                with open(partial, "wb") as fh:
+                    async for chunk in request.stream():
+                        size += len(chunk)
+                        if size > limit:
+                            raise HTTPException(413, "file too large")
+                        fh.write(chunk)
+                try:
+                    pr = ff.probe(S.ffprobe_bin, partial)
+                except ff.FFmpegError as exc:
+                    return err(415, f"Could not read this file: {exc}")
+                if not pr.has_video:
+                    return err(415, "The intro and outro need to be videos.")
+                if pr.duration > 120:
+                    return err(422, "Keep the intro/outro under 2 minutes.")
+                setattr(b, kind, brand_mod.store_clip(S.workspace, kind, partial, ext))
+            finally:
+                partial.unlink(missing_ok=True)
+        brand_mod.save(S.workspace, b)
+        brand_mod.tidy(S.workspace, b)
+        return JSONResponse(brand_payload())
+
+    async def brand_file_delete(request: Request):
+        kind = request.path_params["kind"]
+        if kind not in ("logo", "intro", "outro"):
+            return err(404, "unknown brand file")
+        b = brand_mod.load(S.workspace)
+        setattr(b, kind, None)
+        brand_mod.save(S.workspace, b)
+        brand_mod.tidy(S.workspace, b)
+        return JSONResponse(brand_payload())
+
+    async def brand_logo_get(request: Request):
+        b = brand_mod.load(S.workspace)
+        f = brand_mod.brand_dir(S.workspace) / b.logo if b.logo else None
+        if not f or not f.is_file():
+            return err(404, "no logo")
+        return FileResponse(f, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    class WatermarkBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        on: bool
+
+    async def project_watermark(request: Request):
+        """Put the brand kit's logo on this project's video (or take it off)."""
+        pid = pid_of(request)
+        body = await body_model(request, WatermarkBody)
+        load(pid)
+        wm = None
+        if body.on:
+            b = brand_mod.load(S.workspace)
+            src = brand_mod.brand_dir(S.workspace) / b.logo if b.logo else None
+            if not src or not src.is_file():
+                return err(409, "Add a logo to your brand kit first (Settings → Brand kit).")
+            dest = store.dir(pid) / "media" / "brand"
+            dest.mkdir(parents=True, exist_ok=True)
+            if not (dest / b.logo).exists():
+                shutil.copyfile(src, dest / b.logo)
+            wm = {"file": b.logo, "corner": b.logo_corner, "size": b.logo_size, "opacity": b.logo_opacity}
+        p = store.update(pid, lambda d: {**d, "watermark": wm})
+        return JSONResponse({"watermark": p.watermark.model_dump(mode="json") if p.watermark else None})
+
+    async def project_watermark_image(request: Request):
+        pid = pid_of(request)
+        p = load(pid)
+        f = store.dir(pid) / "media" / "brand" / p.watermark.file if p.watermark else None
+        if not f or not f.is_file():
+            return err(404, "no watermark")
+        return FileResponse(f, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    class BrandImportBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        kind: Literal["intro", "outro"]
+
+    async def project_brand_import(request: Request):
+        """Copy the brand kit's intro or outro into this project's media (once)."""
+        pid = pid_of(request)
+        body = await body_model(request, BrandImportBody)
+        b = brand_mod.load(S.workspace)
+        name = getattr(b, body.kind)
+        src = brand_mod.brand_dir(S.workspace) / name if name else None
+        if not src or not src.is_file():
+            return err(409, f"Add an {body.kind} to your brand kit first (Settings → Brand kit).")
+        h = hashlib.sha256()
+        with open(src, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        sha = h.hexdigest()
+        p = load(pid)
+        dup = next((m for m in p.media if m.sha256 == sha), None)
+        if dup is not None:
+            return JSONResponse({"media": dup.model_dump(mode="json"), "job_id": None})
+        mid = new_id()
+        orig = media_svc.media_dir(store.dir(pid), "original")
+        final = orig / f"{mid}{src.suffix.lower()}"
+        shutil.copyfile(src, final)
+        try:
+            asset = media_svc.build_asset(S, mid, final, f"{'Intro' if body.kind == 'intro' else 'Outro'}{src.suffix.lower()}")
+        except ff.FFmpegError as exc:
+            final.unlink(missing_ok=True)
+            return err(415, str(exc))
+        asset.sha256 = sha
+        media_svc.mark_read_only(final)
+        store.update(pid, lambda d: {**d, "media": d["media"] + [asset.model_dump(mode="json")]})
+        job = svc.jobs.submit("derive_media", pid, {"media_id": mid})
+        return JSONResponse({"media": asset.model_dump(mode="json"), "job_id": job.id}, status_code=201)
+
+    def fmt_clock(t: float) -> str:
+        return f"{int(t // 60)}:{t % 60:04.1f}"
+
+    async def derive_media(request: Request):
+        """Make a freeze frame or a reversed copy of part of a recording, as a new media item."""
+        pid, asset = media_asset(request)
+        body = await body_model(request, DeriveBody)
+        if not asset.has_video:
+            return err(422, "This file has no picture.")
+        orig = media_svc.media_dir(store.dir(pid), "original")
+        src = orig / asset.stored_name
+        if not src.exists():
+            return err(409, "This recording is missing; relink it first.")
+        if body.kind == "reverse":
+            if not (0.2 <= body.end - body.start <= derive_mod.REVERSE_MAX + 1e-6) or body.end > asset.duration + 0.05:
+                return err(422, f"Pick between 0.2 and {derive_mod.REVERSE_MAX:.0f} seconds of the recording to reverse.")
+        elif body.t > asset.duration:
+            return err(422, "That time is past the end of the recording.")
+        if dir_size(S.workspace) > S.max_workspace_bytes:
+            return err(507, "workspace storage quota reached; delete projects or run cleanup")
+        new_mid = new_id()
+        final = orig / f"{new_mid}.mp4"
+        fps = derive_mod.output_fps(asset.fps)
+        stem = Path(asset.original_name).stem[:60]
+        if body.kind == "freeze":
+            name = f"Freeze {fmt_clock(body.t)} of {stem}.mp4"
+            work = lambda: derive_mod.freeze(S.ffmpeg_bin, src, body.t, body.seconds, fps, final)  # noqa: E731
+        else:
+            name = f"Reversed {fmt_clock(body.start)}-{fmt_clock(body.end)} of {stem}.mp4"
+            work = lambda: derive_mod.reverse(S.ffmpeg_bin, src, body.start, body.end, fps, asset.has_audio, final)  # noqa: E731
+        try:
+            await asyncio.to_thread(work)
+            new = media_svc.build_asset(S, new_mid, final, name)
+        except ff.FFmpegError as exc:
+            final.unlink(missing_ok=True)
+            return err(422, f"Couldn't make it: {exc}")
+        h = hashlib.sha256()
+        with open(final, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        new.sha256 = h.hexdigest()
+        media_svc.mark_read_only(final)
+        store.update(pid, lambda d: {**d, "media": d["media"] + [new.model_dump(mode="json")]})
+        job = svc.jobs.submit("derive_media", pid, {"media_id": new_mid})
+        return JSONResponse({"media": new.model_dump(mode="json"), "job_id": job.id}, status_code=201)
 
     def media_asset(request: Request):
         pid = pid_of(request)
@@ -1821,6 +2029,15 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/media/{mid}/stream", media_stream),
         Route(P + "/media/{mid}/previews", media_previews, methods=["POST"]),
         Route(P + "/media/{mid}/relink", relink_media, methods=["POST"]),
+        Route(P + "/media/{mid}/derive", derive_media, methods=["POST"]),
+        Route(P + "/brand/watermark", project_watermark, methods=["POST"]),
+        Route(P + "/brand/watermark.png", project_watermark_image, methods=["GET"]),
+        Route(P + "/brand/import", project_brand_import, methods=["POST"]),
+        Route("/api/brand", brand_get, methods=["GET"]),
+        Route("/api/brand", brand_put, methods=["PUT"]),
+        Route("/api/brand/logo", brand_logo_get, methods=["GET"]),
+        Route("/api/brand/files/{kind}", brand_file_put, methods=["POST"]),
+        Route("/api/brand/files/{kind}", brand_file_delete, methods=["DELETE"]),
         Route(P + "/media/{mid}/thumbnail", media_thumb),
         Route(P + "/media/{mid}/waveform", media_waveform),
         Route(P + "/exports", list_exports),

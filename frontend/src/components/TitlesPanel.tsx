@@ -1,11 +1,15 @@
 import React from "react";
 import { fmtTime } from "../api";
 import { addTitle, removeTitle, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
-import type { Timeline, Title, TitleTemplate } from "../timeline/types";
+import { FREE_TEMPLATES, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
+
+const ANIMS: [TitleAnim, string][] = [["pop", "Pop"], ["bounce", "Bounce"], ["slide_up", "Slide up"], ["typewriter", "Typewriter"], ["none", "None"]];
 import { Icon } from "./ui";
 
 /** Editor → Text: titles on the timeline (lower thirds, big titles, banners, subscribe, chapter cards). */
-export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel }: {
+export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top }: {
+  /** shown first (Phase 15: apply the brand kit) */
+  top?: React.ReactNode;
   timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
   sel: string | null; setSel: (id: string | null) => void;
@@ -15,9 +19,10 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
   const set = (patch: Partial<Title>, label: string) => cur && commit(updateTitle(timeline, cur.id, patch), label, true);
 
   return (
-    <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start" }} data-testid="titles-panel">
+    <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="titles-panel">
+      {top}
       <div className="insp-section" style={{ marginBottom: 0 }}>
-        <h3 style={{ margin: 0 }}>Add a title at the playhead</h3>
+        <h3 style={{ margin: 0 }}>Add a title or shape at the playhead</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
           {TITLE_TEMPLATES.map(([tpl, label]) => (
             <button key={tpl} className="btn sm" onClick={() => {
@@ -43,9 +48,9 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
       {cur && (
         <div className="insp-section">
           <h3 style={{ margin: 0 }}>Edit title</h3>
-          <label className="field">Text<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>
-          <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : "Second line"}
-            <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>
+          <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>
+          {!FREE_TEMPLATES.includes(cur.template) && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : "Second line"}
+            <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
           <div className="insp-grid">
             <label className="field">Starts at <span className="dim">{fmtTime(cur.start)}</span>
               <button className="btn xs" onClick={() => set({ start: playhead }, "Move title")}>Move to playhead</button></label>
@@ -54,7 +59,22 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             <label className="field">Text colour<input type="color" value={cur.color} onChange={(e) => set({ color: e.target.value }, "Title colour")} /></label>
             <label className="field">Accent<input type="color" value={cur.accent} onChange={(e) => set({ accent: e.target.value }, "Title accent")} /></label>
           </div>
-          {cur.template !== "chapter" && cur.template !== "big_title" && (
+          {FREE_TEMPLATES.includes(cur.template) && (<>
+            <div className="insp-grid">
+              <label className="field">Across <span className="dim">{Math.round((cur.x ?? 0.5) * 100)}%</span>
+                <input type="range" aria-label="Title across" min={0} max={1} step={0.01} value={cur.x ?? 0.5} onChange={(e) => set({ x: +e.target.value }, "Title position")} /></label>
+              <label className="field">Down <span className="dim">{Math.round((cur.y ?? 0.5) * 100)}%</span>
+                <input type="range" aria-label="Title down" min={0} max={1} step={0.01} value={cur.y ?? 0.5} onChange={(e) => set({ y: +e.target.value }, "Title position")} /></label>
+              <label className="field">Turn <span className="dim">{Math.round(cur.rotation ?? 0)}°</span>
+                <input type="range" aria-label="Title turn" min={-180} max={180} step={1} value={cur.rotation ?? 0} onChange={(e) => set({ rotation: +e.target.value }, "Title turn")} /></label>
+              <label className="field">Animation
+                <select aria-label="Title animation" value={cur.anim ?? "pop"} onChange={(e) => set({ anim: e.target.value as TitleAnim }, "Title animation")}>
+                  {ANIMS.filter(([a]) => a !== "typewriter" || cur.template === "pop_text").map(([a, l]) => <option key={a} value={a}>{l}</option>)}
+                </select></label>
+            </div>
+            <div className="dim" style={{ fontSize: 11 }}>Tip: drag it on the preview to place it.</div>
+          </>)}
+          {cur.template !== "chapter" && cur.template !== "big_title" && !FREE_TEMPLATES.includes(cur.template) && (
             <div className="row" style={{ gap: 4 }}>
               {(["left", "center", "right"] as const).map((a) => (
                 <button key={a} className={"btn xs" + (cur.align === a ? " on" : " ghost")} onClick={() => set({ align: a }, "Title position")}>{a[0].toUpperCase() + a.slice(1)}</button>
