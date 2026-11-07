@@ -1,9 +1,22 @@
 # Packaging & distribution
 
-**Status:** two ways to run RJClip on Windows, both tested by CI on a clean Windows machine on every push:
+**Status:** three ways to run RJClip on Windows, all tested by CI on a clean Windows machine on every push:
 
-1. **Portable package** (nothing to install), described below. Not code-signed yet.
-2. **From source** with the one-click launcher (`Start RJClip.bat`).
+1. **Installer** (`RJClip-Setup-win64.exe`), described below. Not code-signed.
+2. **Portable package** (nothing to install). Not code-signed.
+3. **From source** with the one-click launcher (`Start RJClip.bat`).
+
+## Installer (shipped, Phase 17)
+
+`RJClip-Setup-win64.exe`, made by [Inno Setup](https://jrsoftware.org/isinfo.php) from `scripts/windows/rjclip.iss`. It wraps exactly the portable folder below, so it runs the same tested app.
+
+- **For your user only**: no admin prompt. Installs into `%LOCALAPPDATA%\Programs\RJClip` (the folder can't be changed, which keeps the uninstaller safe).
+- Start-menu shortcut **RJClip** (and a desktop one if you tick it). It runs `RJClip.bat`, which opens your browser; close its window to stop RJClip.
+- **Uninstall** from Windows Settings → Apps → RJClip. It stops RJClip if it's running and removes the whole program folder. **Your projects are not in it** (they're in `%USERPROFILE%\RJClipWorkspace`), so they are kept.
+- **Update**: run a newer installer over the old one.
+- **How to get it**: GitHub → Actions → latest green *CI* run → Artifacts → **RJClip-Setup-win64** (sign in to GitHub; kept 14 days). It's a zip with the .exe inside.
+- **How it's tested**: CI builds it, installs it silently on a clean Windows machine, checks the files and Start-menu shortcut, starts RJClip from the installed folder with nothing else on PATH, exports a video with `scripts/smoke_export.py`, uninstalls it while it's still running, and checks the program folder and shortcut are gone and the projects folder is untouched.
+- **Unsigned**: Windows SmartScreen says "Windows protected your PC" the first time: *More info → Run anyway*. Removing that warning needs a paid code-signing certificate, which is why it isn't done.
 
 ## Portable package (shipped, Phase 8)
 
@@ -51,7 +64,7 @@ A zip (`RJClip-portable-win64.zip`, built by `scripts/windows/build_portable.ps1
 | Tauri wrapper | Rust shell with a system WebView, launching the Python server as a "sidecar" | Real desktop window, small shell (~10 MB), auto-update support | Still has to ship Python + FFmpeg as sidecars. Adds a Rust toolchain to the build. WebView2 differences from Chrome (MediaRecorder formats, codecs) need retesting | Later, if a native window matters |
 | Electron | Chromium + Node shell | Same browser engine as tested | +150 MB per install, and still needs Python | No |
 
-**Done:** the first option, as a zip (above), built and smoke-tested in a GitHub Actions Windows job. An Inno Setup installer around the same folder (Start-menu shortcut, uninstaller) is a small step on top; it's worth doing together with code signing, since an unsigned installer gets the same SmartScreen warning.
+**Done:** the first option, as a zip (above), built and smoke-tested in a GitHub Actions Windows job. The Inno Setup installer around the same folder (Start-menu shortcut, uninstaller) followed in Phase 17, unsigned.
 
 ## Licences to respect when bundling
 

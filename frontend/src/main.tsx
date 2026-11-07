@@ -53,7 +53,7 @@ function App() {
             </a>
           );
         })}
-        {!inEditor && <div className="nav-foot">Local-first · v0.16</div>}
+        {!inEditor && <div className="nav-foot">Local-first · v0.17</div>}
       </nav>
       <main className="main">
         {route.page === "dashboard" && <Dashboard />}

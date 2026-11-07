@@ -12,6 +12,7 @@ import { effectTime } from "../timeline/effects";
 import MediaLibrary from "../components/MediaLibrary";
 import Monitor from "../components/Monitor";
 import TimelineView from "../components/TimelineView";
+import Tour, { tourWanted } from "../components/Tour";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
@@ -44,6 +45,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [overlaySel, setOverlaySel] = useState<string | null>(null);
   const [markerSel, setMarkerSel] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
+  const [tour, setTour] = useState(tourWanted);
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
   const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
@@ -389,7 +391,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         {jobs.filter((j) => j.kind === "render" && (j.status === "running" || j.status === "queued")).map((j) => (
           <span key={j.id} className="chip run">Exporting {j.progress != null ? `${Math.round(j.progress * 100)}%` : "…"}</span>
         ))}
-        <button className="btn primary" onClick={() => { dirty.current = true; flush().then(() => go(`export/${projectId}`)); }}>
+        <button className="btn primary" data-tour="export" onClick={() => { dirty.current = true; flush().then(() => go(`export/${projectId}`)); }}>
           <Icon name="export" />Export
         </button>
       </div>
@@ -483,6 +485,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         </div>
       </div>
       {showKeys && <ShortcutSheet onClose={() => setShowKeys(false)} />}
+      {tour && <Tour onClose={() => setTour(false)} />}
       <div className="splitter" onPointerDown={startResize} />
       <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection}
         setSelection={(sel) => { setSelection(sel); if (sel.length) setMarkerSel(null); }}

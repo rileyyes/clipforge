@@ -198,6 +198,17 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 17: polish
+
+| # | Do this | You should see |
+|---|---|---|
+| 17.1 | Settings → **Show the tour again** → open a project in the editor | The tour: 7 steps, each pointing at a part of the screen. **Back**/**Next** work, keys like S or Delete do nothing behind it |
+| 17.2 | Finish it (**Start editing**), reload the page | It doesn't come back. Start it again from Settings and press **Esc**: it closes |
+| 17.3 | Put a title and a marker on the second clip of your timeline (and a blur, if you like) → drag that clip later | The title, marker and blur move with it; the ones on other clips stay put. **Ctrl+Z** puts it all back |
+| 17.4 | Drag a face cam or B-roll clip on V2 | Titles and markers stay where they are |
+| 17.5 | GitHub → Actions → latest green *CI* run → Artifacts → **RJClip-Setup-win64** → unzip → run `RJClip-Setup-win64.exe` | SmartScreen: *More info → Run anyway*. No admin prompt. Finish → RJClip opens in your browser; Start menu has **RJClip** |
+| 17.6 | Windows Settings → Apps → RJClip → Uninstall | RJClip is removed; your projects in `RJClipWorkspace` are still there |
+
 ## Phase 16: smarter AI help
 
 Needs a recording with a transcript (Script tab → Transcribe) for the best results.

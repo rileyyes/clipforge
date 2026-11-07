@@ -203,14 +203,13 @@ export function moveClip(tl: Timeline, id: string, newStart: number, targetTrack
     if (overlaps(dest, s, s + clipDuration(r.clip), ids)) return { error: `Clips can't overlap on ${dest.name}` };
   }
   const moved = new Map(group.map((r) => [r.clip.id, { ...r.clip, start: round6(r.clip.start + delta) }]));
-  return {
-    timeline: withTracks(tl, (track) => {
-      let clips = track.clips.filter((c) => !(c.id === id && track.id !== target.id));
-      clips = clips.map((c) => moved.get(c.id) ?? c);
-      if (track.id === target.id && track.id !== primary.track.id) clips.push(moved.get(id)!);
-      return { ...track, clips: sortClips(clips) };
-    }),
-  };
+  const after = withTracks(tl, (track) => {
+    let clips = track.clips.filter((c) => !(c.id === id && track.id !== target.id));
+    clips = clips.map((c) => moved.get(c.id) ?? c);
+    if (track.id === target.id && track.id !== primary.track.id) clips.push(moved.get(id)!);
+    return { ...track, clips: sortClips(clips) };
+  });
+  return { timeline: carryWithClips(tl, after) };
 }
 
 /** Move several clips (each with its linked clips) by the same `delta` seconds,
@@ -229,11 +228,60 @@ export function moveClips(tl: Timeline, ids: string[], delta: number): OpResult 
     const s = r.clip.start + delta;
     if (overlaps(r.track, s, s + clipDuration(r.clip), all)) return { error: `Clips can't overlap on ${r.track.name}` };
   }
+  const after = withTracks(tl, (track) =>
+    track.clips.some((c) => all.has(c.id))
+      ? { ...track, clips: sortClips(track.clips.map((c) => (all.has(c.id) ? { ...c, start: round6(c.start + delta) } : c))) }
+      : track);
+  return { timeline: carryWithClips(tl, after) };
+}
+
+// ---------------------------------------------------------------- overlays follow moved clips
+
+/** The clip a title or marker belongs to: the lowest visible video track with a clip at t
+ *  (your main picture; moving a face cam or B-roll on V2 doesn't drag titles along). */
+function baseClipAt(tl: Timeline, t: number): Clip | null {
+  for (const tr of tl.tracks) if (tr.kind === "video" && !tr.hidden) { const c = clipAt(tr, t); if (c) return c; }
+  return null;
+}
+
+/** After clips were moved (same ids, new starts), move each title, marker and blur that sat
+ *  on a moved clip by the same amount, so it stays on the same moment of the footage.
+ *  Titles and markers follow the main picture (see baseClipAt); a blur follows the picture
+ *  it covers (the top one). Items over nothing, or over a clip that didn't move, stay. */
+export function carryWithClips(before: Timeline, after: Timeline): Timeline {
+  const starts = new Map<string, number>();
+  for (const tr of after.tracks) for (const c of tr.clips) starts.set(c.id, c.start);
+  const shiftOf = (c: Clip | null) => {
+    if (!c) return 0;
+    const now = starts.get(c.id);
+    return now === undefined || Math.abs(now - c.start) < EPS ? 0 : now - c.start;
+  };
+  const probe = (t: number) => t + 1e-4;  // the clip that starts at t, not the one ending there
+  let changed = false;
+  const titles = (after.titles ?? []).map((x) => {
+    const d = shiftOf(baseClipAt(before, probe(x.start)));
+    if (!d) return x;
+    changed = true;
+    return { ...x, start: round6(Math.max(0, x.start + d)) };
+  });
+  const markers = (after.markers ?? []).map((m) => {
+    const d = shiftOf(baseClipAt(before, probe(m.t)));
+    if (!d) return m;
+    changed = true;
+    return { ...m, t: round6(Math.max(0, m.t + d)) };
+  }).sort((a, b) => a.t - b.t);
+  const blurs = (after.blurs ?? []).map((b) => {
+    const d = shiftOf(topVideoClipAt(before, probe(b.start))?.clip ?? null);
+    if (!d) return b;
+    changed = true;
+    return shiftBlur(b, d);
+  });
+  if (!changed) return after;
   return {
-    timeline: withTracks(tl, (track) =>
-      track.clips.some((c) => all.has(c.id))
-        ? { ...track, clips: sortClips(track.clips.map((c) => (all.has(c.id) ? { ...c, start: round6(c.start + delta) } : c))) }
-        : track),
+    ...after,
+    ...(after.titles ? { titles } : {}),
+    ...(after.markers ? { markers } : {}),
+    ...(after.blurs ? { blurs } : {}),
   };
 }
 

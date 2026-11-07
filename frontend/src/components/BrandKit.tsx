@@ -30,7 +30,7 @@ export default function BrandKit() {
   const toast = useToast();
   const [p, setP] = useState<BrandPayload | null>(null);
   const [v, setV] = useState(0);   // bust the logo image cache after an upload
-  const timer = useRef<number>();
+  const timer = useRef<number | undefined>(undefined);
   useEffect(() => { brandApi.get().then(setP).catch(() => toast("Couldn't load the brand kit", true)); }, []);
   if (!p) return <div className="card"><h3>Brand kit</h3><span className="muted">Loading…</span></div>;
   const b = p.brand;

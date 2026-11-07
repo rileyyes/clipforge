@@ -182,6 +182,12 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 17 — Polish 🟡 (built and tested automatically; waiting for your hands-on test)
+
+- ✅ **Titles, blurs and markers follow the clip you move**: drag a clip (or several, or type a new start in the Clip tab) and the titles and markers on it move with it, so they stay on the same moment. They belong to the clip on the lowest video track at that point (your main picture), so moving a face cam or B-roll on V2 doesn't drag them; a blur goes with the picture it covers (the top one). One Ctrl+Z puts everything back. Trimming doesn't move them
+- ✅ **First-run tour**: the first time you open the editor, 7 short steps point at the media, preview, timeline, tools and Export. Skip it any time (Esc); **Settings → Show the tour again** brings it back. It's remembered per browser
+- ✅ **Windows installer** (`RJClip-Setup-win64.exe`, unsigned): installs the same tested portable package for your user only (no admin prompt) into `%LOCALAPPDATA%\Programs\RJClip`, with a Start-menu shortcut (desktop shortcut optional) and an uninstaller in *Settings → Apps*. Your projects stay in `%USERPROFILE%\RJClipWorkspace` and are never touched by installing, updating or uninstalling. CI builds it with Inno Setup, installs it silently on a clean Windows machine, exports a video with it, uninstalls it and checks everything is gone except your projects. Unsigned, so Windows SmartScreen warns the first time (*More info → Run anyway*)
+
 ## Phase 16 — Smarter AI help 🟡 (built and tested automatically; waiting for your hands-on test)
 
 - ✅ **Hook checker** (Editor → **AI** tab → **Check my hook**): scores the first 10 seconds of your edit out of 100 from things it can measure — how soon you start talking, a long intro, how loud and how busy the start is compared with the rest, and whether your first sentence sounds like a hook (needs the transcript). Each weak point comes with a tip, and some with a one-click fix: **Cut slow start** (removes the silence before your first word) and **Add teaser** (copies your best moment to the very start). It is a rule of thumb, not a prediction of views

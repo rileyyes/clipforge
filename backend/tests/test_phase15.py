@@ -42,7 +42,7 @@ def test_shapes_render_where_they_are_placed(tmp_path):
     t = Title(id=new_id(), start=0, duration=3, template="circle", text="", x=0.25, y=0.5, accent="#ff0000", anim="none").model_dump()
     (tmp_path / "t.ass").write_text(titles.ass([t], 640, 360, "DejaVu Sans", None), encoding="utf-8")
     out = tmp_path / "f.png"
-    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=1", "-vf", f"subtitles={tmp_path / 't.ass'},select='gte(t\\,0.5)'",
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=1", "-vf", "subtitles=t.ass,select='gte(t\\,0.5)'",  # relative: a Windows path (C:\\...) would need filter escaping
                     "-frames:v", "1", str(out)], check=True, cwd=tmp_path)
     img = frame_at(out, 0, 640, 360)
     red = (img[:, :, 0] > 180) & (img[:, :, 1] < 80)

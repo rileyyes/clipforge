@@ -142,7 +142,7 @@ jobs:
         shell: bash
         run: |
           fail=0
-          for t in e2e_browser e2e_autoedit e2e_effects e2e_audio e2e_history e2e_phase6 e2e_library e2e_shorts e2e_publish e2e_facecam e2e_phase10 e2e_phase11 e2e_phase12 e2e_phase13 e2e_phase14 e2e_phase15 e2e_phase16 e2e_thumbnails; do
+          for t in e2e_browser e2e_autoedit e2e_effects e2e_audio e2e_history e2e_phase6 e2e_library e2e_shorts e2e_publish e2e_facecam e2e_phase10 e2e_phase11 e2e_phase12 e2e_phase13 e2e_phase14 e2e_phase15 e2e_phase16 e2e_phase17 e2e_thumbnails; do
             echo "::group::$t"
             if ! python scripts/$t.py; then echo "::error title=$t::browser E2E failed"; fail=1; fi
             echo "::endgroup::"
@@ -231,7 +231,7 @@ jobs:
   windows-portable:
     name: Windows portable package (build + run with nothing installed)
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     env:
       CI: "true"
     steps:
@@ -285,6 +285,54 @@ jobs:
           Write-Output "::notice title=portable size::$zipMb MB zipped"
           Stop-Process -Id $p.Id -Force
           Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Build the installer (Inno Setup, unsigned)
+        shell: powershell
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          & $iscc /Q "/DAppVersion=0.17.$env:GITHUB_RUN_NUMBER" "/DSourceDir=$pwd\portable\RJClip" "/DOutDir=$pwd\portable" scripts\windows\rjclip.iss
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=installer::ISCC failed"; exit 1 }
+          $mb = [math]::Round((Get-Item portable\RJClip-Setup-win64.exe).Length / 1MB, 1)
+          Write-Output "::notice title=installer size::$mb MB"
+      - name: Install it, run it with nothing else on PATH, uninstall it
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Continue"
+          $p = Start-Process portable\RJClip-Setup-win64.exe -PassThru -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=install.log'
+          if ($p.ExitCode -ne 0) { Get-Content install.log | Select-Object -Last 30; Write-Output "::error title=install::exit $($p.ExitCode)"; exit 1 }
+          $dir = Join-Path $env:LOCALAPPDATA "Programs\RJClip"
+          $lnk = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\RJClip.lnk"
+          foreach ($f in "$dir\RJClip.bat", "$dir\python\python.exe", "$dir\ffmpeg\ffmpeg.exe", "$dir\unins000.exe", $lnk) {
+            if (-not (Test-Path $f)) { Write-Output "::error title=install::missing $f"; exit 1 }
+          }
+          $hostPy = (Get-Command python).Source
+          $ws = Join-Path $env:RUNNER_TEMP "ws-installed"
+          $env:RJCLIP_WORKSPACE = $ws
+          $clean = "C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0"
+          $app = Start-Process cmd.exe -PassThru -WorkingDirectory $dir -RedirectStandardOutput iout.txt -RedirectStandardError ierr.txt `
+                   -ArgumentList '/c', "set PATH=$clean&& RJClip.bat -NoBrowser"
+          $ok = $false
+          for ($i = 0; $i -lt 120; $i++) {
+            if ($app.HasExited) { break }
+            try { if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8765/api/health).StatusCode -eq 200) { $ok = $true; break } } catch { }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $ok) { Get-Content iout.txt, ierr.txt -ErrorAction SilentlyContinue; Write-Output "::error title=installed app::didn't start"; exit 1 }
+          & $hostPy scripts\smoke_export.py --base http://127.0.0.1:8765 --ffmpeg "$dir\ffmpeg\ffmpeg.exe" 2>&1 | Tee-Object ismoke.txt
+          if ($LASTEXITCODE -ne 0) { Write-Output "::error title=installed app smoke test::$(((Get-Content ismoke.txt) | Select-Object -Last 20) -join '%0A')"; exit 1 }
+          Set-Content "$ws\keep-me.txt" "stands in for your projects"
+          # uninstall while it's still running: the uninstaller stops it first
+          Start-Process "$dir\unins000.exe" -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          for ($i = 0; $i -lt 60 -and (Test-Path $dir); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $dir) { Get-ChildItem -Recurse $dir | Select-Object -First 20 FullName; Write-Output "::error title=uninstall::$dir still there"; exit 1 }
+          if (Test-Path $lnk) { Write-Output "::error title=uninstall::Start menu shortcut still there"; exit 1 }
+          if (-not (Test-Path "$ws\keep-me.txt")) { Write-Output "::error title=uninstall::your projects folder was touched"; exit 1 }
+          Write-Output "::notice title=installer::installed, exported a video, uninstalled cleanly; projects kept"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RJClip-Setup-win64
+          path: portable/RJClip-Setup-win64.exe
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: RJClip-portable-win64

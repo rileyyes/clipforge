@@ -365,3 +365,13 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .hook-score { font-size: 22px; font-weight: 800; width: 46px; height: 46px; border-radius: 50%; border: 3px solid; display: grid; place-items: center; flex: none; }
 .hook-tip { font-size: 12px; line-height: 1.4; }
 .broll-row { gap: 6px; min-width: 0; }
+
+/* ---------- first-run tour (Phase 17) ---------- */
+.tour { position: fixed; inset: 0; z-index: 200; }
+.tour-block { position: absolute; inset: 0; }
+.tour-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.55); }
+.tour-hole { position: absolute; border-radius: 10px; border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); pointer-events: none; transition: all .2s ease; }
+.tour-card { position: absolute; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; padding: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5); display: grid; gap: 8px; }
+.tour-card h3 { margin: 0; font-size: 16px; }
+.tour-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.tour-count { font-size: 11px; color: var(--dim); }
