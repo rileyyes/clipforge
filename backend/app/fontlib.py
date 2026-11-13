@@ -61,13 +61,17 @@ def user_dir(workspace: Path) -> Path:
 
 
 def _user_meta(workspace: Path) -> list[dict]:
+    """Your fonts' details (reading only: the folder is made when you add the first one)."""
     out = []
-    for m in sorted(user_dir(workspace).glob("u-*.json")):
+    d = workspace / "fonts"
+    if not d.is_dir():
+        return out
+    for m in sorted(d.glob("u-*.json")):
         try:
             d = json.loads(m.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if re.match(FONT_ID, d.get("id", "")) and (user_dir(workspace) / d.get("file", "")).is_file():
+        if re.match(FONT_ID, d.get("id", "")) and (workspace / "fonts" / d.get("file", "")).is_file():
             out.append(d)
     return out
 
@@ -88,7 +92,7 @@ def resolve(workspace: Path, font_id: Optional[str]) -> Optional[tuple[Path, str
         return (p, _BY_ID[font_id][0]) if p.is_file() else None
     for d in _user_meta(workspace):
         if d["id"] == font_id:
-            return user_dir(workspace) / d["file"], d["family"]
+            return workspace / "fonts" / d["file"], d["family"]
     return None
 
 
@@ -133,7 +137,8 @@ def delete(workspace: Path, font_id: str) -> bool:
     if not re.match(r"^u-[0-9a-f]{12}$", font_id or ""):
         return False
     found = False
-    for p in user_dir(workspace).glob(f"{font_id}.*"):
+    d = workspace / "fonts"
+    for p in (d.glob(f"{font_id}.*") if d.is_dir() else []):
         p.unlink(missing_ok=True)
         found = True
     return found
