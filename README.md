@@ -54,6 +54,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **What well-edited videos do**: a pacing checker that finds still stretches (with one-click punch-ins), slow push-ins, word-by-word titles, key words in captions, timers and money counters, time & place stamps, routes drawn on a map, a highlighter for screenshots, and automatic sound design (whooshes, risers, hits).
 - **Creator styles**: 22 free fonts (or add your own), outlines/shadows/glow and saved text styles, emoji stickers; counter tools (a counter, callout cards, a tally screen, narration ducking); reaction & group tools (funny-moment finder, name tags, combo effects, bass boost, sound board); VHS, film, horror and cinema-bar looks.
 - **Polish**: titles, blurs and markers move with the clip you drag; a short first-run tour (Settings → Show the tour again); a Windows installer.
 - **Smarter AI help** (AI tab): a hook checker that scores your first 10 seconds with one-click fixes (cut the slow start, add a teaser), B-roll suggested from your own recordings, offline voiceover (free Piper voice, downloaded once), and songs matched to calm/busy parts with smooth beat-aligned loops.

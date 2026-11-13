@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -248,7 +248,9 @@ class Title(Strict):
     template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter",
                       "pop_text", "arrow", "circle", "box",
                       # Phase 18
-                      "count_card", "tally", "number_card", "sticker"] = "lower_third"
+                      "count_card", "tally", "number_card", "sticker",
+                      # Phase 19
+                      "ticker", "stamp", "route", "highlight"] = "lower_third"
     text: str = Field(default="Your name", max_length=80)
     subtext: str = Field(default="", max_length=100)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
@@ -259,7 +261,7 @@ class Title(Strict):
     x: float = Field(default=0.5, ge=0, le=1)          # centre, fraction of the width
     y: float = Field(default=0.5, ge=0, le=1)          # centre, fraction of the height
     rotation: float = Field(default=0, ge=-180, le=180)
-    anim: Literal["none", "pop", "typewriter", "slide_up", "bounce"] = "pop"
+    anim: Literal["none", "pop", "typewriter", "slide_up", "bounce", "words"] = "pop"
     # Phase 18: font and text style (None = the template's own look)
     font: Optional[str] = Field(default=None, pattern=FONT_ID)
     stroke: Optional[float] = Field(default=None, ge=0, le=24)    # outline, px at 1080p
@@ -268,11 +270,26 @@ class Title(Strict):
     glow: float = Field(default=0, ge=0, le=40)                   # soft glow size, px at 1080p (0 = off)
     glow_color: str = Field(default="#ffde00", pattern=COLOR_HEX)
     number: int = Field(default=1, ge=0, le=999)                  # number_card
+    # Phase 19
+    count_from: float = Field(default=60, ge=-1e9, le=1e9)        # ticker: value at the start...
+    count_to: float = Field(default=0, ge=-1e9, le=1e9)           # ...and at the end of the title
+    format: Literal["time", "money", "number"] = "time"           # ticker: 1:05 / $1,250 / 1,250
+    points: list[tuple[float, float]] = Field(default_factory=list, max_length=20)   # route (frame fractions)
+    w: float = Field(default=0.4, ge=0.01, le=1)                  # highlight: box size (fractions)
+    h: float = Field(default=0.08, ge=0.01, le=1)
 
     @field_validator("id")
     @classmethod
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
+
+    @field_validator("points")
+    @classmethod
+    def _v_points(cls, v):
+        for x, y in v:
+            if not (0 <= x <= 1 and 0 <= y <= 1):
+                raise ValueError("route points must be inside the frame (0-1)")
+        return [(round(float(x), 5), round(float(y), 5)) for x, y in v]
 
     @field_validator("template", mode="before")
     @classmethod
@@ -356,7 +373,7 @@ class OutputSettings(Strict):
         return self
 
 
-SOUNDS = ("beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh", "ding", "pop", "airhorn")
+SOUNDS = ("beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh", "ding", "pop", "airhorn", "riser", "impact")
 
 
 class Effect(Strict):
@@ -374,7 +391,7 @@ class Effect(Strict):
     enabled: bool = True
     origin: Literal["auto", "user"] = "user"
     sound: Optional[Literal["beep", "boing", "scratch", "honk", "quack", "mute", "boom", "whoosh",
-                            "ding", "pop", "airhorn", "custom"]] = None
+                            "ding", "pop", "airhorn", "riser", "impact", "custom"]] = None
     sound_asset: Optional[str] = None  # sound == "custom": a sound copied from My library
     volume: float = Field(default=0.8, ge=0, le=2)
     text: Optional[str] = Field(default=None, max_length=40)
@@ -428,6 +445,8 @@ class CaptionSettings(Strict):
     max_words: int = Field(default=4, ge=1, le=12)
     uppercase: bool = True
     font: Optional[str] = Field(default=None, pattern=FONT_ID)   # Phase 18 (None = default font)
+    emphasis: bool = False                                        # Phase 19: key words bigger, in emphasis_color
+    emphasis_color: str = Field(default="#00e5ff", pattern=COLOR_HEX)
 
 
 class AudioSettings(Strict):
@@ -659,6 +678,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "schema_version": 6}
     if data.get("schema_version", 6) < 7:  # v6 -> v7: fonts, counters, name tags, new looks (all defaulted)
         data = {**data, "schema_version": 7}
+    if data.get("schema_version", 7) < 8:  # v7 -> v8: ticker/stamp/route/highlight titles, caption key words (defaulted)
+        data = {**data, "schema_version": 8}
     return data
 
 

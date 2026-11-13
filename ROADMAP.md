@@ -182,6 +182,30 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 19 — What well-edited videos do 🟡 (built and tested automatically; waiting for your hands-on test)
+
+Taken from editing breakdowns, creator interviews and retention guides (RJClip can't watch videos itself): well-edited videos keep giving the eye something new, put key words on screen, use sound to carry the cuts, and show places, times and evidence clearly.
+
+**Pacing**
+- ✅ **Pacing checker** (AI tab): pick a pace — Fast (a change every 2.5 s), Lively (4 s) or Relaxed (8 s) — and it finds stretches where nothing on screen changes for longer, shown in red on the ruler. It counts the changes your edit makes (cuts, B-roll and layers, transitions, titles, zooms, shakes, flashes, pop-ups, animated clips) and, for recordings the Auto Editor has analysed, movement in the footage itself. **Punch in** / **Punch in all of them** adds gentle zooms spread through each stretch; **Text** adds pop-up words. It's a rule of thumb: a slow, calm moment can be the right choice
+- ✅ **Slow push** (Clip tab): a slow, steady zoom in or out across the whole clip — keeps photos, maps and still shots alive
+
+**Text**
+- ✅ **Word by word**: pop-up words appear one after another (new Animation option)
+- ✅ **Key words in captions** (Effects → Captions): the key word of each line is bigger and in its own colour — numbers and amounts first, else the longest word that isn't filler. Preview and export pick the same word (checked against a shared test file)
+- ✅ **Time & place** stamp: "DAY 1 / 6:00 AM" typed out at the top left
+- ✅ **Timer** and **Money counter** (a ticker): counts down or up as time (1:05), money ($10,000) or a number; timers can run in real time (**Real time** button); a countdown turns the accent colour in its last 10 seconds; money and numbers roll fast then settle
+
+**Documentary tools**
+- ✅ **Route on a map**: click the route on the preview (over a map screenshot or any picture); the line draws itself, then a pin with your text appears at the end
+- ✅ **Highlighter**: drag a box on the preview; a highlighter pen sweeps across it (a quote in a screenshot of an article or post)
+
+**Sound**
+- ✅ **Auto sound design** (Effects tab): whooshes into transitions, zooms and pop-ups, a **riser** and **impact** into each marker, a hit on big titles. Running it again replaces what it added before; your own sounds stay; **Remove it** takes them all away. Riser and impact are new built-in sounds (also on the sound board)
+
+**Fixes found on the way**
+- Speed-up ramps could leave markers out of order (found by the random-edit tester)
+
 ## Phase 18 — Creator styles: fonts, counter tools, reaction & group tools, looks 🟡 (built and tested automatically; waiting for your hands-on test)
 
 **Fonts & text styles**

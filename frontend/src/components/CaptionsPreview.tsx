@@ -1,6 +1,6 @@
 import { fontCss } from "../fonts";
 import React from "react";
-import { captionAt, type CapChunk } from "../timeline/captions";
+import { captionAt, keyWord, type CapChunk } from "../timeline/captions";
 import type { CaptionSettings } from "../timeline/types";
 
 /** A CSS look-alike of the burned-in captions (export: backend/app/effects.py captions_ass,
@@ -12,6 +12,7 @@ export default function CaptionsPreview({ chunks, cs, t, k, W, H, ox, oy }: {
   const on = captionAt(chunks, t);
   if (!on) return null;
   const { chunk, word } = on;
+  const kw = cs.emphasis ? keyWord(chunk.words.map((w) => w.text)) : null;
   const size = Math.round(H * cs.size) * k;
   const w = W * k, h = H * k, side = W * 0.06 * k;
   const margin = H * (cs.position !== "middle" ? 0.08 : 0) * k;
@@ -29,8 +30,10 @@ export default function CaptionsPreview({ chunks, cs, t, k, W, H, ox, oy }: {
       textAlign: "center", pointerEvents: "none", zIndex: 1500, opacity: Math.max(0, fade) }}>
       <span style={{ display: "inline-block", transform: `scale(${pop})`, transformOrigin: "50% 100%" }}>
         <span style={{ fontFamily: fontCss(cs.font), fontWeight: cs.font ? 400 : 700, fontSize: size, lineHeight: 1.18, color: cs.color, ...text }}>
-          {cs.style === "highlight"
-            ? chunk.words.map((x, i) => <React.Fragment key={i}>{i > 0 && " "}<span style={{ color: i === word ? cs.highlight : cs.color }}>{x.text}</span></React.Fragment>)
+          {cs.style === "highlight" || kw !== null
+            ? chunk.words.map((x, i) => <React.Fragment key={i}>{i > 0 && " "}<span data-key-word={i === kw ? "1" : undefined}
+                style={{ color: cs.style === "highlight" && i === word ? cs.highlight : i === kw ? cs.emphasis_color ?? "#00e5ff" : cs.color,
+                  ...(i === kw ? { display: "inline-block", transform: "scale(1.15)", margin: `0 ${size * 0.06}px` } : {}) }}>{x.text}</span></React.Fragment>)
             : chunk.text}
         </span>
       </span>

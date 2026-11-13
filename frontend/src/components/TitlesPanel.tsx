@@ -2,17 +2,36 @@ import React, { useEffect, useState } from "react";
 import { fmtTime } from "../api";
 import { fontsApi } from "../fonts";
 import { applyStyle, styleOf, TEXT_PRESETS } from "../timeline/phase18";
+import { realTimeDuration } from "../timeline/phase19";
+import { parseTime } from "../timeline/effects";
 import FontSelect from "./FontSelect";
 import { addTitle, removeTitle, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
 import { FREE_TEMPLATES, type TextStyle, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
 
 const STICKERS = ["😂", "🤣", "💀", "☠️", "🔥", "😱", "😭", "👀", "🤯", "😡", "🤔", "😎", "👍", "👎", "💯", "❤️",
   "💥", "⚡", "🎯", "🏆", "🍿", "🔪", "🩸", "👻", "🧟", "🎃", "🤡", "🐐", "🧠", "😈", "🙏", "❓"];
-const ANIMS: [TitleAnim, string][] = [["pop", "Pop"], ["bounce", "Bounce"], ["slide_up", "Slide up"], ["typewriter", "Typewriter"], ["none", "None"]];
+const ANIMS: [TitleAnim, string][] = [["pop", "Pop"], ["words", "Word by word"], ["bounce", "Bounce"], ["slide_up", "Slide up"], ["typewriter", "Typewriter"], ["none", "None"]];
+
+/** Ticker values as you'd type them: 1:30 for time, 1,250 for money/numbers. */
+function fmtCount(v: number, f: Title["format"]): string {
+  if ((f ?? "time") === "time") { const s = Math.round(v); const a = Math.abs(s); return `${s < 0 ? "-" : ""}${Math.floor(a / 60)}:${String(a % 60).padStart(2, "0")}`; }
+  return String(Math.round(v));
+}
+function readCount(text: string, f: Title["format"]): number | null {
+  const t = text.trim().replace(/[$,\s]/g, "");
+  if ((f ?? "time") === "time" && t.includes(":")) {
+    const neg = t.startsWith("-"); const v = parseTime(t.replace(/^-/, ""));
+    return v === null ? null : neg ? -v : v;
+  }
+  const n = Number(t);
+  return Number.isFinite(n) && t !== "" ? n : null;
+}
 import { Icon } from "./ui";
 
 /** Editor → Text: titles on the timeline (lower thirds, big titles, banners, subscribe, chapter cards). */
-export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top, bottom }: {
+export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top, bottom, drawingFor = null, onDraw }: {
+  /** Phase 19: draw a highlighter box / route points on the preview for this title (kind null = stop) */
+  drawingFor?: string | null; onDraw?: (id: string, kind: "box" | "points" | null) => void;
   /** shown first (Phase 15: apply the brand kit) */
   top?: React.ReactNode;
   /** shown last (Phase 18: counter, name tags) */
@@ -35,8 +54,8 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
         <h3 style={{ margin: 0 }}>Add a title or shape at the playhead</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
           {TITLE_TEMPLATES.map(([tpl, label]) => (
-            <button key={tpl} className="btn sm" onClick={() => {
-              const r = addTitle(timeline, tpl as TitleTemplate, playhead);
+            <button key={tpl + label} className="btn sm" onClick={() => {
+              const r = addTitle(timeline, tpl as TitleTemplate, playhead, label);
               if (commit(r, `Add ${label.toLowerCase()}`) && r.id) setSel(r.id);
             }}><Icon name="plus" size={13} />{label}</button>
           ))}
@@ -68,6 +87,45 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
           ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "count_card" ? "Name" : cur.template === "tally" ? "Heading" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
           {cur.template === "number_card" && <label className="field">Number<input type="number" min={0} max={999} value={cur.number ?? 1} aria-label="Card number"
             onChange={(e) => Number.isFinite(+e.target.value) && set({ number: +e.target.value }, "Card number")} /></label>}
+          {cur.template === "ticker" && (<>
+            <div className="insp-grid">
+              <label className="field">Counts<select aria-label="Ticker kind" value={cur.format ?? "time"} onChange={(e) => set({ format: e.target.value as Title["format"] }, "Ticker kind")}>
+                <option value="time">Time (1:05)</option><option value="money">Money ($1,250)</option><option value="number">Number (1,250)</option></select></label>
+              <span />
+              <label className="field">From<input type="text" aria-label="Count from" defaultValue={fmtCount(cur.count_from ?? 60, cur.format)} key={`f${cur.id}${cur.count_from}${cur.format}`}
+                onBlur={(e) => { const v = readCount(e.target.value, cur.format); if (v !== null) set({ count_from: v }, "Ticker from"); }}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /></label>
+              <label className="field">To<input type="text" aria-label="Count to" defaultValue={fmtCount(cur.count_to ?? 0, cur.format)} key={`t${cur.id}${cur.count_to}${cur.format}`}
+                onBlur={(e) => { const v = readCount(e.target.value, cur.format); if (v !== null) set({ count_to: v }, "Ticker to"); }}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} /></label>
+            </div>
+            {(cur.format ?? "time") === "time" && <div className="row" style={{ gap: 6, fontSize: 11 }}>
+              <span className="dim">{Math.abs(realTimeDuration(cur) - cur.duration) < 0.05 ? "Runs in real time" : `Runs ${((Math.abs((cur.count_to ?? 0) - (cur.count_from ?? 60))) / Math.max(0.05, cur.duration - 0.3)).toFixed(1)}× real time`}</span>
+              <button className="btn xs" onClick={() => set({ duration: realTimeDuration(cur) }, "Timer in real time")}>Real time</button></div>}
+            <div className="dim" style={{ fontSize: 11 }}>The text above it is the label (e.g. TIME LEFT, PRIZE); leave it empty for none. A countdown turns the accent colour in its last 10 seconds.</div>
+          </>)}
+          {cur.template === "route" && (
+            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+              {drawingFor === cur.id
+                ? <button className="btn sm primary" onClick={() => onDraw?.(cur.id, null)}>Cancel drawing</button>
+                : <button className="btn sm" onClick={() => onDraw?.(cur.id, "points")}>Click the route on the preview</button>}
+              <span className="dim" style={{ fontSize: 11 }}>{(cur.points ?? []).length} points. Put a map screenshot (or any picture) on the timeline under it; the line draws itself, then a pin with the text appears at the end.</span>
+            </div>
+          )}
+          {cur.template === "highlight" && (<>
+            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+              {drawingFor === cur.id
+                ? <button className="btn sm primary" onClick={() => onDraw?.(cur.id, null)}>Cancel drawing</button>
+                : <button className="btn sm" onClick={() => onDraw?.(cur.id, "box")}>Draw the box on the preview</button>}
+            </div>
+            <div className="insp-grid">
+              <label className="field">Width <span className="dim">{Math.round((cur.w ?? 0.4) * 100)}%</span>
+                <input type="range" aria-label="Highlight width" min={0.02} max={1} step={0.01} value={cur.w ?? 0.4} onChange={(e) => set({ w: +e.target.value }, "Highlight size")} /></label>
+              <label className="field">Height <span className="dim">{Math.round((cur.h ?? 0.08) * 100)}%</span>
+                <input type="range" aria-label="Highlight height" min={0.02} max={0.5} step={0.005} value={cur.h ?? 0.08} onChange={(e) => set({ h: +e.target.value }, "Highlight size")} /></label>
+            </div>
+            <div className="dim" style={{ fontSize: 11 }}>A highlighter pen sweeps across the box — for a quote in a screenshot of an article or a post. The colour is the Accent.</div>
+          </>)}
           {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every callout card before it, with the counter's total (or how many cards) at that point.</div>}
           {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "count_card" ? "Detail" : "Second line"}
             <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
@@ -89,7 +147,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
                 <input type="range" aria-label="Title turn" min={-180} max={180} step={1} value={cur.rotation ?? 0} onChange={(e) => set({ rotation: +e.target.value }, "Title turn")} /></label>
               <label className="field">Animation
                 <select aria-label="Title animation" value={cur.anim ?? "pop"} onChange={(e) => set({ anim: e.target.value as TitleAnim }, "Title animation")}>
-                  {ANIMS.filter(([a]) => a !== "typewriter" || cur.template === "pop_text").map(([a, l]) => <option key={a} value={a}>{l}</option>)}
+                  {ANIMS.filter(([a]) => (a !== "typewriter" && a !== "words") || cur.template === "pop_text").map(([a, l]) => <option key={a} value={a}>{l}</option>)}
                 </select></label>
             </div>
             <div className="dim" style={{ fontSize: 11 }}>Tip: drag it on the preview to place it.</div>
@@ -103,7 +161,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
           )}
           <label className="field">Size <span className="dim">{Math.round(cur.size * 100)}%</span>
             <input type="range" min={0.5} max={2} step={0.05} value={cur.size} onChange={(e) => set({ size: +e.target.value }, "Title size")} /></label>
-          {!shape && cur.template !== "sticker" && (
+          {!shape && cur.template !== "sticker" && cur.template !== "highlight" && (
             <div className="insp-section" style={{ margin: 0 }} data-testid="text-style">
               <h3 style={{ margin: 0 }}>Font & style</h3>
               <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>

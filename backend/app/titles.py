@@ -11,9 +11,9 @@ import re
 from typing import Optional
 
 TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box",
-             "count_card", "tally", "number_card", "sticker")
+             "count_card", "tally", "number_card", "sticker", "ticker", "stamp", "route", "highlight")
 SHAPES = ("arrow", "circle", "box")
-FREE = ("pop_text", "sticker", *SHAPES)       # placed anywhere (x, y), rotated, animated
+FREE = ("pop_text", "sticker", "ticker", *SHAPES)   # placed anywhere (x, y), rotated, animated
 STICKER_FONT = "emoji"                         # fontlib id of the sticker font (Noto Emoji)
 K = 0.5523  # bezier circle constant
 IN, OUT = 0.4, 0.3  # seconds of in / out animation
@@ -131,6 +131,12 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
             line(1, f"\\an8\\pos({x + w / 2:.0f},{y + h + 10 * k:.0f}){fad}\\fs{int(fs * 0.6)}\\c{_c('#ffffff')}\\bord{3 * k:.1f}", sub)
     elif t["template"] in FREE:
         out += _free(t, W, H, k, a, b)
+    elif t["template"] == "stamp":
+        out += _stamp(t, W, H, k, span)
+    elif t["template"] == "route":
+        out += _route(t, W, H, k, a, b)
+    elif t["template"] == "highlight":
+        out += _highlight(t, W, H, k, span)
     elif t["template"] == "count_card":
         out += _count_card(t, W, H, k, m, span, fad)
     elif t["template"] == "tally":
@@ -218,6 +224,13 @@ def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
         out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\fs{fs}\\b0\\c{_c(col)}\\3c{_c(col)}"
                    f"\\bord{max(1.0, 2.5 * k):.1f}\\shad{5 * k:.1f}\\4c{_c('#000000', 0x60)}}}{_esc(t.get('text', ''))}")
         return out
+    if t["template"] == "ticker":
+        return _ticker(t, W, H, k, a, b, x, y, frz)
+    if t["template"] == "pop_text" and kind == "words":
+        fs = int(96 * k)
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f}){fad}{frz}\\fs{fs}\\b1\\c{_c(col)}\\3c{_c('#000000')}"
+                   f"\\bord{max(2.0, 7 * k):.1f}\\shad{3 * k:.1f}}}{word_by_word(t.get('text', ''), b - a)}")
+        return out
     if t["template"] == "pop_text":
         fs = int(96 * k)
         pos, _ = _anim("none" if kind == "typewriter" else kind, x, y, H)
@@ -244,6 +257,212 @@ def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
         out.append(f"Dialogue: 2,{span},T,,0,0,0,,{{\\an8\\pos({x:.0f},{y + 140 * k:.0f}){fad}\\fs{fs}\\b1\\c{_c(col)}"
                    f"\\3c{_c('#000000')}\\bord{max(2.0, 5 * k):.1f}}}{_esc(t['text'])}")
     return out
+
+
+def word_by_word(text: str, dur: float) -> str:
+    """Each word pops in after the one before (Phase 19): over at most 1.2 s or 60 % of the title."""
+    words = (text or "").split()
+    if not words:
+        return ""
+    step = min(0.35, min(1.2, dur * 0.6) / len(words))
+    out = []
+    for i, w in enumerate(words):
+        t0 = int(i * step * 1000)
+        out.append(f"{{\\alpha&HFF&\\fscx55\\fscy55\\t({t0},{t0 + 1},\\alpha&H00&)\\t({t0},{t0 + 140},\\fscx112\\fscy112)"
+                   f"\\t({t0 + 140},{t0 + 220},\\fscx100\\fscy100)}}{_esc(w)}" + (" " if i < len(words) - 1 else ""))
+    return "".join(out)
+
+
+# ---------------------------------------------------------------- Phase 19: ticker (timers, money)
+def ticker_value(tt: float, t: dict) -> float:
+    """The ticker's value tt seconds into the title. Time counts evenly; money and numbers
+    roll fast then settle (ease-out). It reaches the end value before the fade-out starts.
+    Same rule in the Editor preview (frontend/src/timeline/phase19.ts tickerValue)."""
+    frm, to = float(t.get("count_from", 60)), float(t.get("count_to", 0))
+    run = max(0.05, float(t["duration"]) - OUT)
+    p = min(1.0, max(0.0, tt / run))
+    if t.get("format", "time") != "time":
+        p = 1 - (1 - p) ** 3
+    return frm + (to - frm) * p
+
+
+def ticker_text(v: float, t: dict) -> str:
+    fmt = t.get("format", "time")
+    down = float(t.get("count_to", 0)) < float(t.get("count_from", 60))
+    if fmt == "time":
+        import math
+        s = math.ceil(v - 1e-9) if down else math.floor(v + 1e-9)
+        sign, s = ("-" if s < 0 else ""), abs(int(s))
+        h, m, sec = s // 3600, s // 60 % 60, s % 60
+        return f"{sign}{h}:{m:02d}:{sec:02d}" if h else f"{sign}{m}:{sec:02d}"
+    n = int(round(v))
+    body = f"{abs(n):,}"
+    return ("-" if n < 0 else "") + ("$" if fmt == "money" else "") + body
+
+
+def ticker_steps(t: dict) -> list[tuple[float, str]]:
+    """(seconds into the title, text) each time the shown text changes."""
+    dur = float(t["duration"])
+    step = max(1 / 15, dur / 3000)
+    out: list[tuple[float, str]] = []
+    n = int(dur / step) + 1
+    for i in range(n + 1):
+        tt = min(dur, i * step)
+        txt = ticker_text(ticker_value(tt, t), t)
+        if not out or out[-1][1] != txt:
+            out.append((tt, txt))
+    # the exact end value, the moment the count finishes
+    end = ticker_text(float(t.get("count_to", 0)), t)
+    if out[-1][1] != end:
+        out.append((min(dur, max(0.05, dur - OUT)), end))
+    return out
+
+
+def _ticker(t: dict, W: int, H: int, k: float, a: float, b: float, x: float, y: float, frz: str) -> list[str]:
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff3b30")
+    fs, fl = int(110 * k), int(40 * k)
+    down = float(t.get("count_to", 0)) < float(t.get("count_from", 60))
+    fad_in = "\\fad(150,0)"
+    out = []
+    if t.get("text"):
+        out.append(f"Dialogue: 1,{_t(a)},{_t(b)},T,,0,0,0,,{{\\an2\\pos({x:.0f},{y - fs * 0.55:.0f})\\fad(150,{int(OUT * 1000)}){frz}"
+                   f"\\fs{fl}\\b1\\c{_c(acc)}\\3c{_c('#000000')}\\bord{max(1.5, 4 * k):.1f}\\shad0}}{_esc(t['text'])}")
+    steps = ticker_steps(t)
+    for i, (t0, txt) in enumerate(steps):
+        s0, s1 = a + t0, (a + steps[i + 1][0]) if i + 1 < len(steps) else b
+        if s1 - s0 < 0.005:
+            continue
+        last = i == len(steps) - 1
+        # a countdown's last ten seconds turn the accent colour
+        hot = t.get("format", "time") == "time" and down and _secs(txt) <= 10
+        fade = (fad_in if i == 0 else "") + (f"\\fad(0,{int(OUT * 1000)})" if last and i else "")
+        if last and i == 0:
+            fade = f"\\fad(150,{int(OUT * 1000)})"
+        out.append(f"Dialogue: 1,{_t(s0)},{_t(s1)},T,,0,0,0,,{{\\an5\\pos({x:.0f},{y:.0f}){fade}{frz}\\fs{fs}\\b1"
+                   f"\\c{_c(acc if hot else col)}\\3c{_c('#000000')}\\bord{max(2.0, 8 * k):.1f}\\shad{4 * k:.1f}}}{txt}")
+    return out
+
+
+def _secs(txt: str) -> float:
+    try:
+        parts = [int(p) for p in txt.lstrip("-").split(":")]
+    except ValueError:
+        return 1e9
+    v = 0
+    for p_ in parts:
+        v = v * 60 + p_
+    return v
+
+
+# ---------------------------------------------------------------- Phase 19: stamp, route, highlight
+def _stamp(t: dict, W: int, H: int, k: float, span: str) -> list[str]:
+    """Location / time stamp (DAY 1 — 6:00 AM, Tokyo), typed out at the top left."""
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ffde00")
+    fs, ss = int(72 * k), int(38 * k)
+    x, y = W * 0.05, H * 0.08
+    dur = float(t["duration"])
+    text, sub = t.get("text", ""), t.get("subtext") or ""
+    fad = f"\\fad(0,{int(OUT * 1000)})"
+    out = [f"Dialogue: 0,{span},T,,0,0,0,,{{\\an7\\pos({x:.0f},{y:.0f})\\fad(120,{int(OUT * 1000)})\\p1\\c{_c(acc)}\\bord0\\shad0}}"
+           f"{_rect(8 * k, fs * 1.15 + (ss * 1.3 if sub else 0))}",
+           f"Dialogue: 1,{span},T,,0,0,0,,{{\\an7\\pos({x + 24 * k:.0f},{y:.0f}){fad}\\fs{fs}\\b1\\c{_c(col)}\\3c{_c('#000000')}"
+           f"\\bord{3 * k:.1f}\\shad{3 * k:.1f}}}{typewriter(text, min(dur, 1.6))}"]
+    if sub:
+        delay = int(min(0.8, min(1.6, dur) * 0.5) * 1000)
+        body = "".join(f"{{\\alpha&HFF&\\t({delay + int(i * 35)},{delay + int(i * 35) + 1},\\alpha&H00&)}}{_esc(ch)}" for i, ch in enumerate(sub))
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an7\\pos({x + 24 * k:.0f},{y + fs * 1.15:.0f}){fad}\\fs{ss}\\b0\\c{_c(col)}"
+                   f"\\3c{_c('#000000')}\\bord{2 * k:.1f}\\shad{2 * k:.1f}}}{body}")
+    return out
+
+
+def _disc(cx: float, cy: float, r: float) -> str:
+    c = K * r
+    return (f"m {cx:.1f} {cy - r:.1f} b {cx + c:.1f} {cy - r:.1f} {cx + r:.1f} {cy - c:.1f} {cx + r:.1f} {cy:.1f} "
+            f"b {cx + r:.1f} {cy + c:.1f} {cx + c:.1f} {cy + r:.1f} {cx:.1f} {cy + r:.1f} "
+            f"b {cx - c:.1f} {cy + r:.1f} {cx - r:.1f} {cy + c:.1f} {cx - r:.1f} {cy:.1f} "
+            f"b {cx - r:.1f} {cy - c:.1f} {cx - c:.1f} {cy - r:.1f} {cx:.1f} {cy - r:.1f}")
+
+
+def _quad(x0: float, y0: float, x1: float, y1: float, half: float) -> str:
+    import math
+    dx, dy = x1 - x0, y1 - y0
+    L = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / L * half, dx / L * half
+    q = [(x0 + nx, y0 + ny), (x1 + nx, y1 + ny), (x1 - nx, y1 - ny), (x0 - nx, y0 - ny)]
+    # same turning direction as _disc, so overlaps add up instead of cutting holes at the joints
+    if sum(q[i][0] * q[(i + 1) % 4][1] - q[(i + 1) % 4][0] * q[i][1] for i in range(4)) < 0:
+        q.reverse()
+    return "m " + " l ".join(f"{x:.1f} {y:.1f}" for x, y in q[:1]) + " l " + " ".join(f"{x:.1f} {y:.1f}" for x, y in q[1:])
+
+
+def route_path(pts: list[tuple[float, float]], f: float, half: float) -> tuple[str, tuple[float, float]]:
+    """Drawing of the route's first fraction f (by length), with round joins; and the tip."""
+    import math
+    lens = [math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]) for i in range(len(pts) - 1)]
+    total = sum(lens) or 1.0
+    want = total * max(0.0, min(1.0, f))
+    parts = [_disc(pts[0][0], pts[0][1], half)]
+    tip = pts[0]
+    for i, L in enumerate(lens):
+        if want <= 0:
+            break
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        u = 1.0 if want >= L else want / L
+        tip = (x0 + (x1 - x0) * u, y0 + (y1 - y0) * u)
+        parts += [_quad(x0, y0, tip[0], tip[1], half), _disc(tip[0], tip[1], half)]
+        want -= L
+    return " ".join(parts), tip
+
+
+ROUTE_STEPS = 30
+
+
+def route_draw_time(dur: float) -> float:
+    return min(2.0, max(0.3, dur * 0.5))
+
+
+def _route(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
+    """A line drawn along points (a route on a map, a path to follow), then a pin at its end."""
+    pts = [(x * W, y * H) for x, y in (t.get("points") or [])]
+    acc, col = t.get("accent", "#ff3b30"), t.get("color", "#ffffff")
+    half = max(2.0, 7 * k)
+    out: list[str] = []
+    if len(pts) < 2:
+        return out
+    draw = route_draw_time(b - a)
+    # a white line under the coloured one (outlining each piece would show seams at the corners)
+    edge = max(1.0, 3 * k)
+    under = f"\\an7\\pos(0,0)\\p1\\c{_c('#ffffff')}\\bord0\\shad{2 * k:.1f}"
+    over = f"\\an7\\pos(0,0)\\p1\\c{_c(acc)}\\bord0\\shad0"
+    for i in range(1, ROUTE_STEPS + 1):
+        s0 = a + draw * (i - 1) / ROUTE_STEPS
+        s1 = a + draw * i / ROUTE_STEPS if i < ROUTE_STEPS else b
+        fade = f"\\fad(0,{int(OUT * 1000)})" if i == ROUTE_STEPS else ""
+        out.append(f"Dialogue: 0,{_t(s0)},{_t(s1)},T,,0,0,0,,{{{under}{fade}}}{route_path(pts, i / ROUTE_STEPS, half + edge)[0]}")
+        out.append(f"Dialogue: 1,{_t(s0)},{_t(s1)},T,,0,0,0,,{{{over}{fade}}}{route_path(pts, i / ROUTE_STEPS, half)[0]}")
+    ex, ey = pts[-1]
+    r = 16 * k
+    pop = f"\\fscx40\\fscy40\\t(0,180,\\fscx115\\fscy115)\\t(180,280,\\fscx100\\fscy100)"
+    out.append(f"Dialogue: 2,{_t(a + draw)},{_t(b)},T,,0,0,0,,{{\\an5\\pos({ex:.0f},{ey:.0f}){pop}\\fad(0,{int(OUT * 1000)})"
+               f"\\p1\\c{_c(acc)}\\3c{_c('#ffffff')}\\bord{max(1.5, 5 * k):.1f}\\shad{3 * k:.1f}}}{_circle(r)}")
+    if t.get("text"):
+        fs = int(46 * k)
+        out.append(f"Dialogue: 2,{_t(a + draw)},{_t(b)},T,,0,0,0,,{{\\an2\\pos({ex:.0f},{ey - r * 1.6:.0f})\\fad(150,{int(OUT * 1000)})"
+                   f"\\fs{fs}\\b1\\c{_c(col)}\\3c{_c('#000000')}\\bord{max(2.0, 5 * k):.1f}\\shad{2 * k:.1f}}}{_esc(t['text'])}")
+    return out
+
+
+def _highlight(t: dict, W: int, H: int, k: float, span: str) -> list[str]:
+    """Highlighter pen sweeping left to right over a box (a quote in a screenshot, a line of text)."""
+    w, h = float(t.get("w", 0.4)) * W, float(t.get("h", 0.08)) * H
+    x0, y0 = float(t.get("x", 0.5)) * W - w / 2, float(t.get("y", 0.5)) * H - h / 2
+    sweep = int(min(0.6, float(t["duration"]) * 0.4) * 1000)
+    acc = t.get("accent", "#ffde00")
+    clip0 = f"\\clip({x0:.0f},{y0 - 2:.0f},{x0 + 1:.0f},{y0 + h + 2:.0f})"
+    clip1 = f"\\clip({x0:.0f},{y0 - 2:.0f},{x0 + w:.0f},{y0 + h + 2:.0f})"
+    return [f"Dialogue: 0,{span},T,,0,0,0,,{{\\an7\\pos(0,0)\\p1\\c{_c(acc)}\\alpha&H88&\\bord0\\shad0"
+            f"\\fad(0,{int(OUT * 1000)}){clip0}\\t(0,{sweep},{clip1})}}"
+            f"m {x0:.0f} {y0:.0f} l {x0 + w:.0f} {y0:.0f} {x0 + w:.0f} {y0 + h:.0f} {x0:.0f} {y0 + h:.0f}"]
 
 
 def _count_card(t: dict, W: int, H: int, k: float, m: Measure, span: str, fad: str) -> list[str]:

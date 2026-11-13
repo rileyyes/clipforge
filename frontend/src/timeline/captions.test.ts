@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { captionAt, captionChunks, maskWord } from "./captions";
+import { captionAt, captionChunks, keyWord, maskWord } from "./captions";
 
 const cases = JSON.parse(readFileSync(new URL("../../../backend/tests/data/caption_vectors.json", import.meta.url), "utf8"));
 
@@ -28,4 +28,10 @@ test("captionAt finds the line and the lit word", () => {
   assert.equal(a.chunk.text, "So today we're going");
   assert.equal(a.word, 1);
   assert.equal(captionAt(ch, 1.1)!.word, 3);
+});
+
+test("key words: same choice as the backend (tests/data/emphasis_vectors.json)", () => {
+  const v = JSON.parse(readFileSync(new URL("../../../backend/tests/data/emphasis_vectors.json", import.meta.url), "utf8"));
+  assert.ok(v.cases.length >= 10);
+  for (const c of v.cases) assert.equal(keyWord(c.words), c.key, JSON.stringify(c.words));
 });

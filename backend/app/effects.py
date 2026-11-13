@@ -302,6 +302,9 @@ def synth_expr(sound: str, dur: float) -> str:
         "ding": "0.45*sin(2*PI*1320*t)*exp(-5*t)+0.2*sin(2*PI*2640*t)*exp(-7*t)",
         "pop": "0.8*sin(2*PI*(700*t-300*t*t))*exp(-28*t)",
         "airhorn": "0.16*(sgn(sin(2*PI*440*t))+sgn(sin(2*PI*554*t))+sgn(sin(2*PI*659*t)))",
+        # Phase 19 sound design: a rising build-up into a moment, and a hit on it
+        "riser": f"(0.5*sin(2*PI*(180*t+520*t*t/{D}))+0.35*(random(0)*2-1))*(t/{D})*(t/{D})*0.8",   # no commas: lavfi
+        "impact": "0.9*sin(2*PI*(45*t+20*(1-exp(-12*t))))*exp(-4*t)+0.35*(random(0)*2-1)*exp(-16*t)",
     }
     return exprs[sound]
 
@@ -424,6 +427,13 @@ def caption_chunks(project: Project, project_dir: Path) -> list[dict]:
     return chunks
 
 
+_BIG, _NORMAL = "\\fscx115\\fscy115", "\\fscx100\\fscy100"
+
+
+def _cap_case(cs, text: str) -> str:
+    return text.upper() if cs.uppercase else text
+
+
 def captions_ass(project: Project, chunks: list[dict], font_family: str, H: int, W: int, bold: bool = True) -> str:
     """``bold=False`` for a chosen font (Phase 18): display fonts are drawn as designed, not fake-bolded."""
     cs = project.captions
@@ -440,20 +450,61 @@ def captions_ass(project: Project, chunks: list[dict], font_family: str, H: int,
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lines = []
     esc = lambda s: s.replace("\\", "").replace("{", "(").replace("}", ")")  # noqa: E731
+    emph = _ass_color(cs.emphasis_color)
     for c in chunks:
+        kw = key_word([w["text"] for w in c["words"]]) if cs.emphasis else None
         if cs.style == "highlight":
             for i, w in enumerate(c["words"]):
                 st = w["start"] if i else c["start"]
                 en = c["words"][i + 1]["start"] if i + 1 < len(c["words"]) else c["end"]
-                parts = [(f"{{\\c{_ass_color(cs.highlight)}}}{esc(x['text'])}{{\\c{_ass_color(cs.color)}}}" if j == i
+                parts = [(f"{{\\c{_ass_color(cs.highlight)}{_BIG if j == kw else ''}}}{esc(x['text'])}{{\\c{_ass_color(cs.color)}{_NORMAL if j == kw else ''}}}" if j == i
+                          else f"{{\\c{emph}{_BIG}}}{esc(x['text'])}{{\\c{_ass_color(cs.color)}{_NORMAL}}}" if j == kw
                           else esc(x["text"])) for j, x in enumerate(c["words"])]
                 lines.append(f"Dialogue: 0,{_ass_time(st)},{_ass_time(max(en, st + 0.05))},Cap,,0,0,0,,{' '.join(parts)}")
         elif cs.style == "bold_pop":
             pop = "{\\fad(40,60)\\fscx80\\fscy80\\t(0,90,\\fscx112\\fscy112)\\t(90,170,\\fscx100\\fscy100)}"
-            lines.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Cap,,0,0,0,,{pop}{esc(c['text'])}")
+            if kw is None:
+                lines.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Cap,,0,0,0,,{pop}{esc(c['text'])}")
+            else:  # the key word pops a size bigger, in the emphasis colour
+                big = "{\\fscx92\\fscy92\\t(0,90,\\fscx129\\fscy129)\\t(90,170,\\fscx115\\fscy115)}"
+                parts = [(f"{{\\c{emph}}}{big}{esc(_cap_case(cs, x['text']))}{{\\c{_ass_color(cs.color)}}}{pop.replace('\\fad(40,60)', '')}" if j == kw
+                          else esc(_cap_case(cs, x["text"]))) for j, x in enumerate(c["words"])]
+                lines.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Cap,,0,0,0,,{pop}{' '.join(parts)}")
+        elif kw is not None:
+            parts = [(f"{{\\c{emph}{_BIG}}}{esc(_cap_case(cs, x['text']))}{{\\c{_ass_color(cs.color)}{_NORMAL}}}" if j == kw
+                      else esc(_cap_case(cs, x["text"]))) for j, x in enumerate(c["words"])]
+            lines.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Cap,,0,0,0,,{{\\fad(60,60)}}{' '.join(parts)}")
         else:
             lines.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Cap,,0,0,0,,{{\\fad(60,60)}}{esc(c['text'])}")
     return head + "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------- Phase 19: key words in captions
+# Common longer words that are rarely the point of a sentence (same list: frontend/src/timeline/captions.ts)
+EMPHASIS_SKIP = frozenset("""about above after again against almost already always another around because before
+being below between could didn't doesn't during every going gonna gotta haven't little maybe might never other really
+right should something sometimes still their there these thing things think those though through today together
+under until wanna where which while would yeah you're they're we're that's there's what's actually basically literally
+probably anyway anything everything nothing""".split())
+
+
+def key_word(texts: list[str]) -> "int | None":
+    """Which word of a caption line to make stand out: a number or amount first, else the
+    longest word of 5+ letters that isn't a filler word; first one wins a tie; None if none."""
+    best, score = None, 0
+    for i, t in enumerate(texts):
+        if "*" in t:                      # a bleeped word stays plain
+            continue
+        w = t.strip().strip(".,!?;:\"'()[]").lower()
+        if any(ch.isdigit() for ch in w) or "$" in w or "%" in w:
+            sc = 100 + len(w)
+        elif len(w) >= 5 and w.replace("'", "").isalpha() and w not in EMPHASIS_SKIP:
+            sc = len(w)
+        else:
+            continue
+        if sc > score:
+            best, score = i, sc
+    return best
 
 
 def captions_srt(chunks: list[dict]) -> str:

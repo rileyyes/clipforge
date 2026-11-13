@@ -1,6 +1,7 @@
 import React from "react";
 import { fontCss } from "../fonts";
 import { FREE_TEMPLATES, type Title } from "../timeline/types";
+import { routePart, routeProgress, routeDrawTime, tickerAt, tickerHot } from "../timeline/phase19";
 
 /** CSS versions of the title templates for the monitor (export: backend/app/titles.py, libass).
  *  Same sizes (relative to the output height), positions and in/out timing. */
@@ -74,7 +75,26 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
   };
   const stroke = Math.max(3, 12 * s / k) * k;
   let body: React.ReactNode;
-  if (x.template === "pop_text") {
+  if (x.template === "ticker") {
+    const txt = tickerAt(t, x);
+    body = <span style={{ display: "grid", justifyItems: "center", whiteSpace: "nowrap", position: "relative", fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, ...styleCss(x, s, k) }}>
+      {x.text && <span style={{ fontSize: 40 * s, color: x.accent, WebkitTextStroke: `${Math.max(1.5, 4 * s / k) * k * 2}px #000`, paintOrder: "stroke fill",
+        position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 110 * s * 0.05 }}>{x.text}</span>}
+      <span data-testid="ticker-value" style={{ fontSize: 110 * s, lineHeight: 1, color: tickerHot(txt, x) ? x.accent : x.color,
+        WebkitTextStroke: `${Math.max(2, 8 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", textShadow: `${4 * s}px ${4 * s}px 0 rgba(0,0,0,.4)`,
+        fontVariantNumeric: "tabular-nums" }}>{txt}</span>
+    </span>;
+  } else if (x.template === "pop_text" && anim === "words") {
+    const words = x.text.split(/\s+/).filter(Boolean);
+    const step = Math.min(0.35, Math.min(1.2, x.duration * 0.6) / Math.max(1, words.length));
+    body = <span style={{ fontSize: 96 * s, fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
+      WebkitTextStroke: `${Math.max(2, 7 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", textShadow: `${3 * s}px ${3 * s}px 0 rgba(0,0,0,.5)`, ...styleCss(x, s, k) }}>
+      {words.map((w, i) => {
+        const a = t - i * step;
+        const sc = a < 0 ? 0.55 : a < 0.14 ? 0.55 + (1.12 - 0.55) * (a / 0.14) : a < 0.22 ? 1.12 - 0.12 * ((a - 0.14) / 0.08) : 1;
+        return <React.Fragment key={i}>{i > 0 && " "}<span style={{ display: "inline-block", opacity: a < 0 ? 0 : 1, transform: `scale(${sc})` }}>{w}</span></React.Fragment>;
+      })}</span>;
+  } else if (x.template === "pop_text") {
     const step = Math.min(0.06, Math.min(0.8, x.duration * 0.5) / Math.max(1, x.text.length));
     const shown = anim === "typewriter" ? [...x.text].slice(0, Math.floor(t / step) + 1).join("") : x.text;
     body = <span style={{ fontSize: 96 * s, fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
@@ -103,7 +123,7 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
           transform: `translate(-50%,-50%) rotate(${x.rotation ?? 0}deg) scale(${sx},${sy})`,
           pointerEvents: selected && onMove ? "auto" : "none", cursor: selected && onMove ? "move" : undefined,
           outline: selected && onMove ? "1px dashed rgba(255,255,255,.7)" : undefined, outlineOffset: 6 }}>{body}</div>
-      {x.template !== "pop_text" && x.template !== "sticker" && x.text && (
+      {x.template !== "pop_text" && x.template !== "sticker" && x.template !== "ticker" && x.text && (
         <div style={{ position: "absolute", left: cx, top: cy + 140 * s, transform: "translateX(-50%)", opacity: fade, pointerEvents: "none", zIndex: 1600,
           fontSize: 48 * s, fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
           WebkitTextStroke: `${Math.max(2, 5 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", ...styleCss(x, s, k) }}>{x.text}</div>
@@ -167,6 +187,43 @@ function One({ x, t, k, W, H, ox, oy, cardN, tally }: { x: Title; t: number; k: 
         <div style={{ fontSize: 66 * s, lineHeight: 1.15 }}>{x.text}</div>
         {x.subtext && <div style={{ fontSize: 38 * s, lineHeight: 1.3, opacity: 0.8, fontWeight: x.font ? 400 : 400 }}>{x.subtext}</div>}
       </>);
+    }
+    case "stamp": {
+      const fs = 72 * s, ss = 38 * s;
+      const chars = (txt: string, from: number, per: number) => [...txt].slice(0, Math.max(0, Math.floor((t - from) / per) + 1)).join("");
+      const per = Math.min(0.06, Math.min(0.8, Math.min(x.duration, 1.6) * 0.5) / Math.max(1, x.text.length));
+      const delay = Math.min(0.8, Math.min(1.6, x.duration) * 0.5);
+      return frame({ left: left + w * 0.05, top: top + h * 0.08, borderLeft: `${8 * s}px solid ${x.accent}`, paddingLeft: 16 * s,
+        textShadow: `${3 * s}px ${3 * s}px 0 rgba(0,0,0,.5)`, opacity: Math.min(1, t / 0.12) }, <>
+        <div style={{ fontSize: fs, lineHeight: 1.15, WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }}>{chars(x.text, 0, per)}&#8203;</div>
+        {x.subtext && <div style={{ fontSize: ss, lineHeight: 1.3, fontWeight: 400 }}>{t >= delay ? chars(x.subtext, delay, 0.035) : ""}&#8203;</div>}
+      </>);
+    }
+    case "route": {
+      const pts = (x.points ?? []).map(([px, py]) => [left + px * w, top + py * h] as [number, number]);
+      if (pts.length < 2) return null;
+      const part = routePart(pts, routeProgress(t, x.duration));
+      const half = Math.max(2, 7 * s / k) * k, edge = Math.max(1, 3 * s / k) * k;
+      const drawn = t >= routeDrawTime(x.duration);
+      const [ex, ey] = pts[pts.length - 1], r = 16 * s;
+      const line = part.map((p) => p.join(",")).join(" ");
+      return <div data-testid="title-preview" data-template="route" style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: fadeOut, zIndex: 1600 }}>
+        <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+          <polyline points={line} fill="none" stroke="#fff" strokeWidth={2 * (half + edge)} strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={line} fill="none" stroke={x.accent} strokeWidth={2 * half} strokeLinecap="round" strokeLinejoin="round" />
+          {drawn && <circle cx={ex} cy={ey} r={r} fill={x.accent} stroke="#fff" strokeWidth={Math.max(1.5, 5 * s / k) * k} />}
+        </svg>
+        {drawn && x.text && <div style={{ position: "absolute", left: ex, top: ey - r * 1.6, transform: "translate(-50%,-100%)", fontSize: 46 * s,
+          fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
+          WebkitTextStroke: `${Math.max(2, 5 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", ...styleCss(x, s, k) }}>{x.text}</div>}
+      </div>;
+    }
+    case "highlight": {
+      const bw = (x.w ?? 0.4) * w, bh = (x.h ?? 0.08) * h;
+      const sweep = Math.min(0.6, x.duration * 0.4);
+      const f = Math.min(1, t / sweep);
+      return frame({ left: left + (x.x ?? 0.5) * w - bw / 2, top: top + (x.y ?? 0.5) * h - bh / 2, width: bw, height: bh,
+        background: x.accent, opacity: 0.47, clipPath: `inset(0 ${(1 - f) * 100}% 0 0)` }, null);
     }
     case "number_card": {
       const sc = t < IN * 0.6 ? 0.4 + 0.72 * (t / (IN * 0.6)) : t < IN ? 1.12 - 0.12 * ((t - IN * 0.6) / (IN * 0.4)) : 1;

@@ -1,3 +1,4 @@
+import { TITLE_TEMPLATES } from "../timeline/ops";
 import React, { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { fmtTime, thumbUrl, waveformUrl } from "../api";
 import {
@@ -84,6 +85,8 @@ export interface TimelineProps {
   onRemoveTrack: (trackId: string) => void;
   toolbar: React.ReactNode;
   markers?: { t: number; color: string; title: string }[];
+  /** Phase 19: stretches the pacing checker found too still (shown in red on the ruler) */
+  slow?: { start: number; end: number }[] | null;
   /** the user's own markers (M): click selects + seeks, drag moves */
   userMarkers?: Marker[];
   markerSel?: string | null;
@@ -331,6 +334,11 @@ export default function TimelineView(p: TimelineProps) {
         <div className="tl-scroll" ref={scrollRef}>
           <div className="tl-canvas" style={{ width: contentW }}>
             <div className="ruler" onPointerDown={scrub} style={{ position: "relative" }}>
+              {(p.slow ?? []).map((s, i) => (
+                <div key={"slow" + i} data-testid="slow-stretch" title={`Nothing changes on screen for ${(s.end - s.start).toFixed(1)} s`}
+                  style={{ position: "absolute", left: s.start * pps, width: Math.max(2, (s.end - s.start) * pps), top: 0, height: 4,
+                    background: "rgba(255,59,48,.85)", borderRadius: 2, pointerEvents: "auto" }} />
+              ))}
               {(p.markers ?? []).filter((m) => m.t * pps >= view.left - 10 && m.t * pps <= view.left + view.width + 10).map((m, i) => (
                 <div key={"m" + i} title={m.title} style={{ position: "absolute", left: m.t * pps - 4, bottom: 0, width: 8, height: 8,
                   borderRadius: 2, background: m.color, transform: "rotate(45deg)", zIndex: 1, pointerEvents: "auto" }} />
@@ -352,7 +360,7 @@ export default function TimelineView(p: TimelineProps) {
             {hasOverlays && (
               <div className="lane ov-lane" style={{ height: OV_H }} data-testid="overlay-lane"
                 onPointerDown={(e) => { if (e.button === 0 && e.target === e.currentTarget) p.seek(timeAt(e.clientX)); }}>
-                {[...(timeline.titles ?? []).map((x) => ({ kind: "title" as const, x, label: x.text || "Title" })),
+                {[...(timeline.titles ?? []).map((x) => ({ kind: "title" as const, x, label: x.text || TITLE_TEMPLATES.find((tt) => tt[0] === x.template)?.[1] || "Title" })),
                   ...(timeline.blurs ?? []).map((x) => ({ kind: "blur" as const, x, label: { blur: "Blur", pixelate: "Pixelate", black: "Black box" }[x.mode] + (x.keys.length > 1 ? " · follows" : "") }))]
                   .map(({ kind, x, label }) => {
                     const cur = ov && ov.id === x.id && ovNow ? ovNow : { start: x.start, duration: x.duration };

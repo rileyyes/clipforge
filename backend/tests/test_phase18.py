@@ -343,5 +343,5 @@ def test_name_tags_light_up_whoever_talks(tmp_path):
 def test_old_projects_upgrade_to_v7():
     d = migrate({"schema_version": 6, "id": new_id(), "name": "x"})
     p = Project.model_validate(d)
-    assert p.schema_version == 7 and p.timeline.counters == [] and not p.timeline.name_tags.enabled
+    assert p.schema_version >= 7 and p.timeline.counters == [] and not p.timeline.name_tags.enabled
     assert p.captions.font is None

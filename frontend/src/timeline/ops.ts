@@ -817,10 +817,17 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["count_card", "Callout card", { text: "Name", subtext: "Detail", duration: 4, accent: "#e3242b" }],
   ["number_card", "Number card", { text: "Your pick", subtext: "", number: 10, duration: 3, accent: "#ffde00" }],
   ["tally", "Tally screen", { text: "FINAL COUNT", subtext: "", duration: 8, accent: "#e3242b" }],
+  // Phase 19
+  ["ticker", "Timer", { text: "TIME LEFT", count_from: 10, count_to: 0, format: "time", duration: 10.3, x: 0.85, y: 0.16, anim: "none", accent: "#ff3b30" }],
+  ["ticker", "Money counter", { text: "", count_from: 0, count_to: 10000, format: "money", duration: 3, x: 0.5, y: 0.3, anim: "pop", accent: "#2bb38a", color: "#2bb38a" }],
+  ["stamp", "Time & place", { text: "DAY 1", subtext: "6:00 AM", duration: 4, accent: "#ffde00" }],
+  ["route", "Route on a map", { text: "", points: [[0.25, 0.7], [0.45, 0.45], [0.7, 0.55]], duration: 5, accent: "#ff3b30" }],
+  ["highlight", "Highlighter", { text: "", x: 0.5, y: 0.5, w: 0.4, h: 0.08, duration: 3, accent: "#ffde00" }],
 ];
 
-export function addTitle(tl: Timeline, template: TitleTemplate, at: number): OpResult & { id?: string } {
-  const preset = TITLE_TEMPLATES.find((x) => x[0] === template)?.[2] ?? {};
+export function addTitle(tl: Timeline, template: TitleTemplate, at: number, label?: string): OpResult & { id?: string } {
+  const preset = (label ? TITLE_TEMPLATES.find((x) => x[0] === template && x[1] === label) : undefined)?.[2]
+    ?? TITLE_TEMPLATES.find((x) => x[0] === template)?.[2] ?? {};
   const t: Title = { id: newId(), start: round6(Math.max(0, at)), duration: 4, template, text: "", subtext: "",
     color: "#ffffff", accent: "#ff5a3c", align: "left", size: 1, ...preset };
   return { timeline: { ...tl, titles: [...(tl.titles ?? []), t] }, id: t.id };
@@ -840,6 +847,11 @@ export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title,
   if (n.shadow != null) n.shadow = Math.max(0, Math.min(24, n.shadow));
   if (n.glow != null) n.glow = Math.max(0, Math.min(40, n.glow));
   if (n.number != null) n.number = Math.max(0, Math.min(999, Math.round(n.number)));
+  if (n.count_from != null) n.count_from = Math.max(-1e9, Math.min(1e9, n.count_from));
+  if (n.count_to != null) n.count_to = Math.max(-1e9, Math.min(1e9, n.count_to));
+  if (n.points) n.points = n.points.slice(0, 20).map(([x, y]) => [round6(Math.max(0, Math.min(1, x))), round6(Math.max(0, Math.min(1, y)))]);
+  if (n.w != null) n.w = Math.max(0.01, Math.min(1, n.w));
+  if (n.h != null) n.h = Math.max(0.01, Math.min(1, n.h));
   return { timeline: { ...tl, titles: (tl.titles ?? []).map((x) => (x.id === id ? n : x)) } };
 }
 

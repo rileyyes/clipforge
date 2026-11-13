@@ -26,7 +26,7 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour and transitions are CSS look-alikes.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview, facecam = null, drawBox, captions = null, titleSel = null, onTitleMove, watermark = null }: {
+  lightPreview = false, onLightPreview, facecam = null, drawBox, drawMessage, pickPoints = null, captions = null, titleSel = null, onTitleMove, watermark = null }: {
   /** burned-in captions to preview (only when they're switched on) */
   captions?: { chunks: CapChunk[]; settings: CaptionSettings } | null;
   /** the selected title (pop-up words and shapes can be dragged on the picture) */
@@ -36,6 +36,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   projectId: string; timeline: Timeline; media: MediaMap; output: OutputSettings; effects?: Effect[]; facecam?: FaceCam | null;
   /** when set, dragging on the picture draws a box (frame fractions) and calls this */
   drawBox?: ((box: { x: number; y: number; w: number; h: number }) => void) | null;
+  /** what to say while drawing a box (default: the privacy blur's message) */
+  drawMessage?: string;
+  /** Phase 19: click points on the picture (a route); Enter or Done finishes */
+  pickPoints?: { points: [number, number][]; onPoint: (x: number, y: number) => void; onDone: () => void } | null;
   playhead: number; setPlayhead: (t: number) => void; playing: boolean; setPlaying: (p: boolean) => void;
   lightPreview?: boolean; onLightPreview?: (on: boolean) => void;
 }) {
@@ -367,7 +371,29 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
                 }}>
                 {drag && <div style={{ position: "absolute", left: Math.min(drag.x0, drag.x1), top: Math.min(drag.y0, drag.y1),
                   width: Math.abs(drag.x1 - drag.x0), height: Math.abs(drag.y1 - drag.y0), border: "2px dashed #4cc9f0" }} />}
-                {!drag && <div className="overlay-msg" style={{ pointerEvents: "none" }}>Drag over what you want to hide</div>}
+                {!drag && <div className="overlay-msg" style={{ pointerEvents: "none" }}>{drawMessage ?? "Drag over what you want to hide"}</div>}
+              </div>
+            );
+          })()}
+          {pickPoints && (() => {
+            const k = scr.w / output.width, oy = (scr.h - output.height * k) / 2;
+            const fw = output.width * k, fh = output.height * k;
+            const px = pickPoints.points.map(([x, y]) => [x * fw, oy + y * fh]);
+            return (
+              <div data-testid="pick-layer" tabIndex={-1} style={{ position: "absolute", inset: 0, cursor: "crosshair", zIndex: 5, background: "rgba(255,59,48,.05)" }}
+                onPointerDown={(e) => {
+                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                  const x = (e.clientX - r.left) / fw, y = (e.clientY - r.top - oy) / fh;
+                  if (x >= 0 && x <= 1 && y >= 0 && y <= 1) pickPoints.onPoint(+x.toFixed(4), +y.toFixed(4));
+                }}>
+                <svg width={scr.w} height={scr.h} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  <polyline points={px.map((p) => p.join(",")).join(" ")} fill="none" stroke="#ff3b30" strokeWidth={3} strokeDasharray="6 4" />
+                  {px.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={5} fill="#fff" stroke="#ff3b30" strokeWidth={2} />)}
+                </svg>
+                <div className="overlay-msg" style={{ pointerEvents: "none", alignItems: "start", paddingTop: 12 }}>
+                  Click along the route ({pickPoints.points.length}/20 points) — press Enter or Done when finished</div>
+                <button className="btn sm primary" style={{ position: "absolute", right: 10, bottom: 10 }}
+                  onPointerDown={(e) => e.stopPropagation()} onClick={pickPoints.onDone}>Done</button>
               </div>
             );
           })()}

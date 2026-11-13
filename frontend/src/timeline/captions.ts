@@ -59,3 +59,22 @@ export function captionAt(chunks: CapChunk[], t: number): { chunk: CapChunk; wor
   for (let i = 1; i < chunk.words.length; i++) if (t >= chunk.words[i].start) word = i;
   return { chunk, word };
 }
+
+// ---------------------------------------------------------------- Phase 19: key words
+/** Same list and rule as backend/app/effects.py key_word (checked against tests/data/emphasis_vectors.json). */
+const EMPHASIS_SKIP = new Set(["about", "above", "actually", "after", "again", "against", "almost", "already", "always", "another", "anything", "anyway", "around", "basically", "because", "before", "being", "below", "between", "could", "didn't", "doesn't", "during", "every", "everything", "going", "gonna", "gotta", "haven't", "literally", "little", "maybe", "might", "never", "nothing", "other", "probably", "really", "right", "should", "something", "sometimes", "still", "that's", "their", "there", "there's", "these", "they're", "thing", "things", "think", "those", "though", "through", "today", "together", "under", "until", "wanna", "we're", "what's", "where", "which", "while", "would", "yeah", "you're"]);
+const isAlpha = (w: string) => /^[\p{L}]+$/u.test(w);
+/** Which word of a caption line stands out: a number/amount first, else the longest 5+ letter
+ *  word that isn't a filler word; first wins a tie; null if none. */
+export function keyWord(texts: string[]): number | null {
+  let best: number | null = null, score = 0;
+  texts.forEach((t, i) => {
+    if (t.includes("*")) return;
+    const w = t.trim().replace(/^[.,!?;:"'()\[\]]+|[.,!?;:"'()\[\]]+$/g, "").toLowerCase();
+    let sc = 0;
+    if (/\d/.test(w) || w.includes("$") || w.includes("%")) sc = 100 + [...w].length;
+    else if ([...w].length >= 5 && isAlpha(w.replace(/'/g, "")) && !EMPHASIS_SKIP.has(w)) sc = [...w].length;
+    if (sc > score) { best = i; score = sc; }
+  });
+  return best;
+}

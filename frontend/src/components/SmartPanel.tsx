@@ -3,6 +3,9 @@ import { fmtTime, type Job } from "../api";
 import { cutRanges, findClip, newId, round6, sortClips, withTracks, type OpResult } from "../timeline/ops";
 import { insertTeaser } from "../timeline/pro";
 import { keepOnly, type Moment } from "../timeline/phase18";
+import { paceScore, punchIns, slowStretches, PACE_GAP, type Pace, type Stretch } from "../timeline/phase19";
+import { addTitle } from "../timeline/ops";
+import type { Effect } from "../timeline/types";
 import { fontsApi } from "../fonts";
 import { addMarker } from "../timeline/ops";
 import type { Clip, MediaAsset, Timeline } from "../timeline/types";
@@ -39,14 +42,30 @@ export function placeBroll(tl: Timeline, s: Broll): OpResult {
 }
 
 /** Editor → AI: hook checker, B-roll from your own recordings, offline voiceover. */
-export default function SmartPanel({ projectId, timeline, playhead, seek, commit, jobs, onJobs, onMediaAdded, saved }: {
+export default function SmartPanel({ projectId, timeline, playhead, seek, commit, jobs, onJobs, onMediaAdded, saved, effects = [], addEffects, onPacing }: {
   projectId: string; timeline: Timeline; playhead: number; seek: (t: number) => void;
+  /** Phase 19 pacing checker: the effects (it counts zooms, pop-ups…) and a way to add punch-ins */
+  effects?: Effect[]; addEffects?: (list: Effect[], label: string) => void;
+  onPacing?: (slow: Stretch[] | null) => void;
   commit: (r: OpResult, label: string) => boolean; jobs: Job[]; onJobs: () => void;
   onMediaAdded: () => Promise<void> | void;
   /** true when the server has the latest edit (the checks read the saved project) */
   saved: boolean;
 }) {
   const toast = useToast();
+  const [pace, setPace] = useState<Pace | null>(null);   // null = the checker isn't on
+  const [motion, setMotion] = useState<{ step: number; values: number[] } | null>(null);
+  const slow = pace ? slowStretches(timeline, effects, pace, motion) : null;
+  const slowKey = slow ? slow.map((x) => `${x.start}-${x.end}`).join(",") : "off";
+  useEffect(() => { onPacing?.(slow); }, [slowKey]);
+  useEffect(() => () => onPacing?.(null), []);
+  const checkPacing = async (p: Pace) => {
+    setPace(p);
+    try {
+      const r = await getJSON(`/api/projects/${projectId}/pacing/motion`);
+      setMotion(r.motion ? { step: r.step, values: r.motion } : null);
+    } catch { setMotion(null); }
+  };
   const [moments, setMoments] = useState<Moment[] | null>(null);
   const [keep, setKeep] = useState<Set<number>>(new Set());
   const [hook, setHook] = useState<Hook | null>(null);
@@ -112,6 +131,43 @@ export default function SmartPanel({ projectId, timeline, playhead, seek, commit
 
   return (
     <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="smart-panel">
+      <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }} data-testid="pacing">
+        <h3 style={{ margin: 0 }}>Pacing checker</h3>
+        <div className="dim" style={{ fontSize: 11 }}>Well-edited videos keep giving the eye something new: a cut, a zoom, B-roll, text. This finds stretches where nothing on screen changes for longer than your pace allows (shown in red on the ruler). It counts the changes your edit makes{motion ? ", plus movement in footage the Auto Editor has analysed" : ""}.</div>
+        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+          {(["fast", "lively", "relaxed"] as Pace[]).map((p) => (
+            <button key={p} className={"btn sm" + (pace === p ? " on" : "")} onClick={() => checkPacing(p)}>
+              {p[0].toUpperCase() + p.slice(1)} <span className="dim">· {PACE_GAP[p]} s</span></button>
+          ))}
+          {pace && <button className="btn sm ghost" onClick={() => { setPace(null); onPacing?.(null); }}>Hide</button>}
+        </div>
+        {slow && (slow.length === 0
+          ? <div style={{ fontSize: 12, color: "#2bb38a" }} data-testid="pacing-ok">No still stretches longer than {PACE_GAP[pace!]} s — nice pacing.</div>
+          : <>
+            <div style={{ fontSize: 12 }} data-testid="pacing-result">Pace score <strong className="mono">{paceScore(timeline, slow)}</strong> · {slow.length} still stretch{slow.length === 1 ? "" : "es"}</div>
+            {slow.slice(0, 30).map((x, i) => (
+              <div key={i} className="row" style={{ gap: 6, fontSize: 12, flexWrap: "wrap" }} data-testid="slow-row">
+                <button className="btn xs" onClick={() => seek(x.start)}>{fmtTime(x.start)}–{fmtTime(x.end)}</button>
+                <span className="dim grow">{(x.end - x.start).toFixed(1)} s</span>
+                <button className="btn xs" title="Zoom in a little partway through" onClick={() => {
+                  const made = punchIns(timeline, x, pace!);
+                  if (!made.length) return toast("No footage there to zoom", true);
+                  addEffects?.(made, "Punch in");
+                }}>Punch in</button>
+                <button className="btn xs" title="Pop-up words in the middle" onClick={() => {
+                  const r = addTitle(timeline, "pop_text", (x.start + x.end) / 2 - 1.2);
+                  if (commit(r, "Pop-up words")) { toast("Pop-up words added — edit them in the Text tab"); seek((x.start + x.end) / 2); }
+                }}>Text</button>
+              </div>
+            ))}
+            <button className="btn sm primary" onClick={() => {
+              const made = slow.flatMap((x) => punchIns(timeline, x, pace!));
+              if (!made.length) return toast("No footage there to zoom", true);
+              addEffects?.(made, "Punch in all");
+              toast(`${made.length} punch-in${made.length === 1 ? "" : "s"} added`);
+            }}>Punch in all of them</button>
+          </>)}
+      </div>
       <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }} data-testid="funny-moments">
         <h3 style={{ margin: 0 }}>Funny-moment finder</h3>
         <div className="dim" style={{ fontSize: 11 }}>For long sessions with friends: finds where people get much louder than their normal talking (laughing, yelling, screaming) — more people at once scores higher. Each moment starts a few seconds early so the set-up is included. It can't tell a laugh from a shout, so preview them.</div>

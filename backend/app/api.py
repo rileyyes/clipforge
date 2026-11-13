@@ -765,6 +765,20 @@ def build_routes(svc: Services) -> list[Route]:
             return err(422, f"Couldn't read the audio: {exc}")
         return JSONResponse({"moments": moments})
 
+    async def pacing_motion(request: Request):
+        """How much the footage itself moves along the edit (only where the Auto Editor has
+        analysed a recording), so the pacing checker doesn't flag busy footage as still."""
+        pid = pid_of(request)
+        from . import hook
+        from .analysis import load_analysis
+        p = load(pid)
+        D = p.timeline.duration
+        analysed = any(load_analysis(store.dir(pid), c.media_id) for t in p.timeline.tracks if t.kind == "video" for c in t.clips)
+        if not analysed or D <= 0:
+            return JSONResponse({"step": hook.STEP, "motion": None})
+        _, motion = hook.edit_curves(p, store.dir(pid), D)
+        return JSONResponse({"step": hook.STEP, "motion": [round(float(v), 3) for v in motion]})
+
     async def media_talk(request: Request):
         pid = pid_of(request)
         from starlette.concurrency import run_in_threadpool
@@ -2254,6 +2268,7 @@ def build_routes(svc: Services) -> list[Route]:
         Route("/api/text-styles", text_styles_get, methods=["GET"]),
         Route("/api/text-styles", text_styles_put, methods=["PUT"]),
         Route(P + "/moments", funny_moments, methods=["GET"]),
+        Route(P + "/pacing/motion", pacing_motion, methods=["GET"]),
         Route(P + "/media/{mid}/talk", media_talk, methods=["GET"]),
         Route("/api/brand", brand_get, methods=["GET"]),
         Route("/api/brand", brand_put, methods=["PUT"]),

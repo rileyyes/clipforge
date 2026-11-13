@@ -198,6 +198,23 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 19: what well-edited videos do
+
+| # | Do this | You should see |
+|---|---|---|
+| 19.1 | AI tab → **Pacing checker** → **Lively** | A score and a list of still stretches; red marks on the ruler where nothing changes for over 4 s |
+| 19.2 | **Punch in** on one (or **Punch in all of them**) | Gentle zooms added; that stretch disappears from the list. Ctrl+Z undoes |
+| 19.3 | Clip tab → **Slow push** → **Push in** on a photo or still shot | It zooms in slowly over the whole clip (preview and export) |
+| 19.4 | Text → **Pop-up words** → Animation **Word by word** | The words pop in one after another |
+| 19.5 | Effects → Captions on → **Make the key word of each line stand out** | One word per line bigger and in its own colour (numbers/amounts first) |
+| 19.6 | Text → **Timer** | 0:10 counting down to 0:00, red for the last 10 s. Change **From** to 1:00 → **Real time** → it now runs a real minute |
+| 19.7 | Text → **Money counter** | $0 rolling up to $10,000 |
+| 19.8 | Text → **Time & place** | DAY 1 / 6:00 AM typed out at the top left |
+| 19.9 | Put a map screenshot on the timeline → Text → **Route on a map** → **Click the route on the preview** → click a few points → Enter | A line draws along your points, then a pin (with your text) at the end |
+| 19.10 | Put a screenshot of an article on the timeline → Text → **Highlighter** → **Draw the box on the preview** → drag over a sentence | A highlighter sweeps over it |
+| 19.11 | Add a transition, a zoom and a marker (M) → Effects → **Auto sound design** | Whoosh into the transition and zoom, a riser building into the marker and a hit on it. **Remove it** takes them away |
+| 19.12 | Export | All of the above in the video |
+
 ## Phase 18: fonts, counter tools, reaction & group tools, looks
 
 | # | Do this | You should see |

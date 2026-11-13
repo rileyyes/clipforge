@@ -3,6 +3,7 @@ import { api, ApiError, effectSoundUrl, fmtTime, library, type BrollSuggestion, 
 import LibraryPanel from "./LibraryPanel";
 import { activeEffects, effectTime, moveEffectTo, newEffectAt, parseTime } from "../timeline/effects";
 import { COMBOS } from "../timeline/phase18";
+import { soundDesign, SOUND_DESIGN } from "../timeline/phase19";
 import FontSelect from "./FontSelect";
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
@@ -16,7 +17,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 const CENSOR_SOUNDS: Sound[] = ["beep", "boing", "scratch", "honk", "quack", "mute"];
-const SFX: Sound[] = ["boom", "pop", "whoosh", "ding", "boing", "airhorn", "scratch", "honk", "quack"];
+const SFX: Sound[] = ["boom", "pop", "whoosh", "ding", "boing", "airhorn", "scratch", "honk", "quack", "riser", "impact"];
 const KIND_LABEL: Record<EffectKind, string> = { censor: "Bleep", zoom: "Zoom", shake: "Shake", flash: "Flash", text: "Pop-up text", sfx: "Sound", image: "Image",
   count: "Count +1", bass: "Bass boost" };
 const KIND_COLOR: Record<EffectKind, string> = { censor: "#ff5a6a", zoom: "#4cc9f0", shake: "#f2b84b", flash: "#ffffff", text: "#ffde00", sfx: "#2bb38a", image: "#c77dff",
@@ -218,6 +219,16 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
             }}>{c.label}</button>
           ))}
         </div>
+        <div className="row" style={{ gap: 4, flexWrap: "wrap" }} data-testid="sound-design">
+          <button className="btn sm" title="Whooshes into transitions, zooms and pop-ups, a riser and hit into each marker, a hit on big titles" onClick={() => {
+            const r = soundDesign(timeline, effects);
+            if (!r.added) return toast("Nothing to add sound to yet: add transitions, zooms, pop-up text, markers or big titles first", true);
+            setFx(r.effects, captions, "Sound design");
+            toast(`Sound design: ${r.added} sound${r.added === 1 ? "" : "s"} (run it again after more edits; your own sounds stay)`);
+          }}><Icon name="wand" size={13} />Auto sound design</button>
+          {effects.some((e) => e.context === SOUND_DESIGN) && <button className="btn sm ghost" onClick={() =>
+            setFx(effects.filter((e) => e.context !== SOUND_DESIGN), captions, "Remove sound design")}>Remove it</button>}
+        </div>
         <div data-testid="sound-board" style={{ display: "grid", gap: 4 }}>
           <span className="muted" style={{ fontSize: 11 }}>Sound board — click to drop a sound at the playhead (works while it plays):</span>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(76px, 1fr))", gap: 4 }}>
@@ -291,6 +302,12 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           <label className="field">Size<input type="range" min={0.04} max={0.15} step={0.005} value={captions.size} onChange={(e) => cap({ size: +e.target.value })} /></label>
           <FontSelect label="Caption font" value={captions.font} onChange={(font) => cap({ font })} />
         </div>
+        <div className="row" style={{ gap: 8, fontSize: 12, flexWrap: "wrap" }}>
+          <label className="row" style={{ gap: 6 }}><input type="checkbox" aria-label="Make key words stand out" checked={!!captions.emphasis} onChange={(e) => cap({ emphasis: e.target.checked })} />
+            Make the key word of each line stand out</label>
+          {captions.emphasis && <input type="color" aria-label="Key word colour" value={captions.emphasis_color ?? "#00e5ff"} onChange={(e) => cap({ emphasis_color: e.target.value })} />}
+        </div>
+        {captions.emphasis && <div className="dim" style={{ fontSize: 11 }}>Numbers and amounts first, else the longest word that isn't filler — bigger and in this colour.</div>}
         <a className="btn sm" href={`/api/projects/${projectId}/captions.srt`} download>Download .srt (for YouTube)</a>
       </div>
 

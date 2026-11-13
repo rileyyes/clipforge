@@ -12,6 +12,7 @@ import {
 } from "./ops";
 import { setKeyframe } from "./keyframes";
 import { addCounter, keepOnly, updateCounter } from "./phase18";
+import { slowPush } from "./phase19";
 import { setTrackTag } from "./ops";
 import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
 
@@ -88,6 +89,9 @@ function checkMarkers(tl: Timeline, where: string) {
     && c.size >= 0.5 && c.size <= 2 && c.x >= 0 && c.x <= 1 && c.y >= 0 && c.y <= 1 && (c.end === null || c.end > c.start), `${where}: counter ${JSON.stringify(c)}`);
   for (const t of tl.titles ?? []) assert.ok((t.stroke == null || (t.stroke >= 0 && t.stroke <= 24)) && (t.shadow == null || (t.shadow >= 0 && t.shadow <= 24))
     && (t.glow ?? 0) >= 0 && (t.glow ?? 0) <= 40 && (t.number ?? 1) >= 0 && (t.number ?? 1) <= 999, `${where}: title style`);
+  for (const t of tl.titles ?? []) assert.ok((t.points ?? []).length <= 20 && (t.points ?? []).every(([x, y]) => x >= 0 && x <= 1 && y >= 0 && y <= 1)
+    && (t.w ?? 0.4) >= 0.01 && (t.w ?? 0.4) <= 1 && (t.h ?? 0.08) >= 0.01 && (t.h ?? 0.08) <= 1
+    && Math.abs(t.count_from ?? 0) <= 1e9 && Math.abs(t.count_to ?? 0) <= 1e9, `${where}: title phase 19 fields`);
   for (const tr of tl.tracks) assert.ok((tr.tag ?? "").length <= 24 && (!tr.tag_color || /^#[0-9a-fA-F]{6}$/.test(tr.tag_color)), `${where}: tag`);
 }
 function allClips(tl: Timeline) { return tl.tracks.flatMap((t) => t.clips); }
@@ -105,7 +109,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 36);
+      const op = Math.floor(r() * 38);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -180,6 +184,13 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 35: { const tid = (tl.titles ?? [])[0]?.id;
           res = tid ? updateTitle(tl, tid, { font: pick([null, "anton", "creepster"]), stroke: r() < 0.3 ? null : r() * 40, shadow: r() * 30 - 3,
             glow: r() * 60, number: r() * 2000, glow_color: pick(["#ffde00", "#00ff00"]) }) : addTitle(tl, pick(["sticker", "count_card", "number_card", "tally"] as const), t); break; }
+        // Phase 19
+        case 36: { const tid = (tl.titles ?? [])[0]?.id;
+          res = tid && r() < 0.6 ? updateTitle(tl, tid, { count_from: (r() - 0.5) * 4e9, count_to: r() * 1e5, format: pick(["time", "money", "number"] as const),
+            points: Array.from({ length: Math.floor(r() * 30) }, () => [r() * 1.4 - 0.2, r() * 1.4 - 0.2] as [number, number]), w: r() * 2 - 0.5, h: r() * 2 - 0.5,
+            anim: pick(["words", "pop"] as const) })
+            : addTitle(tl, pick(["ticker", "stamp", "route", "highlight"] as const), t, pick(["Timer", "Money counter", undefined])); break; }
+        case 37: res = c ? slowPush(tl, c.id, pick(["in", "out", "off"] as const)) : { error: "none" }; break;
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

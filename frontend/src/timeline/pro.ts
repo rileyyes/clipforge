@@ -22,7 +22,8 @@ export function rippleInsert(tl: Timeline, at: number, delta: number): Timeline 
     ...withTracks(tl, (t) => ({ ...t, clips: t.clips.map((c) => (moving.has(c.id) ? { ...c, start: round6(c.start + delta) } : c)) })),
     ...(tl.titles ? { titles: tl.titles.map((x) => ({ ...x, start: shift(x.start) })) } : {}),
     ...(tl.blurs ? { blurs: tl.blurs.map((b) => (b.start >= at - EPS ? shiftBlur(b, delta) : b)) } : {}),
-    ...(tl.markers ? { markers: tl.markers.map((m) => ({ ...m, t: shift(m.t) })) } : {}),
+    // (closing a gap can move later markers in front of earlier ones: keep them in order)
+    ...(tl.markers ? { markers: tl.markers.map((m) => ({ ...m, t: Math.max(0, shift(m.t)) })).sort((a, b) => a.t - b.t) } : {}),
   };
 }
 

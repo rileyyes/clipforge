@@ -50,6 +50,9 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
   const [drawing, setDrawing] = useState<null | { onBox: (b: { x: number; y: number; w: number; h: number }) => void }>(null);
+  /** Phase 19: drawing for a title on the preview (highlighter box, route points) */
+  const [slow, setSlow] = useState<{ start: number; end: number }[] | null>(null);
+  const [titleDraw, setTitleDraw] = useState<null | { id: string; kind: "box" | "points"; points: [number, number][] }>(null);
   const [selection, setSelection] = useState<string[]>([]);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -211,6 +214,13 @@ export default function Editor({ projectId }: { projectId: string }) {
     lastLabel.current = { label, at: now };
     dirty.current = true; setFacecamState(next); force((n) => n + 1);
   };
+  const finishRoute = () => {
+    const d = titleDraw;
+    if (!d) return;
+    if (d.points.length >= 2) commit(updateTitle(timeline!, d.id, { points: d.points }), "Draw route");
+    else toast("Click at least two points on the picture", true);
+    setTitleDraw(null);
+  };
   const smoothCuts = (mode: JumpCutMode) => {
     const r = smoothJumpCuts(timeline!, mode);
     if (r.error !== undefined) return toast(r.error, true);
@@ -277,6 +287,11 @@ export default function Editor({ projectId }: { projectId: string }) {
       if (el.closest("input, select, textarea")) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
+      if (titleDraw && (k === "enter" || k === "escape")) {   // finishing / cancelling drawing on the preview
+        e.preventDefault();
+        if (k === "enter" && titleDraw.kind === "points") finishRoute(); else setTitleDraw(null);
+        return;
+      }
       if (k === " ") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.key === "?") setShowKeys((v) => !v);
       else if (k === "j" && !mod) seek(Math.max(0, playhead - 2));
@@ -416,7 +431,16 @@ export default function Editor({ projectId }: { projectId: string }) {
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
         <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam}
-          drawBox={rightTab === "blur" && drawing ? drawing.onBox : null}
+          drawBox={rightTab === "blur" && drawing ? drawing.onBox : rightTab === "text" && titleDraw?.kind === "box" ? (b) => {
+            commit(updateTitle(timeline, titleDraw.id, { x: b.x + b.w / 2, y: b.y + b.h / 2, w: b.w, h: b.h }), "Highlighter box");
+            setTitleDraw(null);
+          } : null}
+          drawMessage={titleDraw?.kind === "box" ? "Drag over what to highlight" : undefined}
+          pickPoints={rightTab === "text" && titleDraw?.kind === "points" ? {
+            points: titleDraw.points,
+            onPoint: (x, y) => setTitleDraw((d) => (d && d.points.length < 20 ? { ...d, points: [...d.points, [x, y]] } : d)),
+            onDone: finishRoute,
+          } : null}
           lightPreview={lightPreview} onLightPreview={toggleLightPreview}
           captions={captionPreview}
           watermark={project?.watermark ?? null}
@@ -456,6 +480,8 @@ export default function Editor({ projectId }: { projectId: string }) {
               commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} sel={overlaySel} setSel={setOverlaySel} />
           ) : rightTab === "text" ? (
             <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel}
+              drawingFor={titleDraw?.id ?? null}
+              onDraw={(id, kind) => { setPlaying(false); setTitleDraw(kind ? { id, kind, points: [] } : null); }}
               top={<BrandApply projectId={projectId} timeline={timeline} captions={captions!} watermarkOn={!!project?.watermark}
                 commit={commit} setCaptions={(c, label) => setFx(effects, c, label)}
                 onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />}
@@ -474,6 +500,7 @@ export default function Editor({ projectId }: { projectId: string }) {
               jobs={jobs} onJobs={() => { refreshJobs(); setTimeout(reloadMedia, 600); }} />
           ) : rightTab === "ai" ? (
             <SmartPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+              effects={effects} addEffects={(list, label) => setFx([...effects, ...list], captions!, label)} onPacing={setSlow}
               commit={commit} jobs={jobs} onJobs={refreshJobs} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }}
               saved={!dirty.current && save === "saved"} />
           ) : rightTab === "history" ? (
@@ -514,6 +541,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         onTrackToggle={(id, flag) => commit(toggleTrack(timeline, id, flag), `Toggle ${flag}`)}
         onTrackRole={(id, role) => commit(setTrackRole(timeline, id, role), role === "music" ? "Set music track" : role === "narration" ? "Set narration track" : "Set dialogue track")}
         onRemoveTrack={(id) => commit(removeTrack(timeline, id), "Remove track")}
+        slow={slow}
         markers={[
           ...effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null),
           ...(showBeats ? beatTimes(timeline, Object.fromEntries(Object.entries(beats).map(([k, v]) => [k, v.beats]))).map((t) => ({ t, color: "#2bb38a", title: "beat" })) : []),

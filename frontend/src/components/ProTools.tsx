@@ -1,3 +1,4 @@
+import { slowPush } from "../timeline/phase19";
 import React, { useState } from "react";
 import { api, fmtTime } from "../api";
 import { applyLayout, freezeSource, insertFreeze, RAMP_SLOWMO, RAMP_SPEEDUP, REVERSE_MAX, speedRamp, useReversed, type Corner, type Layout } from "../timeline/pro";
@@ -55,6 +56,15 @@ export default function ProTools({ projectId, timeline, media, selection, playhe
 
   return (
     <div className="pro-tools" style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1fr)", minWidth: 0 }} data-testid="pro-tools">
+      {clip && <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }} data-testid="slow-push">
+        <h3 style={{ margin: 0 }}>Slow push</h3>
+        <div className="dim" style={{ fontSize: 11 }}>A slow, steady zoom across the whole clip — keeps photos, maps and still shots alive (the documentary look).</div>
+        <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+          <button className="btn sm" onClick={() => commit(slowPush(timeline, clip.id, "in"), "Slow push in")}>Push in</button>
+          <button className="btn sm" onClick={() => commit(slowPush(timeline, clip.id, "out"), "Slow pull out")}>Pull out</button>
+          {(clip.keyframes?.scale?.length ?? 0) > 0 && <button className="btn sm ghost" onClick={() => commit(slowPush(timeline, clip.id, "off"), "Remove slow push")}>Remove</button>}
+        </div>
+      </div>}
       <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }}>
         <h3 style={{ margin: 0 }}>Freeze &amp; reverse</h3>
         <div className="row" style={{ gap: 6 }}>

@@ -1,0 +1,195 @@
+{
+ "skip": [
+  "about",
+  "above",
+  "actually",
+  "after",
+  "again",
+  "against",
+  "almost",
+  "already",
+  "always",
+  "another",
+  "anything",
+  "anyway",
+  "around",
+  "basically",
+  "because",
+  "before",
+  "being",
+  "below",
+  "between",
+  "could",
+  "didn't",
+  "doesn't",
+  "during",
+  "every",
+  "everything",
+  "going",
+  "gonna",
+  "gotta",
+  "haven't",
+  "literally",
+  "little",
+  "maybe",
+  "might",
+  "never",
+  "nothing",
+  "other",
+  "probably",
+  "really",
+  "right",
+  "should",
+  "something",
+  "sometimes",
+  "still",
+  "that's",
+  "their",
+  "there",
+  "there's",
+  "these",
+  "they're",
+  "thing",
+  "things",
+  "think",
+  "those",
+  "though",
+  "through",
+  "today",
+  "together",
+  "under",
+  "until",
+  "wanna",
+  "we're",
+  "what's",
+  "where",
+  "which",
+  "while",
+  "would",
+  "yeah",
+  "you're"
+ ],
+ "cases": [
+  {
+   "words": [
+    " So",
+    " today",
+    " we're",
+    " building"
+   ],
+   "key": 3
+  },
+  {
+   "words": [
+    " I",
+    " won",
+    " $10,000!"
+   ],
+   "key": 2
+  },
+  {
+   "words": [
+    " ok",
+    " yes"
+   ],
+   "key": null
+  },
+  {
+   "words": [
+    " what",
+    " the",
+    " s***"
+   ],
+   "key": null
+  },
+  {
+   "words": [
+    " This",
+    " is",
+    " INSANE"
+   ],
+   "key": 2
+  },
+  {
+   "words": [
+    " really",
+    " something",
+    " amazing",
+    " happened"
+   ],
+   "key": 3
+  },
+  {
+   "words": [
+    " 50%",
+    " off",
+    " everything"
+   ],
+   "key": 0
+  },
+  {
+   "words": [
+    " don't",
+    " stop",
+    " believing"
+   ],
+   "key": 2
+  },
+  {
+   "words": [
+    " café",
+    " déjà"
+   ],
+   "key": null
+  },
+  {
+   "words": [
+    " Twelve",
+    " people",
+    " survived."
+   ],
+   "key": 2
+  },
+  {
+   "words": [
+    " gonna",
+    " probably",
+    " leave"
+   ],
+   "key": 2
+  },
+  {
+   "words": [
+    " (Minecraft)",
+    " speedrun"
+   ],
+   "key": 0
+  },
+  {
+   "words": [
+    " 2nd",
+    " place",
+    " finisher"
+   ],
+   "key": 0
+  },
+  {
+   "words": [],
+   "key": null
+  },
+  {
+   "words": [
+    " a"
+   ],
+   "key": null
+  },
+  {
+   "words": [
+    " HELLO",
+    " WORLD!",
+    " HELLO"
+   ],
+   "key": 0
+  }
+ ]
+}

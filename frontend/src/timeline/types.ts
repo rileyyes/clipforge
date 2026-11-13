@@ -69,7 +69,8 @@ export interface Track {
 }
 
 export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box"
-  | "count_card" | "tally" | "number_card" | "sticker";
+  | "count_card" | "tally" | "number_card" | "sticker"
+  | "ticker" | "stamp" | "route" | "highlight";
 export interface Title {
   id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
   color: string; accent: string; align: "left" | "center" | "right"; size: number;
@@ -78,11 +79,14 @@ export interface Title {
   /** Phase 18: font id (null = default), outline/shadow (null = the template's), glow (0 = off), number_card number */
   font?: string | null; stroke?: number | null; stroke_color?: string; shadow?: number | null;
   glow?: number; glow_color?: string; number?: number;
+  /** Phase 19: ticker (timer / money / number), route points (frame fractions), highlight box size */
+  count_from?: number; count_to?: number; format?: "time" | "money" | "number";
+  points?: [number, number][]; w?: number; h?: number;
 }
 /** The style part of a title, saved as a preset */
 export type TextStyle = Pick<Title, "font" | "color" | "accent" | "stroke" | "stroke_color" | "shadow" | "glow" | "glow_color"> & { name: string };
-export type TitleAnim = "none" | "pop" | "typewriter" | "slide_up" | "bounce";
-export const FREE_TEMPLATES: TitleTemplate[] = ["pop_text", "sticker", "arrow", "circle", "box"];
+export type TitleAnim = "none" | "pop" | "typewriter" | "slide_up" | "bounce" | "words";
+export const FREE_TEMPLATES: TitleTemplate[] = ["pop_text", "sticker", "ticker", "arrow", "circle", "box"];
 
 export interface BlurKey { t: number; x: number; y: number; w: number; h: number }  // timeline s; frame fractions
 export interface Blur {
@@ -149,7 +153,8 @@ export interface OutputSettings {
 }
 
 export type EffectKind = "censor" | "zoom" | "shake" | "flash" | "text" | "sfx" | "image" | "count" | "bass";
-export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn" | "custom";
+export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn"
+  | "riser" | "impact" | "custom";
 
 export interface Effect {
   id: string; kind: EffectKind; media_id: string; source_time: number; duration: number;
@@ -166,6 +171,8 @@ export interface CaptionSettings {
   enabled: boolean; style: "bold_pop" | "clean" | "highlight"; position: "bottom" | "middle" | "top";
   size: number; color: string; highlight: string; max_words: number; uppercase: boolean;
   font?: string | null;
+  /** Phase 19: the key word of each line bigger, in emphasis_color */
+  emphasis?: boolean; emphasis_color?: string;
 }
 
 export interface AudioSettings {
