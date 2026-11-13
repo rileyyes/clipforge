@@ -38,7 +38,12 @@ export interface Clip {
   transition_in?: Transition | null; // video clips: into this clip from the one before it
   fade_in?: number;                  // seconds (video: from black, audio: volume)
   fade_out?: number;
+  /** Phase 20: how an upper-track picture mixes with what's under it */
+  blend?: BlendMode;
 }
+
+export const BLEND_MODES = ["normal", "screen", "multiply", "overlay", "lighten", "darken", "addition", "difference", "softlight"] as const;
+export type BlendMode = typeof BLEND_MODES[number];
 
 export const TRANSITIONS = [
   ["crossfade", "Crossfade"], ["dip_black", "Dip to black"], ["dip_white", "Dip to white (flash)"],
@@ -65,6 +70,8 @@ export interface Track {
   role?: "dialogue" | "music" | "narration";
   /** name tag shown while this track is talking (Phase 18) */
   tag?: string; tag_color?: string;
+  /** Phase 20 mixer (audio tracks): 0..2 (1 = as recorded); solo = only solo tracks are heard */
+  volume?: number; solo?: boolean;
   clips: Clip[];
 }
 
@@ -178,6 +185,8 @@ export interface CaptionSettings {
 export interface AudioSettings {
   normalize: boolean; target_lufs: number; noise_reduction: "off" | "light" | "medium" | "strong";
   enhance_voice: boolean; ducking: "off" | "light" | "medium" | "strong";
+  /** Phase 20: level of all sound effects and bleeps, 0..2 */
+  fx_volume?: number;
 }
 
 export interface CamRange { start: number; end: number }   // main recording, source seconds

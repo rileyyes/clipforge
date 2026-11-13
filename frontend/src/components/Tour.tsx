@@ -23,7 +23,7 @@ export const TOUR_STEPS: Step[] = [
   { target: ".ed-mid > .pane:first-of-type", title: "Your media", text: "Import recordings, music and images here (or drag files in). Click one to add it to the end of the timeline, or drag it where you want it." },
   { target: ".monitor", title: "Preview", text: "Plays your edit with titles, effects, captions and music. Space plays and pauses; click a title here to drag it into place." },
   { target: ".timeline", title: "Timeline", text: "Drag clips to move them, drag their edges to trim, S splits at the playhead, Ctrl+Z undoes. Titles, blurs and markers move with the clip they sit on." },
-  { target: ".side-tabs", title: "Tools", text: "Clip settings and looks, effects and captions, text (fonts, stickers, counter, name tags), edit by script, privacy blur, music, face cam, AI help (pacing checker, funny moments, hook checker, B-roll, voiceover) and saved versions." },
+  { target: ".side-tabs", title: "Tools", text: "Clip settings and looks, effects and captions, text (fonts, stickers, timers, name tags), edit by script, privacy blur, music and the sound mixer, face cam, AI help (pacing checker, funny moments, hook checker, B-roll, voiceover) and saved versions." },
   { target: "[data-tour=export]", title: "Export", text: "When you're happy, Export makes the MP4. Your edits save automatically as you go." },
   { title: "That's it", text: "Press ? any time for the keyboard shortcuts. You can see this tour again from Settings." },
 ];

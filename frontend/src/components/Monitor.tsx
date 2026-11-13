@@ -8,9 +8,10 @@ import { camAspect, camAt, layoutBox } from "../timeline/facecam";
 import TitlesPreview from "./TitlesPreview";
 import OverlaysPreview from "./OverlaysPreview";
 import { tallyInfo } from "../timeline/phase18";
+import { cssBlend, trackGain } from "../timeline/phase20";
 import CaptionsPreview from "./CaptionsPreview";
 import type { CapChunk } from "../timeline/captions";
-import type { CaptionSettings, Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
+import type { CaptionSettings, Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline, Track } from "../timeline/types";
 import { Icon } from "./ui";
 
 /**
@@ -26,7 +27,9 @@ import { Icon } from "./ui";
  * Preview limitations (export is exact): colour and transitions are CSS look-alikes.
  */
 export default function Monitor({ projectId, timeline, media, output, playhead, setPlayhead, playing, setPlaying, effects = [],
-  lightPreview = false, onLightPreview, facecam = null, drawBox, drawMessage, pickPoints = null, captions = null, titleSel = null, onTitleMove, watermark = null }: {
+  lightPreview = false, onLightPreview, facecam = null, drawBox, drawMessage, pickPoints = null, captions = null, titleSel = null, onTitleMove, watermark = null, fxVolume = 1 }: {
+  /** Phase 20 mixer: level of all sound effects and bleeps */
+  fxVolume?: number;
   /** burned-in captions to preview (only when they're switched on) */
   captions?: { chunks: CapChunk[]; settings: CaptionSettings } | null;
   /** the selected title (pop-up words and shapes can be dragged on the picture) */
@@ -83,6 +86,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     const tr = t.hidden ? null : transitionAt(t, playhead);
     return { track: t, clip: tr ? tr.b : t.hidden ? null : clipAt(t, playhead), tr };
   });
+  // Phase 20: blend modes work on every shown video track above the lowest shown one (like the export)
+  const baseTrack = videoTracks.find((t) => !t.hidden)?.id;
+  const blendOf = (track: Track, c: Clip | null | undefined): React.CSSProperties =>
+    c && track.id !== baseTrack && cssBlend(c.blend) ? { mixBlendMode: cssBlend(c.blend) as React.CSSProperties["mixBlendMode"] } : {};
   const outRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const hasPicture = layers.some((l) => l.clip);
   const camAsset = facecam ? media[facecam.media_id] : undefined;
@@ -110,6 +117,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
     } catch { return null; }
   };
   const setVolume = (el: HTMLMediaElement, vol: number) => {
+    el.dataset.gain = String(Math.round(Math.max(0, vol) * 1000) / 1000);   // what it plays at (checked by the E2E)
     const a = audio.current;
     if (!a) { el.volume = Math.max(0, Math.min(1, vol)); return; }
     let g = a.gains.get(el);
@@ -236,9 +244,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
       if (track.kind !== "audio") continue;
       const el = audioRefs.current[track.id];
       if (!el) continue;
-      const c = track.muted ? null : clipAt(track, playhead);
-      if (c) syncEl(el, c.media_id, sourceTimeAt(c, playhead), c.speed, censoring ? 0 : propAt(c, "volume", playhead));
-      else syncEl(el, null, 0, 1, null);
+      const gain = trackGain(timeline, track);   // Phase 20 mixer: mute, solo and the track's level
+      const c = gain > 0 ? clipAt(track, playhead) : null;
+      if (c) syncEl(el, c.media_id, sourceTimeAt(c, playhead), c.speed, censoring ? 0 : propAt(c, "volume", playhead) * gain);
+      else { syncEl(el, null, 0, 1, null); el.dataset.gain = "0"; }
     }
     // trigger bleep / sound-effect previews once when their window starts
     const ids = new Set(active.map(({ e }) => e.id));
@@ -246,7 +255,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
       const url = (e.kind === "censor" || e.kind === "sfx") ? effectSoundUrl(projectId, e.sound, e.sound_asset) : null;
       if (url && !played.current.has(e.id)) {
         const a = new Audio(url);
-        setVolume(a, e.volume);
+        setVolume(a, e.volume * (fxVolume ?? 1));
         a.play().catch(() => {});
         sounds.current.set(e.id, a);
       }
@@ -313,7 +322,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
         <div className="screen" ref={screenRef} style={room
           ? { width: Math.floor(Math.min(room.w, room.h * ar)), height: Math.floor(Math.min(room.w, room.h * ar) / ar) }
           : { aspectRatio: `${ar}`, height: ar < 1 ? "100%" : undefined, width: ar >= 1 ? "100%" : undefined }}>
-          <div className="stage" style={{ position: "absolute", inset: 0,
+          <div className="stage" style={{ position: "absolute", inset: 0, background: "#000", isolation: "isolate",
             transform: `scale(${zoom}) translate(${shaking ? Math.sin(playhead * 61) * 1.2 : 0}%, ${shaking ? Math.cos(playhead * 47) * 1.2 : 0}%)`,
             transformOrigin: zoomFx ? `${zoomFx.x * 100}% ${zoomFx.y * 100}%` : "50% 50%" }}>
             {layers.map(({ track, clip, tr }, li) => {
@@ -327,9 +336,9 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
               return (
                 <React.Fragment key={track.id}>
                   <video ref={(el) => { outRefs.current[track.id] = el; }} muted playsInline preload="auto" data-layer={track.name + "-out"} data-testid="transition-out"
-                    style={{ visibility: tr ? "visible" : "hidden", zIndex: z + (look?.aOnTop ? 2 : 0), ...(tr ? merge(layerStyle(tr.a), look!.a) : {}) }} />
+                    style={{ visibility: tr ? "visible" : "hidden", zIndex: z + (look?.aOnTop ? 2 : 0), ...(tr ? merge(layerStyle(tr.a), look!.a) : {}), ...blendOf(track, tr?.a) }} />
                   <video ref={(el) => { videoRefs.current[track.id] = el; }} muted playsInline preload="auto" data-layer={track.name}
-                    style={{ visibility: clip ? "visible" : "hidden", zIndex: z + 1, ...(clip ? merge(layerStyle(clip), look?.b) : {}) }}
+                    style={{ visibility: clip ? "visible" : "hidden", zIndex: z + 1, ...(clip ? merge(layerStyle(clip), look?.b) : {}), ...blendOf(track, clip) }} data-blend={clip?.blend ?? "normal"}
                     onError={() => setVideoError("This file can't play in the browser yet — a preview copy is being prepared. Export still uses the original.")}
                     onLoadedData={() => setVideoError(null)} />
                   {clip && !tr && lookOverlay(clip.color?.look) && (() => {
@@ -437,7 +446,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
         </div>
       </div>
       {timeline.tracks.filter((t) => t.kind === "audio").map((t) => (
-        <audio key={t.id} ref={(el) => { audioRefs.current[t.id] = el; }} preload="auto" />
+        <audio key={t.id} ref={(el) => { audioRefs.current[t.id] = el; }} preload="auto" data-track={t.name} />
       ))}
       <div className="transport">
         <button className="btn icon ghost" title="Go to start (Home)" onClick={() => { setPlaying(false); setPlayhead(0); }}><Icon name="start" /></button>

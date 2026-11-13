@@ -14,7 +14,7 @@ export default function FontsCard() {
     <div className="card" data-testid="fonts-card">
       <h3>Fonts</h3>
       <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-        {built.length} free fonts come with RJClip (and emoji stickers). Add your own .ttf or .otf files to use them in titles, captions and counters.
+        {built.length} free fonts come with RJClip (and emoji stickers). Add your own .ttf or .otf files to use them in titles and captions.
         Only add fonts you're allowed to use in videos — free fonts from Google Fonts are fine.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>

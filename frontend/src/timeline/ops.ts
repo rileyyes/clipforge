@@ -2,6 +2,7 @@
 // so these functions ARE the editing engine (and are unit-tested in ops.test.ts).
 // Each returns { timeline } on success or { error } without changing anything.
 
+import { BLEND_MODES, type BlendMode } from "./types";
 import type { Clip, Crop, KfProp, Keyframe, MediaAsset, MediaMap, Marker, Timeline, Title, TitleTemplate, Track, TrackKind, Blur, BlurKey } from "./types";
 import { KF_LIMITS } from "./keyframes";
 
@@ -470,6 +471,8 @@ export interface ClipPatch {
   crop?: Clip["crop"]; color?: Clip["color"]; keyframes?: Clip["keyframes"];
   /** green screen (null turns it off) */
   chroma?: Clip["chroma"];
+  /** Phase 20 blend mode (pictures only) */
+  blend?: BlendMode;
 }
 
 /** Same rules as the server: known properties, time order ≥ 1 ms apart, values in range, ≤ 64 each. */
@@ -515,6 +518,8 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
   if (patch.chroma && (!/^#[0-9a-fA-F]{6}$/.test(patch.chroma.color) || !(patch.chroma.similarity >= 0.01 && patch.chroma.similarity <= 0.8)
     || !(patch.chroma.blend >= 0 && patch.chroma.blend <= 0.5))) return { error: "Green screen value out of range" };
   if (patch.chroma && ref.track.kind !== "video") return { error: "Green screen is for video clips" };
+  if (patch.blend !== undefined && !(BLEND_MODES as readonly string[]).includes(patch.blend)) return { error: "Unknown blend mode" };
+  if (patch.blend !== undefined && ref.track.kind !== "video") return { error: "Blend modes are for pictures" };
   if (patch.keyframes && Object.keys(patch.keyframes).some((k) => (ref.track.kind === "video") === (k === "volume"))) return { error: ref.track.kind === "video" ? "Volume keyframes go on the audio clip" : "Only volume can be keyframed on audio" };
   if (patch.speed !== undefined && targets.some((r) => (r.clip.source_out - r.clip.source_in) / patch.speed! < MIN_CLIP - EPS))
     return { error: "Clip would be too short at that speed" };
@@ -532,6 +537,7 @@ export function updateClip(tl: Timeline, id: string, patch: ClipPatch): OpResult
         if (patch.crop) u.crop = patch.crop;
         if (patch.color) u.color = patch.color;
         if (patch.chroma !== undefined) u.chroma = patch.chroma;
+        if (patch.blend !== undefined) u.blend = patch.blend;
         if (patch.keyframes) {
           const kf = { ...(c.keyframes ?? {}), ...patch.keyframes };
           for (const k of Object.keys(kf) as (keyof typeof kf)[]) if (!kf[k]?.length) delete kf[k];
@@ -816,14 +822,17 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["sticker", "Emoji sticker", { text: "😂", x: 0.75, y: 0.3, rotation: -8, anim: "pop", duration: 2.5, color: "#ffde00" }],
   ["count_card", "Callout card", { text: "Name", subtext: "Detail", duration: 4, accent: "#e3242b" }],
   ["number_card", "Number card", { text: "Your pick", subtext: "", number: 10, duration: 3, accent: "#ffde00" }],
-  ["tally", "Tally screen", { text: "FINAL COUNT", subtext: "", duration: 8, accent: "#e3242b" }],
+  ["tally", "List screen", { text: "THE LIST", subtext: "", duration: 8, accent: "#e3242b" }],
   // Phase 19
   ["ticker", "Timer", { text: "TIME LEFT", count_from: 10, count_to: 0, format: "time", duration: 10.3, x: 0.85, y: 0.16, anim: "none", accent: "#ff3b30" }],
-  ["ticker", "Money counter", { text: "", count_from: 0, count_to: 10000, format: "money", duration: 3, x: 0.5, y: 0.3, anim: "pop", accent: "#2bb38a", color: "#2bb38a" }],
+  ["ticker", "Money ticker", { text: "", count_from: 0, count_to: 10000, format: "money", duration: 3, x: 0.5, y: 0.3, anim: "pop", accent: "#2bb38a", color: "#2bb38a" }],
   ["stamp", "Time & place", { text: "DAY 1", subtext: "6:00 AM", duration: 4, accent: "#ffde00" }],
   ["route", "Route on a map", { text: "", points: [[0.25, 0.7], [0.45, 0.45], [0.7, 0.55]], duration: 5, accent: "#ff3b30" }],
   ["highlight", "Highlighter", { text: "", x: 0.5, y: 0.5, w: 0.4, h: 0.08, duration: 3, accent: "#ffde00" }],
 ];
+
+/** Kept so older projects still show and export them, but no longer offered as new titles (removed at the owner's request). */
+export const RETIRED_TEMPLATES: string[] = ["count_card", "tally"];
 
 export function addTitle(tl: Timeline, template: TitleTemplate, at: number, label?: string): OpResult & { id?: string } {
   const preset = (label ? TITLE_TEMPLATES.find((x) => x[0] === template && x[1] === label) : undefined)?.[2]

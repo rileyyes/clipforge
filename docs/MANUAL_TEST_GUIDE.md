@@ -198,6 +198,21 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 20: sound mixer and blend modes
+
+| # | Do this | You should see |
+|---|---|---|
+| 20.1 | Put a movie or game clip on V1 (its sound on A1) and a song on A2 → **Music** tab → scroll to **Sound mixer** | One row per sound track (A1 *recording*, A2 *music*) with a level slider, **M** (mute) and **S** (solo), plus **Sound effects & bleeps** |
+| 20.2 | Play, and drag A2 down to about 30 % | The song gets quieter right away; the row shows *30 % · −10 dB*. Double-click the slider → back to 100 % |
+| 20.3 | Click **S** on A2 | Only the song plays (the movie sound goes quiet); a yellow note says solo is on. Click **S** again to hear both |
+| 20.4 | Add a sound effect (Effects tab → Add at playhead → Sound), then lower **Sound effects & bleeps** | The effect (and any bleeps) gets quieter |
+| 20.5 | **Reset** | Every track back to 100 %, no solo (mutes stay as they were) |
+| 20.6 | Put a light-leak, fire, dust or lens-flare clip (on a black background) on **V2** above your footage → select it → Clip tab → **Blend with the picture under it** → **Screen** | The black disappears in the preview and only the light shows over your footage |
+| 20.7 | Try **Multiply** with a paper/dirt texture (on white), **Overlay** / **Soft light** with film grain, **Add (glow)**, **Difference** | Each mixes as its name says; select a clip on V1 → the control is greyed out and says to use V2 or higher |
+| 20.8 | Export | The mix and the blends are the same as in the preview |
+
+**Notes:** with *Normalise loudness* on (Effects tab), the whole video is brought to that loudness at the end, so the mixer sets the *balance* between tracks rather than the overall loudness. Solo also applies to the export (a note reminds you). Blend modes use the same formulas in the preview (the browser) and the export (FFmpeg); soft light can differ very slightly.
+
 ## Phase 19: what well-edited videos do
 
 | # | Do this | You should see |
@@ -208,14 +223,14 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 19.4 | Text → **Pop-up words** → Animation **Word by word** | The words pop in one after another |
 | 19.5 | Effects → Captions on → **Make the key word of each line stand out** | One word per line bigger and in its own colour (numbers/amounts first) |
 | 19.6 | Text → **Timer** | 0:10 counting down to 0:00, red for the last 10 s. Change **From** to 1:00 → **Real time** → it now runs a real minute |
-| 19.7 | Text → **Money counter** | $0 rolling up to $10,000 |
+| 19.7 | Text → **Money ticker** | $0 rolling up to $10,000 |
 | 19.8 | Text → **Time & place** | DAY 1 / 6:00 AM typed out at the top left |
 | 19.9 | Put a map screenshot on the timeline → Text → **Route on a map** → **Click the route on the preview** → click a few points → Enter | A line draws along your points, then a pin (with your text) at the end |
 | 19.10 | Put a screenshot of an article on the timeline → Text → **Highlighter** → **Draw the box on the preview** → drag over a sentence | A highlighter sweeps over it |
 | 19.11 | Add a transition, a zoom and a marker (M) → Effects → **Auto sound design** | Whoosh into the transition and zoom, a riser building into the marker and a hit on it. **Remove it** takes them away |
 | 19.12 | Export | All of the above in the video |
 
-## Phase 18: fonts, counter tools, reaction & group tools, looks
+## Phase 18: fonts, reaction & group tools, looks
 
 | # | Do this | You should see |
 |---|---|---|
@@ -223,10 +238,7 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 18.2 | Editor → **Text** → **Pop-up words** → click the **Horror** style | Creepy red text with a glow in the preview. Try other styles, the **Font** list (your font is under *Yours*), **Outline**, **Shadow**, **Glow** |
 | 18.3 | **Save as my style** | A ★ button with your style; use it on another title. × deletes it |
 | 18.4 | **Emoji sticker** → pick 💀, drag it on the preview, change its colour | A tinted emoji sticker; it pops in |
-| 18.5 | Text → **Counter**: pause on a moment, type a name and a detail → **Count it at …** (do it twice) | A COUNT counter top right goes 0 → 1 → 2 exactly at those moments, each with a red flash and a boom; a callout card #1 / #2 |
-| 18.6 | **Ctrl+Z** once | The whole last count (+1 and card) goes away. **Ctrl+Y** brings it back |
-| 18.7 | Cut out the part with the first count (Script tab or split + ripple delete) | The counter only counts what's left |
-| 18.8 | Near the end → **Tally screen here** | Full screen: FINAL COUNT, the total, and the names in order; the counter stops there |
+| 18.5–18.8 | *(removed)* | The counter, callout card and tally screen were taken out of the app at your request. Nothing in the Text tab mentions counting any more. Projects that already used them still open and export as before |
 | 18.9 | Put a clip on V1 and your narration on its own audio track → click that track's mic button until it shows **N** (narration) → export | The clip's sound gets quieter while you talk |
 | 18.10 | Two mics on two audio tracks → Text → **Name tags**: name each, tick **Show name tags** → play | Each name lights up while that person is loud |
 | 18.11 | A long session → **AI** tab → **Find funny moments** | A list of loud reactions with scores; click a time to jump there. **Mark them** adds markers; **Keep only these** cuts the rest (Ctrl+Z undoes) |
@@ -234,7 +246,7 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 18.13 | Effects → Captions → **Caption font** | Captions in that font (preview and export) |
 | 18.14 | Clip tab → **Look** → VHS tape / Old film / Horror / Vignette / Cinema bars | The look in the preview; same in the export |
 | 18.15 | Make the window small (e.g. 1280×720) | The preview shows the whole picture (nothing cut off top or bottom) |
-| 18.16 | Export | Fonts, counter, cards, tally, name tags, stickers, bass boost and looks all in the video |
+| 18.16 | Export | Fonts, name tags, stickers, bass boost and looks all in the video |
 
 ## Phase 17: polish
 

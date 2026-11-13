@@ -3,6 +3,8 @@ import { fmtTime } from "../api";
 import { clipDuration, clipEnd, findClip, type ClipPatch } from "../timeline/ops";
 import { keyframeNear, NO_COLOR, NO_CROP, propAt, removeKeyframe, setKeyframe, sourceAt, staticValue } from "../timeline/keyframes";
 import { LOOKS, TRANSITIONS, type Clip, type ColorAdjust, type KfProp, type Keyframe, type MediaMap, type Timeline, type Transition } from "../timeline/types";
+import { BLEND_LABELS, BLEND_TIPS, canBlend } from "../timeline/phase20";
+import { BLEND_MODES, type BlendMode } from "../timeline/types";
 import { Icon } from "./ui";
 
 type Patch = (p: ClipPatch, label: string) => void;
@@ -199,6 +201,17 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
               <KfControl {...kfp} prop="rotation" label="Rotation" min={-180} max={180} step={1} fmt={(v) => `${Math.round(v)}°`} />
               <KfControl {...kfp} prop="opacity" label="Opacity" min={0} max={1} step={0.01} fmt={pct} />
               <div className="dim" style={{ fontSize: 11 }}>◆ adds a keyframe at the playhead; add two with different values to animate (e.g. a slow zoom). Keyframes stick to the footage, so trimming keeps them in place.</div>
+            </div>
+
+            <div className="insp-section" data-testid="blend">
+              <label className="field">Blend with the picture under it
+                <select aria-label="Blend mode" value={clip.blend ?? "normal"} disabled={!canBlend(timeline, clip.id)}
+                  onChange={(e) => patch({ blend: e.target.value as BlendMode }, "Blend mode")}>
+                  {BLEND_MODES.map((b) => <option key={b} value={b}>{BLEND_LABELS[b]}</option>)}
+                </select></label>
+              <div className="dim" style={{ fontSize: 11 }}>{!canBlend(timeline, clip.id)
+                ? "Put this clip on a video track above another one (V2 or higher) to blend it with the picture underneath."
+                : BLEND_TIPS[clip.blend ?? "normal"] ?? "Normal: the clip sits on top. Try Screen for light leaks or fire on black, Multiply for textures on white."}</div>
             </div>
 
             <div className="insp-section" data-testid="crop">

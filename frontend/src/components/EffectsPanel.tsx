@@ -19,7 +19,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 const CENSOR_SOUNDS: Sound[] = ["beep", "boing", "scratch", "honk", "quack", "mute"];
 const SFX: Sound[] = ["boom", "pop", "whoosh", "ding", "boing", "airhorn", "scratch", "honk", "quack", "riser", "impact"];
 const KIND_LABEL: Record<EffectKind, string> = { censor: "Bleep", zoom: "Zoom", shake: "Shake", flash: "Flash", text: "Pop-up text", sfx: "Sound", image: "Image",
-  count: "Count +1", bass: "Bass boost" };
+  count: "Step (older project)", bass: "Bass boost" };
 const KIND_COLOR: Record<EffectKind, string> = { censor: "#ff5a6a", zoom: "#4cc9f0", shake: "#f2b84b", flash: "#ffffff", text: "#ffde00", sfx: "#2bb38a", image: "#c77dff",
   count: "#e3242b", bass: "#9b5de5" };
 export const FX_COLOR = KIND_COLOR;
@@ -364,7 +364,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
             {e.kind === "bass" && <label className="field">Crunch {Math.round(e.intensity * 100)}%<input type="range" min={0} max={1} step={0.05} value={e.intensity} onChange={(ev) => patch(e.id, { intensity: +ev.target.value })} /></label>}
             {e.kind === "count" && <div className="row" style={{ fontSize: 12, gap: 6 }}>
               <span className="muted">Sound</span>
-              <select value={e.sound ?? ""} onChange={(ev) => patch(e.id, { sound: (ev.target.value || null) as Sound | null, sound_asset: null }, "Count sound")}>
+              <select value={e.sound ?? ""} onChange={(ev) => patch(e.id, { sound: (ev.target.value || null) as Sound | null, sound_asset: null }, "Step sound")}>
                 <option value="">None</option>{SFX.map((x) => <option key={x} value={x}>{x}</option>)}
               </select></div>}
             {(e.kind === "censor" || e.kind === "sfx") && (

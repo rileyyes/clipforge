@@ -6,7 +6,7 @@ import HistoryPanel from "../components/HistoryPanel";
 import FaceCamPanel from "../components/FaceCamPanel";
 import ScriptPanel from "../components/ScriptPanel";
 import TitlesPanel from "../components/TitlesPanel";
-import { CounterPanel, NameTagsPanel } from "../components/CounterPanel";
+import { NameTagsPanel } from "../components/NameTagsPanel";
 import BlurPanel from "../components/BlurPanel";
 import BeatPanel from "../components/BeatPanel";
 import { effectTime } from "../timeline/effects";
@@ -17,6 +17,7 @@ import Tour, { tourWanted } from "../components/Tour";
 import { Icon, useJobs, useToast } from "../components/ui";
 import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
+import MixerSection from "../components/MixerSection";
 import ProTools from "../components/ProTools";
 import BrandApply from "../components/BrandApply";
 import SmartPanel from "../components/SmartPanel";
@@ -201,12 +202,6 @@ export default function Editor({ projectId }: { projectId: string }) {
     if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
     lastLabel.current = { label, at: now };
     dirty.current = true; setEffects(next); setCaptions(caps); force((n) => n + 1);
-  };
-  /** Timeline + effects changed together (e.g. Count it: counter, +1 and callout card) = one undo step. */
-  const commitBoth = (tl: Timeline, fx: Effect[], label: string) => {
-    history.current.push(snapshot(), label);
-    lastLabel.current = { label, at: Date.now() };
-    dirty.current = true; setTimeline(sanitize(tl)); setEffects(fx); force((n) => n + 1);
   };
   const setFacecam = (next: FaceCam | null, label: string) => {
     const now = Date.now();
@@ -430,7 +425,7 @@ export default function Editor({ projectId }: { projectId: string }) {
         <MediaLibrary project={project} jobs={jobs} usedIds={usedIds}
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
-        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam}
+        <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam} fxVolume={audio?.fx_volume ?? 1}
           drawBox={rightTab === "blur" && drawing ? drawing.onBox : rightTab === "text" && titleDraw?.kind === "box" ? (b) => {
             commit(updateTitle(timeline, titleDraw.id, { x: b.x + b.w / 2, y: b.y + b.h / 2, w: b.w, h: b.h }), "Highlighter box");
             setTitleDraw(null);
@@ -473,8 +468,9 @@ export default function Editor({ projectId }: { projectId: string }) {
           {rightTab === "beat" ? (
             <BeatPanel projectId={projectId} timeline={timeline} media={media} commit={commit} beats={beats} setBeats={setBeats}
               showBeats={showBeats} setShowBeats={setShowBeats}
-              top={<MusicSection projectId={projectId} timeline={timeline} media={media} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
-                commit={commit} audio={audio!} setAudio={setAudio} onImported={() => { reloadMedia(); refreshJobs(); }} />} />
+              top={<><MusicSection projectId={projectId} timeline={timeline} media={media} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+                commit={commit} audio={audio!} setAudio={setAudio} onImported={() => { reloadMedia(); refreshJobs(); }} />
+                <MixerSection timeline={timeline} commit={commit} audio={audio!} setAudio={setAudio} /></>} />
           ) : rightTab === "blur" ? (
             <BlurPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               commit={commit} drawing={drawing} setDrawing={setDrawing} jobs={jobs} onJobs={refreshJobs} sel={overlaySel} setSel={setOverlaySel} />
@@ -485,11 +481,7 @@ export default function Editor({ projectId }: { projectId: string }) {
               top={<BrandApply projectId={projectId} timeline={timeline} captions={captions!} watermarkOn={!!project?.watermark}
                 commit={commit} setCaptions={(c, label) => setFx(effects, c, label)}
                 onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />}
-              bottom={<>
-                <CounterPanel timeline={timeline} effects={effects} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
-                  commit={commit} commitBoth={commitBoth} setSel={setOverlaySel} />
-                <NameTagsPanel timeline={timeline} commit={commit} />
-              </>} />
+              bottom={<NameTagsPanel timeline={timeline} commit={commit} />} />
           ) : rightTab === "script" ? (
             <ScriptPanel timeline={timeline} playhead={playhead} playing={playing} byMedia={byMedia} onFixWord={fixWord}
               seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}

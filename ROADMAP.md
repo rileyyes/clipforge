@@ -182,6 +182,25 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 20 — Sound mixer and blend modes 🟡 (built and tested automatically; waiting for your hands-on test)
+
+For reviews and reaction/gaming videos: balance the movie or game sound against your music and your voice, and layer footage the way editors do.
+
+**Sound mixer** (Music tab)
+- ✅ One row per sound track: a level from 0 to 200 % (shown in % and dB; double-click for 100 %), **M** mute and **S** solo, plus one level for **all sound effects and bleeps**. **Reset** puts every track back to 100 % with no solo
+- ✅ The preview plays the mix straight away, and the export mixes it the same way (each track's level is applied before ducking and the final loudness pass). Per-clip volume and volume keyframes still work on top
+- ✅ Solo also applies to the export (a note in the mixer says so). With *Normalise loudness* on, the finished video is brought to that loudness overall, so the mixer sets the balance between the tracks
+- ✅ A track turned to 0 % is left out of the mix; turning the effects level to 0 still mutes swear words (just without the beep)
+
+**Blend modes** (Clip tab, for clips on V2 and higher)
+- ✅ Normal, Screen (black disappears: light leaks, fire, sparks, flares, dust), Multiply (white disappears: paper, ink, dirt), Overlay, Soft light (grain, textures, colour washes), Lighten, Darken, Add (glow), Difference
+- ✅ The preview uses the browser's blend modes and the export uses FFmpeg's with the same formulas, checked pixel by pixel for every mode (soft light differs very slightly). Opacity, crop, green screen and animation still work with a blend
+- ✅ On the base track the control is greyed out with a hint (there's nothing under it to blend with)
+
+**Taken out at your request**
+- The counter, callout cards and tally screen are no longer in the app (nothing mentions counting). Older projects that used them still open and export unchanged
+- "Money counter" is now called **Money ticker**
+
 ## Phase 19 — What well-edited videos do 🟡 (built and tested automatically; waiting for your hands-on test)
 
 Taken from editing breakdowns, creator interviews and retention guides (RJClip can't watch videos itself): well-edited videos keep giving the eye something new, put key words on screen, use sound to carry the cuts, and show places, times and evidence clearly.
@@ -194,7 +213,7 @@ Taken from editing breakdowns, creator interviews and retention guides (RJClip c
 - ✅ **Word by word**: pop-up words appear one after another (new Animation option)
 - ✅ **Key words in captions** (Effects → Captions): the key word of each line is bigger and in its own colour — numbers and amounts first, else the longest word that isn't filler. Preview and export pick the same word (checked against a shared test file)
 - ✅ **Time & place** stamp: "DAY 1 / 6:00 AM" typed out at the top left
-- ✅ **Timer** and **Money counter** (a ticker): counts down or up as time (1:05), money ($10,000) or a number; timers can run in real time (**Real time** button); a countdown turns the accent colour in its last 10 seconds; money and numbers roll fast then settle
+- ✅ **Timer** and **Money ticker** (a ticker): runs down or up as time (1:05), money ($10,000) or a number; timers can run in real time (**Real time** button); a timer going down turns the accent colour in its last 10 seconds; money and numbers roll fast then settle
 
 **Documentary tools**
 - ✅ **Route on a map**: click the route on the preview (over a map screenshot or any picture); the line draws itself, then a pin with your text appears at the end
@@ -206,18 +225,16 @@ Taken from editing breakdowns, creator interviews and retention guides (RJClip c
 **Fixes found on the way**
 - Speed-up ramps could leave markers out of order (found by the random-edit tester)
 
-## Phase 18 — Creator styles: fonts, counter tools, reaction & group tools, looks 🟡 (built and tested automatically; waiting for your hands-on test)
+## Phase 18 — Creator styles: fonts, reaction & group tools, looks 🟡 (built and tested automatically; waiting for your hands-on test)
 
 **Fonts & text styles**
 - ✅ 22 free fonts built in (Bold, Clean, Fun, Horror, Retro & gaming, Handwritten), each shipped with its licence (SIL Open Font License or Apache 2.0, in `backend/app/fonts/licenses/`). Add your own `.ttf`/`.otf` in **Settings → Fonts** (web fonts and font collections are turned down with a message)
-- ✅ Every title, caption style and counter can use any of them; the preview loads the real font, so it looks like the export
+- ✅ Every title and caption style can use any of them; the preview loads the real font, so it looks like the export
 - ✅ Outline (size + colour), drop shadow and glow on any title; 10 ready-made styles (Bold outline, Horror, Blood drip, Comic, Cartoon, Arcade, Neon, Glitch, Marker, Clean); **Save as my style** keeps your own
 - ✅ **Emoji stickers**: 32 one-colour emoji (Noto Emoji) you can tint, place, turn and animate like pop-up words. (Full-colour images: use *My library* images, as before)
 
-**Counter tools** (Text tab)
-- ✅ **Count it at the playhead**: type a name and a detail, press Count it → the counter goes up (with a sound) and a callout card (#n, name, detail) slams in. Count anything: eliminations, goals, fails, jump scares. One Ctrl+Z takes the whole count back
-- ✅ **Counters** (up to 4, e.g. COUNT and SCORE — type any label): label, starting number, place, colours, font, size, when they show. Each +1 is pinned to the footage like other effects, so cutting and moving keeps it on its moment, and a count you cut out stops counting
-- ✅ **Tally screen**: a full-screen recap listing every callout card before it and the total; adding one ends the counter there
+**Sound & cards**
+- ~~Counter tools~~: removed from the app in Phase 20 at your request (older projects still export them)
 - ✅ **Narration tracks**: the track button now cycles dialogue → music → narration. Everything else (the movie/game sound and music) gets quieter while your narration talks, using the Ducking strength
 - ✅ **Number cards** for Top-10 style videos (#7 + text)
 

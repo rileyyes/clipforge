@@ -5,7 +5,7 @@ import { applyStyle, styleOf, TEXT_PRESETS } from "../timeline/phase18";
 import { realTimeDuration } from "../timeline/phase19";
 import { parseTime } from "../timeline/effects";
 import FontSelect from "./FontSelect";
-import { addTitle, removeTitle, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
+import { addTitle, removeTitle, RETIRED_TEMPLATES, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
 import { FREE_TEMPLATES, type TextStyle, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
 
 const STICKERS = ["😂", "🤣", "💀", "☠️", "🔥", "😱", "😭", "👀", "🤯", "😡", "🤔", "😎", "👍", "👎", "💯", "❤️",
@@ -34,7 +34,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
   drawingFor?: string | null; onDraw?: (id: string, kind: "box" | "points" | null) => void;
   /** shown first (Phase 15: apply the brand kit) */
   top?: React.ReactNode;
-  /** shown last (Phase 18: counter, name tags) */
+  /** shown last (name tags) */
   bottom?: React.ReactNode;
   timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
@@ -53,7 +53,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
       <div className="insp-section" style={{ marginBottom: 0 }}>
         <h3 style={{ margin: 0 }}>Add a title or shape at the playhead</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-          {TITLE_TEMPLATES.map(([tpl, label]) => (
+          {TITLE_TEMPLATES.filter(([tpl]) => !RETIRED_TEMPLATES.includes(tpl)).map(([tpl, label]) => (
             <button key={tpl + label} className="btn sm" onClick={() => {
               const r = addTitle(timeline, tpl as TitleTemplate, playhead, label);
               if (commit(r, `Add ${label.toLowerCase()}`) && r.id) setSel(r.id);
@@ -89,7 +89,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             onChange={(e) => Number.isFinite(+e.target.value) && set({ number: +e.target.value }, "Card number")} /></label>}
           {cur.template === "ticker" && (<>
             <div className="insp-grid">
-              <label className="field">Counts<select aria-label="Ticker kind" value={cur.format ?? "time"} onChange={(e) => set({ format: e.target.value as Title["format"] }, "Ticker kind")}>
+              <label className="field">Shows<select aria-label="Ticker kind" value={cur.format ?? "time"} onChange={(e) => set({ format: e.target.value as Title["format"] }, "Ticker kind")}>
                 <option value="time">Time (1:05)</option><option value="money">Money ($1,250)</option><option value="number">Number (1,250)</option></select></label>
               <span />
               <label className="field">From<input type="text" aria-label="Count from" defaultValue={fmtCount(cur.count_from ?? 60, cur.format)} key={`f${cur.id}${cur.count_from}${cur.format}`}
@@ -102,7 +102,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             {(cur.format ?? "time") === "time" && <div className="row" style={{ gap: 6, fontSize: 11 }}>
               <span className="dim">{Math.abs(realTimeDuration(cur) - cur.duration) < 0.05 ? "Runs in real time" : `Runs ${((Math.abs((cur.count_to ?? 0) - (cur.count_from ?? 60))) / Math.max(0.05, cur.duration - 0.3)).toFixed(1)}× real time`}</span>
               <button className="btn xs" onClick={() => set({ duration: realTimeDuration(cur) }, "Timer in real time")}>Real time</button></div>}
-            <div className="dim" style={{ fontSize: 11 }}>The text above it is the label (e.g. TIME LEFT, PRIZE); leave it empty for none. A countdown turns the accent colour in its last 10 seconds.</div>
+            <div className="dim" style={{ fontSize: 11 }}>The text above it is the label (e.g. TIME LEFT, PRIZE); leave it empty for none. A timer going down turns the accent colour in its last 10 seconds.</div>
           </>)}
           {cur.template === "route" && (
             <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
@@ -126,7 +126,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             </div>
             <div className="dim" style={{ fontSize: 11 }}>A highlighter pen sweeps across the box — for a quote in a screenshot of an article or a post. The colour is the Accent.</div>
           </>)}
-          {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every callout card before it, with the counter's total (or how many cards) at that point.</div>}
+          {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every callout card before it.</div>}
           {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "count_card" ? "Detail" : "Second line"}
             <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
           <div className="insp-grid">

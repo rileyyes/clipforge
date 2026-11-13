@@ -97,7 +97,7 @@ Saving the timeline also takes an automatic checkpoint, at most every 10 minutes
 | GET/POST | `/api/projects/{pid}/fx/images`, GET `/fx/images/{id}` | your pop-up images |
 | GET | `/api/sounds/{name}.wav` | preview a synthesised sound |
 
-Effects, caption and audio settings are saved with `PUT /timeline` (`effects`, `captions`, `audio`). Project schema v3 (clips: `transition_in`, `fade_in`, `fade_out`; audio tracks: `role`). Older projects migrate automatically. Schema v6 (Phase 12) adds `timeline.markers: [{id, t, label, color}]` (max 500); `POST /publish/suggest` takes `chapters: "auto" | "markers"` to build chapters from them (409 if there are none).
+Effects, caption and audio settings are saved with `PUT /timeline` (`effects`, `captions`, `audio`). Project schema v3 (clips: `transition_in`, `fade_in`, `fade_out`; audio tracks: `role`). Older projects migrate automatically. Schema v6 (Phase 12) adds `timeline.markers: [{id, t, label, color}]` (max 500); `POST /publish/suggest` takes `chapters: "auto" | "markers"` to build chapters from them (409 if there are none). Schema v9 (Phase 20) adds audio tracks' `volume` (0–2, default 1) and `solo`, `audio.fx_volume` (0–2, the level of all sound effects and bleeps) and clips' `blend` (`normal`, `screen`, `multiply`, `overlay`, `lighten`, `darken`, `addition`, `difference`, `softlight`; used on video tracks above the base one).
 
 ## Thumbnail Maker (`/api/projects/{pid}/thumbnails`)
 | Method | Path | Description |

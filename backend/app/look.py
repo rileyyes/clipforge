@@ -170,7 +170,7 @@ def crop_shift(clip: Clip, axis: str) -> str:
 
 def needs_warp(clip: Clip) -> bool:
     """Rotation, animated scale, any opacity or a green screen need the alpha + perspective path."""
-    return (clip.chroma is not None or any(animated(clip, p) for p in ("scale", "rotation", "opacity"))
+    return (clip.chroma is not None or clip.blend != "normal" or any(animated(clip, p) for p in ("scale", "rotation", "opacity"))
             or abs(static_value(clip, "rotation")) > 1e-6 or static_value(clip, "opacity") < 0.999)
 
 

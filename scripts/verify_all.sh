@@ -48,10 +48,12 @@ echo "== browser E2E: Phase 16 (hook checker, teaser, B-roll from your clips, vo
 python3 scripts/e2e_phase16.py 2>&1 | grep -E "OK|hook score|teaser|B-roll|voiceover|music plan|export ok|Error|assert"
 echo "== browser E2E: Phase 17 (first-run tour, titles/markers/blurs follow moved clips)"
 python3 scripts/e2e_phase17.py 2>&1 | grep -E "OK|tour steps|after dragging|after undo|Error|assert"
-echo "== browser E2E: Phase 18 (fonts & text styles, counter, name tags, combos, funny moments, new looks)"
-python3 scripts/e2e_phase18.py 2>&1 | grep -E "OK|my font|counter in|export ok|funny moments|keep only|Error|assert"
-echo "== browser E2E: Phase 19 (timer & money counter, stamp, route, highlighter, key words, sound design, slow push, pacing checker)"
+echo "== browser E2E: Phase 18 (fonts & text styles, name tags, combos, funny moments, new looks)"
+python3 scripts/e2e_phase18.py 2>&1 | grep -E "OK|my font|export ok|funny moments|keep only|Error|assert"
+echo "== browser E2E: Phase 19 (timer & money ticker, stamp, route, highlighter, key words, sound design, slow push, pacing checker)"
 python3 scripts/e2e_phase19.py 2>&1 | grep -E "OK|sound design|pacing|after punch|export ok|Error|assert"
+echo "== browser E2E: Phase 20 (sound mixer, solo, effects level, blend modes in preview and export)"
+python3 scripts/e2e_phase20.py 2>&1 | grep -E "OK|mixer rows|export pixels|music vs movie|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

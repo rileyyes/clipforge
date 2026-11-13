@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -156,6 +156,9 @@ class Chroma(Strict):
     blend: float = Field(default=0.08, ge=0, le=0.5)          # soft edge
 
 
+BLEND_MODES = ("normal", "screen", "multiply", "overlay", "lighten", "darken", "addition", "difference", "softlight")
+
+
 class Clip(Strict):
     id: str
     media_id: str
@@ -174,6 +177,8 @@ class Clip(Strict):
     transition_in: Optional[Transition] = None
     fade_in: float = Field(default=0, ge=0, le=10)   # video: from black, audio: volume
     fade_out: float = Field(default=0, ge=0, le=10)  # video: to black, audio: volume
+    # Phase 20: how an upper-track picture mixes with what's under it (normal = just on top)
+    blend: Literal[BLEND_MODES] = "normal"
 
     @field_validator("id", "media_id")
     @classmethod
@@ -230,6 +235,10 @@ class Track(Strict):
     role: Literal["dialogue", "music", "narration"] = "dialogue"
     tag: str = Field(default="", max_length=24)      # name tag shown while this track's audio is talking
     tag_color: str = Field(default="#5865f2", pattern=r"^#[0-9a-fA-F]{6}$")
+    # Phase 20 mixer (audio tracks): the whole track louder or quieter, and "solo" = only the
+    # solo tracks are heard (preview and export)
+    volume: float = Field(default=1.0, ge=0.0, le=2.0)
+    solo: bool = False
     clips: list[Clip] = Field(default_factory=list)
 
     @field_validator("id")
@@ -455,6 +464,7 @@ class AudioSettings(Strict):
     noise_reduction: Literal["off", "light", "medium", "strong"] = "off"
     enhance_voice: bool = False          # rumble cut, presence lift, gentle compression
     ducking: Literal["off", "light", "medium", "strong"] = "medium"  # music under dialogue
+    fx_volume: float = Field(default=1.0, ge=0.0, le=2.0)  # Phase 20: all sound effects and bleeps
 
 
 class CamRange(Strict):
@@ -680,6 +690,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "schema_version": 7}
     if data.get("schema_version", 7) < 8:  # v7 -> v8: ticker/stamp/route/highlight titles, caption key words (defaulted)
         data = {**data, "schema_version": 8}
+    if data.get("schema_version", 8) < 9:  # v8 -> v9: mixer (track volume/solo, effects level), blend modes (defaulted)
+        data = {**data, "schema_version": 9}
     return data
 
 

@@ -117,7 +117,7 @@ test("pacing: still stretches found; cuts, B-roll, titles, zooms and moving clip
 test("new templates have useful defaults (timer, money counter, stamp, route, highlighter)", () => {
   const t1 = ok(addTitle(empty(), "ticker", 0, "Timer")).titles![0];
   assert.deepEqual([t1.format, t1.count_from, t1.count_to, t1.duration], ["time", 10, 0, 10.3]);
-  const t2 = ok(addTitle(empty(), "ticker", 0, "Money counter")).titles![0];
+  const t2 = ok(addTitle(empty(), "ticker", 0, "Money ticker")).titles![0];
   assert.deepEqual([t2.format, t2.count_to], ["money", 10000]);
   assert.equal(tickerAt(t2.duration, t2), "$10,000");
   for (const [tpl, label] of [["stamp", "Time & place"], ["route", "Route on a map"], ["highlight", "Highlighter"]] as const) {

@@ -83,6 +83,7 @@ class RenderPlan:
     overlays: list[Seg] = field(default_factory=list)
     audio_tracks: list[list[Seg]] = field(default_factory=list)
     audio_roles: list[str] = field(default_factory=list)
+    audio_volumes: list[float] = field(default_factory=list)   # Phase 20 mixer, per audio track
     # Phase 18: who's talking per audio track (set by render_project; None = nobody)
     talk_of: Optional[Callable] = None
     overlay_cache: Optional[list] = None
@@ -194,11 +195,13 @@ def plan_render(project: Project, out: OutputSettings) -> RenderPlan:
             if s.kind == "clip":
                 s.cam = by_id[s.clip.id]
                 plan.overlays.append(s)
+    solo = any(t.solo for t in project.timeline.tracks if t.kind == "audio")
     for t in project.timeline.tracks:
-        if t.kind == "audio" and not t.muted and t.clips:
+        if t.kind == "audio" and not t.muted and t.clips and (t.solo or not solo) and t.volume > 0:
             plan.audio_tracks.append(apply_transitions(_track_segments(t.clips, to_s, total_samples),
                                                        AUDIO_RATE, lambda c: links.get(c.link_id)))
             plan.audio_roles.append(t.role)
+            plan.audio_volumes.append(t.volume)
     return plan
 
 
@@ -543,6 +546,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                 jobs.append((args, s.count / AUDIO_RATE * 0.1, name))
             audio_lists.append(names)
         audio_roles = list(plan.audio_roles)
+        audio_volumes = list(plan.audio_volumes)
 
         # sound-effect / bleep lanes (non-overlapping events per lane)
         events = []
@@ -596,6 +600,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                 names.append(nm)
             audio_lists.append(names)
             audio_roles.append("fx")
+            audio_volumes.append(project.audio.fx_volume)
 
         cache = RenderCache(settings.cache_dir, settings.render_cache_bytes, settings.ffmpeg_bin)
         total_work = sum(j[1] for j in jobs) or 1.0
@@ -623,7 +628,7 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         # ---- stage 2: mix audio (cleanup, ducking, loudness) -----------------
         ctx.stage(2, stages, "Mixing audio")
         mix_wav, loud = mix_audio(settings, project, plan, work, audio_lists, audio_roles, ctx,
-                                  lambda f: ctx.progress(seg_weight + mix_weight * f))
+                                  lambda f: ctx.progress(seg_weight + mix_weight * f), volumes=audio_volumes)
 
         # ---- stage 3: assemble + encode -------------------------------------
         ctx.stage(3, stages, "Encoding final video")
@@ -676,6 +681,32 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
 BLOCK_S = 20.0  # final-quality video is encoded in blocks this long (each one cached)
 
 
+# Phase 20: preview (CSS mix-blend-mode) ↔ export (FFmpeg blend) names
+BLEND_FFMPEG = {"screen": "screen", "multiply": "multiply", "overlay": "overlay", "lighten": "lighten",
+                "darken": "darken", "addition": "addition", "difference": "difference", "softlight": "softlight"}
+
+
+def blend_chain(base: str, layer: str, mode: str, out: str, p: str) -> list[str]:
+    """Blend a full-canvas layer (with alpha) into ``base``: the blend runs in RGB, then the
+    layer's own see-through-ness decides how much of the blend shows. Before the layer starts
+    and after it ends the base passes through untouched.
+
+    The picture underneath goes first: then FFmpeg's overlay and soft light are keyed the
+    same way as CSS mix-blend-mode in the preview (checked pixel by pixel in test_phase20)."""
+    first, second = f"[{p}u]", f"[{p}l]"
+    return [
+        f"[{base}]split[{p}a][{p}b]",
+        f"[{layer}]format=rgba,split[{p}c][{p}m]",
+        f"[{p}m]alphaextract[{p}am]",
+        f"[{p}b]format=gbrp[{p}u]",
+        f"[{p}c]format=gbrp[{p}l]",
+        f"{first}{second}blend=all_mode={BLEND_FFMPEG[mode]}:eof_action=pass[{p}x]",
+        f"[{p}x]format=rgba[{p}r]",
+        f"[{p}r][{p}am]alphamerge[{p}k]",
+        f"[{p}a][{p}k]overlay=x=0:y=0:eof_action=pass[{out}]",
+    ]
+
+
 def _final_graph(plan: "RenderPlan", work: Path, overlay_names: list[str], base_input: list[str],
                  win: Optional[tuple[int, int]], n_base: int = 1,
                  base_trims: Optional[list[Optional[float]]] = None) -> tuple[list[str], list[str], str, int]:
@@ -712,7 +743,9 @@ def _final_graph(plan: "RenderPlan", work: Path, overlay_names: list[str], base_
         inputs += ["-i", str(work / overlay_names[i])]
         c = s.clip
         g.append(f"[{idx}:v]{trim}setpts=PTS-STARTPTS+{s.start_frame + off}/({fps})/TB[o{idx}]")
-        if look.needs_warp(c):  # full transparent canvas, already positioned
+        if c.blend != "normal":  # Phase 20 blend mode: full canvas, mixed with what's under it
+            g += blend_chain(last, f"o{idx}", c.blend, f"v{idx}", f"b{idx}")
+        elif look.needs_warp(c):  # full transparent canvas, already positioned
             g.append(f"[{last}][o{idx}]overlay=x=0:y=0:eof_action=pass[v{idx}]")
         else:
             t0 = float(s.start_frame / fps)
@@ -989,7 +1022,7 @@ def _loudnorm_measure(settings: Settings, wav: Path, target: float) -> Optional[
 
 
 def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path, audio_lists: list[list[str]],
-              roles: list[str], ctx, on_progress) -> tuple[Path, dict]:
+              roles: list[str], ctx, on_progress, volumes: Optional[list[float]] = None) -> tuple[Path, dict]:
     """Mix all audio into one WAV: dialogue (noise reduction / voice enhance), music
     (ducked under dialogue), effects; then two-pass loudness normalisation."""
     a = project.audio
@@ -999,9 +1032,14 @@ def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path
         _write_concat(lf, names)
         inputs += ["-f", "concat", "-i", str(lf)]
     groups = {"dialogue": [], "music": [], "fx": [], "narration": []}
-    for i, r in enumerate(roles):
-        groups[r if r in groups else "dialogue"].append(f"[{i}:a]")
     g: list[str] = []
+    for i, r in enumerate(roles):
+        v = volumes[i] if volumes and i < len(volumes) else 1.0
+        label = f"[{i}:a]"
+        if abs(v - 1.0) > 1e-6:   # Phase 20 mixer: this track's level, before ducking and loudness
+            g.append(f"{label}volume={v:.4f}[tv{i}]")
+            label = f"[tv{i}]"
+        groups[r if r in groups else "dialogue"].append(label)
     info: dict = {"normalized": False, "noise_reduction": a.noise_reduction, "enhance_voice": a.enhance_voice,
                   "ducking": "off"}
 

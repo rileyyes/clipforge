@@ -2,7 +2,7 @@
 
 At 1280×720:
 - Text tab: a Timer counts down in real time in the preview (and "Real time" fixes its length
-  after changing From); a Money counter lands on $10,000; Time & place types itself out;
+  after changing From); a Money ticker lands on $10,000; Time & place types itself out;
   a Route is clicked onto the preview (Enter finishes) and draws itself; a Highlighter box is
   dragged on the preview; pop-up words animate word by word.
 - Effects tab: key words in captions stand out; Auto sound design adds whooshes/risers/hits and
@@ -144,7 +144,7 @@ async def main(pid):
 
         # ---- money counter
         await seek(8)
-        await panel.get_by_role("button", name="Money counter").click()
+        await panel.get_by_role("button", name="Money ticker").click()
         await saved()
         await seek(10.9)
         vals = [await x.inner_text() for x in await val.all()]
