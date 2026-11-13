@@ -11,6 +11,8 @@ import {
   addBlur, addTitle, cutRanges, fitMusicToVideo, snapCutsToBeats, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
+import { addCounter, keepOnly, updateCounter } from "./phase18";
+import { setTrackTag } from "./ops";
 import { LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
 
 function rng(seed: number) {
@@ -79,6 +81,14 @@ function checkMarkers(tl: Timeline, where: string) {
   const ms = tl.markers ?? [];
   assert.ok(ms.every((m, i) => m.t >= 0 && /^[0-9a-f]{32}$/.test(m.id) && (i === 0 || ms[i - 1].t <= m.t)), `${where}: markers unsorted/invalid`);
   assert.equal(new Set(ms.map((m) => m.id)).size, ms.length, `${where}: duplicate marker id`);
+  // Phase 18: same limits as the backend schema (scripts/crosscheck.py validates the samples there too)
+  const cs = tl.counters ?? [];
+  assert.ok(cs.length <= 4 && new Set(cs.map((c) => c.id)).size === cs.length, `${where}: counters`);
+  for (const c of cs) assert.ok(c.label.length <= 24 && c.start_value >= 0 && c.start_value <= 9999 && Number.isInteger(c.start_value)
+    && c.size >= 0.5 && c.size <= 2 && c.x >= 0 && c.x <= 1 && c.y >= 0 && c.y <= 1 && (c.end === null || c.end > c.start), `${where}: counter ${JSON.stringify(c)}`);
+  for (const t of tl.titles ?? []) assert.ok((t.stroke == null || (t.stroke >= 0 && t.stroke <= 24)) && (t.shadow == null || (t.shadow >= 0 && t.shadow <= 24))
+    && (t.glow ?? 0) >= 0 && (t.glow ?? 0) <= 40 && (t.number ?? 1) >= 0 && (t.number ?? 1) <= 999, `${where}: title style`);
+  for (const tr of tl.tracks) assert.ok((tr.tag ?? "").length <= 24 && (!tr.tag_color || /^#[0-9a-fA-F]{6}$/.test(tr.tag_color)), `${where}: tag`);
 }
 function allClips(tl: Timeline) { return tl.tracks.flatMap((t) => t.clips); }
 
@@ -95,7 +105,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 32);
+      const op = Math.floor(r() * 36);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -159,6 +169,17 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 29: res = c ? speedRamp(tl, c.id, t, r() < 0.5 ? RAMP_SLOWMO : { ...RAMP_SPEEDUP, hold: r() * 3 + 0.2 }) : { error: "none" }; break;
         case 30: res = applyLayout(tl, t, 1280, 720, pick(["side_by_side", "top_bottom", "pip", "reset"] as const), pick(["tl", "tr", "bl", "br"] as const), 0.2 + r() * 0.3); break;
         case 31: { const a = r() * 30; res = insertTeaser(tl, a, a + 0.3 + r() * 6); break; }
+        // Phase 18
+        case 32: { const a = r() * 30; res = keepOnly(tl, [[a, a + r() * 8], [a + r() * 20, a + 10 + r() * 10]]); break; }
+        case 33: res = r() < 0.5 ? addCounter(tl, pick(["KILLS", "DEATHS", ""])) : (tl.counters?.length
+          ? updateCounter(tl, pick(tl.counters).id, { start: r() * 20, end: r() < 0.5 ? null : r() * 40, x: r(), y: r(), size: r() * 3, start_value: r() * 20000 })
+          : { error: "none" }); break;
+        case 34: { const a = tl.tracks.filter((x) => x.kind === "audio");
+          res = a.length ? (r() < 0.5 ? setTrackTag(tl, pick(a).id, "Player " + Math.floor(r() * 9), pick(["#ff0000", "#5865f2", "nope"]))
+            : setTrackRole(tl, pick(a).id, pick(["dialogue", "music", "narration"] as const))) : { error: "none" }; break; }
+        case 35: { const tid = (tl.titles ?? [])[0]?.id;
+          res = tid ? updateTitle(tl, tid, { font: pick([null, "anton", "creepster"]), stroke: r() < 0.3 ? null : r() * 40, shadow: r() * 30 - 3,
+            glow: r() * 60, number: r() * 2000, glow_color: pick(["#ffde00", "#00ff00"]) }) : addTitle(tl, pick(["sticker", "death_card", "number_card", "tally"] as const), t); break; }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

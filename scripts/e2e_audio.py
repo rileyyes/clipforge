@@ -80,11 +80,13 @@ async def main(pid):
             f = pg.get_by_label(label)
             await f.fill(val)
             await f.press("Enter")
-        # A2 starts as a music track in new projects: toggle to dialogue and back
+        # A2 starts as a music track in new projects: the button cycles music -> narration -> dialogue -> music
         role = pg.locator(".tl-head").nth(3).locator("button[title^='Music track']")
         assert await role.count() == 1, "A2 is a music track by default"
         await role.click()
+        await pg.locator(".tl-head").nth(3).locator("button[title^='Narration track']").click()
         await pg.locator(".tl-head").nth(3).locator("button[title^='Dialogue track']").click()
+        await pg.locator(".tl-head").nth(3).locator("button[title^='Music track']").wait_for()
         # audio settings
         await pg.get_by_role("tab", name="Effects").click()
         await pg.get_by_label("Background noise removal").select_option("light")

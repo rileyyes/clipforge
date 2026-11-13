@@ -1,4 +1,5 @@
 import { tourAgain } from "../components/Tour";
+import FontsCard from "../components/FontsCard";
 import BrandKit from "../components/BrandKit";
 import React, { useEffect, useState } from "react";
 import { api, fmtBytes, type SystemInfo } from "../api";
@@ -49,6 +50,7 @@ export default function SettingsPage() {
           }}>{busy ? "Cleaning…" : "Clean up temporary files"}</button>
         </div>
       </div>
+      <div style={{ marginTop: 16 }}><FontsCard /></div>
       <div className="card" style={{ marginTop: 16 }}>
         <h3>Tour</h3>
         <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The short walk-through of the editor that you saw the first time.</p>

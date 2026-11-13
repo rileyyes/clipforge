@@ -315,6 +315,19 @@ def test_missing_ffmpeg_gives_clear_message(server, media_dir, monkeypatch):
     assert st == 503 and "FFmpeg wasn't found" in r["error"]
 
 
+def test_low_disk_gives_clear_message(server, media_dir, monkeypatch):
+    """Phase 18: with little free disk the upload was answered before it was read, so the
+    sender saw a dropped connection instead of this message."""
+    import shutil
+    from collections import namedtuple
+    du = namedtuple("du", "total used free")
+    monkeypatch.setattr(shutil, "disk_usage", lambda p: du(10 * 1024**3, 9 * 1024**3, 1024**3))
+    p = new_project(server)
+    for _ in range(3):
+        st, r, _ = server.upload(p["id"], media_dir / "av.mp4")
+        assert st == 507 and "not enough free disk space" in r["error"]
+
+
 def test_probe_reports_missing_binary(tmp_path):
     from app import ffmpeg as ff
     with pytest.raises(ff.FFmpegError, match="FFmpeg wasn't found"):

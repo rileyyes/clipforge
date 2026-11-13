@@ -6,6 +6,7 @@ import HistoryPanel from "../components/HistoryPanel";
 import FaceCamPanel from "../components/FaceCamPanel";
 import ScriptPanel from "../components/ScriptPanel";
 import TitlesPanel from "../components/TitlesPanel";
+import { KillCountPanel, NameTagsPanel } from "../components/KillCountPanel";
 import BlurPanel from "../components/BlurPanel";
 import BeatPanel from "../components/BeatPanel";
 import { effectTime } from "../timeline/effects";
@@ -197,6 +198,12 @@ export default function Editor({ projectId }: { projectId: string }) {
     if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
     lastLabel.current = { label, at: now };
     dirty.current = true; setEffects(next); setCaptions(caps); force((n) => n + 1);
+  };
+  /** Timeline + effects changed together (e.g. a Kill: counter, +1 and death card) = one undo step. */
+  const commitBoth = (tl: Timeline, fx: Effect[], label: string) => {
+    history.current.push(snapshot(), label);
+    lastLabel.current = { label, at: Date.now() };
+    dirty.current = true; setTimeline(sanitize(tl)); setEffects(fx); force((n) => n + 1);
   };
   const setFacecam = (next: FaceCam | null, label: string) => {
     const now = Date.now();
@@ -451,7 +458,12 @@ export default function Editor({ projectId }: { projectId: string }) {
             <TitlesPanel timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }} commit={commit} sel={overlaySel} setSel={setOverlaySel}
               top={<BrandApply projectId={projectId} timeline={timeline} captions={captions!} watermarkOn={!!project?.watermark}
                 commit={commit} setCaptions={(c, label) => setFx(effects, c, label)}
-                onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />} />
+                onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />}
+              bottom={<>
+                <KillCountPanel timeline={timeline} effects={effects} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+                  commit={commit} commitBoth={commitBoth} setSel={setOverlaySel} />
+                <NameTagsPanel timeline={timeline} commit={commit} />
+              </>} />
           ) : rightTab === "script" ? (
             <ScriptPanel timeline={timeline} playhead={playhead} playing={playing} byMedia={byMedia} onFixWord={fixWord}
               seek={(t) => { setPlaying(false); seek(t); }} openEffects={() => setRightTab("fx")}
@@ -500,7 +512,7 @@ export default function Editor({ projectId }: { projectId: string }) {
           commit(addMedia(timeline, m, time, tr?.kind === "video" ? trackId : undefined), "Add clip");
         }}
         onTrackToggle={(id, flag) => commit(toggleTrack(timeline, id, flag), `Toggle ${flag}`)}
-        onTrackRole={(id, role) => commit(setTrackRole(timeline, id, role), role === "music" ? "Set music track" : "Set dialogue track")}
+        onTrackRole={(id, role) => commit(setTrackRole(timeline, id, role), role === "music" ? "Set music track" : role === "narration" ? "Set narration track" : "Set dialogue track")}
         onRemoveTrack={(id) => commit(removeTrack(timeline, id), "Remove track")}
         markers={[
           ...effects.filter((e) => e.enabled).map((e) => ({ t: effectTime(timeline, e), color: FX_COLOR[e.kind], title: e.kind + (e.word ? `: ${e.word}` : e.text ? `: ${e.text}` : "") })).filter((m) => m.t !== null),

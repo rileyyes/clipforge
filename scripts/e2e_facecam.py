@@ -24,7 +24,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-cam-"))
-PORT = 8803
+PORT = 8821
 B = f"http://127.0.0.1:{PORT}"
 PERSON = ROOT / "backend" / "tests" / "data" / "person.jpg"
 RATE = 8000

@@ -1,3 +1,4 @@
+import { fontCss } from "../fonts";
 import React from "react";
 import { captionAt, type CapChunk } from "../timeline/captions";
 import type { CaptionSettings } from "../timeline/types";
@@ -27,7 +28,7 @@ export default function CaptionsPreview({ chunks, cs, t, k, W, H, ox, oy }: {
     <div data-testid="caption-preview" data-style={cs.style} style={{ position: "absolute", left: ox + side, width: w - 2 * side, ...pos,
       textAlign: "center", pointerEvents: "none", zIndex: 1500, opacity: Math.max(0, fade) }}>
       <span style={{ display: "inline-block", transform: `scale(${pop})`, transformOrigin: "50% 100%" }}>
-        <span style={{ fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, fontSize: size, lineHeight: 1.18, color: cs.color, ...text }}>
+        <span style={{ fontFamily: fontCss(cs.font), fontWeight: cs.font ? 400 : 700, fontSize: size, lineHeight: 1.18, color: cs.color, ...text }}>
           {cs.style === "highlight"
             ? chunk.words.map((x, i) => <React.Fragment key={i}>{i > 0 && " "}<span style={{ color: i === word ? cs.highlight : cs.color }}>{x.text}</span></React.Fragment>)
             : chunk.text}

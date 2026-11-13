@@ -1,4 +1,5 @@
 import React from "react";
+import { fontCss } from "../fonts";
 import { FREE_TEMPLATES, type Title } from "../timeline/types";
 
 /** CSS versions of the title templates for the monitor (export: backend/app/titles.py, libass).
@@ -6,8 +7,25 @@ import { FREE_TEMPLATES, type Title } from "../timeline/types";
 const IN = 0.4, OUT = 0.3;
 const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 
-export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove }: {
+/** Phase 18 font and text style on top of a template's own look (export: titles.py _restyle). */
+export function styleCss(x: Title, s: number, k: number): React.CSSProperties {
+  const out: React.CSSProperties = {};
+  if (x.font) { out.fontFamily = fontCss(x.font); out.fontWeight = 400; }
+  const shadows: string[] = [];
+  if (x.stroke != null) { out.WebkitTextStroke = `${x.stroke * s * 2}px ${x.stroke_color ?? "#000000"}`; out.paintOrder = "stroke fill"; }
+  if ((x.glow ?? 0) > 0) shadows.push(`0 0 ${(x.glow ?? 0) * s}px ${x.glow_color}`, `0 0 ${(x.glow ?? 0) * s * 0.5}px ${x.glow_color}`);
+  if (x.shadow != null) shadows.push(x.shadow > 0 ? `${x.shadow * s}px ${x.shadow * s}px 0 rgba(0,0,0,.4)` : "0 0 0 transparent");
+  if (shadows.length) out.textShadow = shadows.join(", ");
+  void k;
+  return out;
+}
+
+export interface TallyInfo { entries: [string, string][]; total: number }
+
+export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove, tally }: {
   titles: Title[]; t: number; k: number; W: number; H: number; ox: number; oy: number;
+  /** what an end tally lists (death cards before it, total) */
+  tally?: (x: Title) => TallyInfo;
   /** the selected title; pop-up words and shapes can then be dragged into place */
   sel?: string | null; onMove?: (id: string, x: number, y: number, done: boolean) => void;
 }) {
@@ -15,7 +33,12 @@ export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove 
   const on = titles.filter((x) => t >= x.start - 1e-4 && t < x.start + x.duration).sort((a, b) => a.start - b.start);
   return <>{on.map((x) => FREE_TEMPLATES.includes(x.template)
     ? <Free key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy} selected={sel === x.id} onMove={onMove} />
-    : <One key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy} />)}</>;
+    : <One key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy}
+        killN={x.template === "death_card" ? killNumber(titles, x) : 0} tally={x.template === "tally" ? tally?.(x) : undefined} />)}</>;
+}
+
+function killNumber(all: Title[], x: Title): number {
+  return all.filter((c) => c.template === "death_card").sort((a, b) => a.start - b.start).findIndex((c) => c.id === x.id) + 1;
 }
 
 /** pop_text, arrow, circle, box (export: titles.py _free): centre at (x, y), turned clockwise, in-animation. */
@@ -56,7 +79,12 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
     const shown = anim === "typewriter" ? [...x.text].slice(0, Math.floor(t / step) + 1).join("") : x.text;
     body = <span style={{ fontSize: 96 * s, fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
       WebkitTextStroke: `${Math.max(2, 7 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", textShadow: `${3 * s}px ${3 * s}px 0 rgba(0,0,0,.5)`,
-      visibility: "visible" }}>{shown}<span style={{ visibility: "hidden" }}>{anim === "typewriter" ? x.text.slice(shown.length) : ""}</span></span>;
+      visibility: "visible", ...styleCss(x, s, k) }}>{shown}<span style={{ visibility: "hidden" }}>{anim === "typewriter" ? x.text.slice(shown.length) : ""}</span></span>;
+  } else if (x.template === "sticker") {
+    // the sticker font is line art: an outline in its own colour makes the lines bold (export: titles.py)
+    body = <span style={{ fontSize: 240 * s, fontFamily: fontCss("emoji"), fontWeight: 400, color: x.color, whiteSpace: "nowrap", lineHeight: 1,
+      WebkitTextStroke: `${Math.max(1, 2.5 * s / k) * k * 2}px ${x.color}`, paintOrder: "stroke fill",
+      textShadow: `${5 * s}px ${5 * s}px 0 rgba(0,0,0,.4)`, ...styleCss({ ...x, font: null }, s, k) }}>{x.text}</span>;
   } else if (x.template === "arrow") {
     const L = 260 * s, T = 34 * s, hw = T * 1.3, hl = T * 2.2;
     body = <svg width={L + 8} height={2 * hw + 8} style={{ overflow: "visible", display: "block" }}>
@@ -75,20 +103,22 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
           transform: `translate(-50%,-50%) rotate(${x.rotation ?? 0}deg) scale(${sx},${sy})`,
           pointerEvents: selected && onMove ? "auto" : "none", cursor: selected && onMove ? "move" : undefined,
           outline: selected && onMove ? "1px dashed rgba(255,255,255,.7)" : undefined, outlineOffset: 6 }}>{body}</div>
-      {x.template !== "pop_text" && x.text && (
+      {x.template !== "pop_text" && x.template !== "sticker" && x.text && (
         <div style={{ position: "absolute", left: cx, top: cy + 140 * s, transform: "translateX(-50%)", opacity: fade, pointerEvents: "none", zIndex: 1600,
           fontSize: 48 * s, fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
-          WebkitTextStroke: `${Math.max(2, 5 * s / k) * k * 2}px #000`, paintOrder: "stroke fill" }}>{x.text}</div>
+          WebkitTextStroke: `${Math.max(2, 5 * s / k) * k * 2}px #000`, paintOrder: "stroke fill", ...styleCss(x, s, k) }}>{x.text}</div>
       )}
     </>
   );
 }
 
-function One({ x, t, k, W, H, ox, oy }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number }) {
+function One({ x, t, k, W, H, ox, oy, killN, tally }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number;
+  killN: number; tally?: TallyInfo }) {
   const s = (H / 1080) * x.size * k;             // px on screen per design px at 1080p
   const fadeOut = Math.min(1, Math.max(0, (x.duration - t) / OUT));
   const pin = ease(t / IN);
-  const base: React.CSSProperties = { position: "absolute", pointerEvents: "none", fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap" };
+  const base: React.CSSProperties = { position: "absolute", pointerEvents: "none", fontFamily: "'DejaVu Sans', Arial, sans-serif", fontWeight: 700, color: x.color, whiteSpace: "nowrap",
+    ...styleCss(x, s, k) };
   const frame = (style: React.CSSProperties, children: React.ReactNode) =>
     <div data-testid="title-preview" data-template={x.template} style={{ ...base, ...style, opacity: (style.opacity as number ?? 1) * fadeOut }}>{children}</div>;
   const left = ox, top = oy, w = W * k, h = H * k;
@@ -125,6 +155,54 @@ function One({ x, t, k, W, H, ox, oy }: { x: Title; t: number; k: number; W: num
           fontSize: 52 * s, boxShadow: `0 ${4 * s}px ${8 * s}px rgba(0,0,0,.4)` }}>{x.text || "SUBSCRIBE"}</div>
         {x.subtext && <div style={{ fontSize: 31 * s, color: "#fff", textShadow: "0 0 3px #000", marginTop: 10 * s }}>{x.subtext}</div>}
       </>);
+    }
+    case "death_card": {
+      // export: titles.py _death_card (box bottom at 78 %, slides 60 px in over 0.14 s)
+      const slide = -60 * s * (1 - Math.min(1, t / 0.14));
+      const pad = 26 * s;
+      return frame({ left: left + w * 0.05 + slide, top: top + h * 0.78, transform: "translateY(-100%)", background: "rgba(0,0,0,.84)",
+        borderLeft: `${12 * s}px solid ${x.accent}`, borderRadius: 8 * s, padding: `${pad * 0.8}px ${pad}px ${pad * 0.7}px`,
+        boxShadow: `${4 * s}px ${4 * s}px 0 rgba(0,0,0,.4)`, minWidth: 300 * s, opacity: Math.min(1, t / 0.15) }, <>
+        <div style={{ fontSize: 30 * s, lineHeight: 1.35, color: x.accent, ...(x.font ? {} : { fontWeight: 700 }) }}>KILL #{killN || 1}</div>
+        <div style={{ fontSize: 66 * s, lineHeight: 1.15 }}>{x.text}</div>
+        {x.subtext && <div style={{ fontSize: 38 * s, lineHeight: 1.3, opacity: 0.8, fontWeight: x.font ? 400 : 400 }}>{x.subtext}</div>}
+      </>);
+    }
+    case "number_card": {
+      const sc = t < IN * 0.6 ? 0.4 + 0.72 * (t / (IN * 0.6)) : t < IN ? 1.12 - 0.12 * ((t - IN * 0.6) / (IN * 0.4)) : 1;
+      const fs = 300 * s, cy = top + h * 0.42;
+      const rise = (1 - Math.min(1, Math.max(0, (t - 0.15) / IN))) * h * 0.05;
+      return <>
+        {frame({ left, top, width: w, height: h, background: "rgba(0,0,0,.56)", opacity: Math.min(1, t / 0.2) }, null)}
+        {frame({ left: left + w / 2, top: cy, transform: `translate(-50%,-50%) scale(${sc})`, fontSize: fs, lineHeight: 1, color: x.accent,
+          WebkitTextStroke: `${10 * s * 2}px #000`, paintOrder: "stroke fill", textShadow: `${6 * s}px ${6 * s}px 0 rgba(0,0,0,.4)`,
+          ...styleCss({ ...x, stroke: x.stroke }, s, k) }, `#${x.number ?? 1}`)}
+        {x.text && frame({ left: left + w / 2, top: cy + fs * 0.55 + rise, transform: "translateX(-50%)", fontSize: 78 * s, lineHeight: 1.15,
+          WebkitTextStroke: `${5 * s * 2}px #000`, paintOrder: "stroke fill", ...styleCss(x, s, k), opacity: Math.min(1, Math.max(0, (t - 0.15) / 0.15)) }, x.text)}
+        {x.subtext && frame({ left: left + w / 2, top: cy + fs * 0.55 + 78 * s * 1.3, transform: "translateX(-50%)", fontSize: 42 * s, fontWeight: 400, opacity: 0.8 }, x.subtext)}
+      </>;
+    }
+    case "tally": {
+      const info = tally ?? { entries: [], total: 0 };
+      const entries = info.entries.slice(0, 36), n = entries.length;
+      const cols = n <= 8 ? 1 : n <= 18 ? 2 : 3, rows = Math.max(1, Math.ceil(n / cols));
+      const fh = 64 * s, ft = 150 * s, topList = top + h * 0.07 + fh * 1.2 + ft * 1.15;
+      const rowH = Math.min(36 * s * 1.4, (top + h * 0.95 - topList) / rows), fe = Math.min(36 * s, rowH / 1.4);
+      const step = Math.min(0.25, Math.max(0.05, x.duration * 0.4 / Math.max(1, n)));
+      const sc = t < 0.24 ? 0.4 + 0.72 * (t / 0.24) : t < 0.4 ? 1.12 - 0.12 * ((t - 0.24) / 0.16) : 1;
+      const colW = w * 0.9 / cols;
+      return <>
+        {frame({ left, top, width: w, height: h, background: "rgba(0,0,0,.9)", opacity: Math.min(1, t / 0.25) }, null)}
+        {frame({ left: left + w / 2, top: top + h * 0.07, transform: "translateX(-50%)", fontSize: fh, lineHeight: 1.2, opacity: Math.min(1, t / 0.25) }, x.text || "FINAL TALLY")}
+        {frame({ left: left + w / 2, top: top + h * 0.07 + fh * 1.2, transform: `translateX(-50%) scale(${sc})`, transformOrigin: "50% 0", fontSize: ft, lineHeight: 1,
+          color: x.accent, WebkitTextStroke: `${6 * s * 2}px #000`, paintOrder: "stroke fill" }, String(info.total))}
+        {entries.map(([name, how], i) => {
+          const c = Math.floor(i / rows), r = i % rows, t0 = 0.45 + i * step;
+          return <React.Fragment key={i}>{frame({ left: left + w * 0.05 + c * colW + (cols === 1 ? colW / 2 : 0), top: topList + r * rowH,
+            transform: cols === 1 ? "translateX(-50%)" : undefined, fontSize: fe, lineHeight: 1.2, opacity: Math.min(1, Math.max(0, (t - t0) / 0.18)) },
+            <>{i + 1}. {name}{how && <span style={{ opacity: 0.7 }}>  — {how}</span>}</>)}</React.Fragment>;
+        })}
+      </>;
     }
     case "chapter":
       return frame({ left, top, width: w, height: h, background: "rgba(0,0,0,.69)", opacity: Math.min(1, t / IN), display: "flex",

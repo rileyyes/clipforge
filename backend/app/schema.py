@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -100,7 +100,8 @@ class ColorAdjust(Strict):
     saturation: float = Field(default=1, ge=0, le=3)
     gamma: float = Field(default=1, ge=0.1, le=4)
     temperature: float = Field(default=0, ge=-1, le=1)  # -1 cool … +1 warm
-    look: Literal["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir"] = "none"
+    look: Literal["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir",
+                  "horror", "vhs", "film", "vignette", "letterbox"] = "none"
 
     @property
     def active(self) -> bool:
@@ -136,6 +137,7 @@ class Transition(Strict):
 
 
 COLOR_HEX = r"^#[0-9a-fA-F]{6}$"
+FONT_ID = r"^(?:[a-z0-9][a-z0-9-]{0,23}|u-[0-9a-f]{12})$"  # fontlib ids
 
 
 class Watermark(Strict):
@@ -224,7 +226,10 @@ class Track(Strict):
     muted: bool = False
     hidden: bool = False
     locked: bool = False
-    role: Literal["dialogue", "music"] = "dialogue"  # audio tracks: music gets ducked under dialogue
+    # audio tracks: music gets ducked under dialogue; everything else under narration (Phase 18)
+    role: Literal["dialogue", "music", "narration"] = "dialogue"
+    tag: str = Field(default="", max_length=24)      # name tag shown while this track's audio is talking
+    tag_color: str = Field(default="#5865f2", pattern=r"^#[0-9a-fA-F]{6}$")
     clips: list[Clip] = Field(default_factory=list)
 
     @field_validator("id")
@@ -241,7 +246,9 @@ class Title(Strict):
     start: float = Field(ge=0, le=86400)
     duration: float = Field(default=4.0, ge=0.5, le=600)
     template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter",
-                      "pop_text", "arrow", "circle", "box"] = "lower_third"
+                      "pop_text", "arrow", "circle", "box",
+                      # Phase 18
+                      "death_card", "tally", "number_card", "sticker"] = "lower_third"
     text: str = Field(default="Your name", max_length=80)
     subtext: str = Field(default="", max_length=100)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
@@ -253,6 +260,14 @@ class Title(Strict):
     y: float = Field(default=0.5, ge=0, le=1)          # centre, fraction of the height
     rotation: float = Field(default=0, ge=-180, le=180)
     anim: Literal["none", "pop", "typewriter", "slide_up", "bounce"] = "pop"
+    # Phase 18: font and text style (None = the template's own look)
+    font: Optional[str] = Field(default=None, pattern=FONT_ID)
+    stroke: Optional[float] = Field(default=None, ge=0, le=24)    # outline, px at 1080p
+    stroke_color: str = Field(default="#000000", pattern=COLOR_HEX)
+    shadow: Optional[float] = Field(default=None, ge=0, le=24)    # drop shadow distance, px at 1080p
+    glow: float = Field(default=0, ge=0, le=40)                   # soft glow size, px at 1080p (0 = off)
+    glow_color: str = Field(default="#ffde00", pattern=COLOR_HEX)
+    number: int = Field(default=1, ge=0, le=999)                  # number_card
 
     @field_validator("id")
     @classmethod
@@ -313,6 +328,8 @@ class Timeline(Strict):
     titles: list[Title] = Field(default_factory=list, max_length=500)
     blurs: list[Blur] = Field(default_factory=list, max_length=200)
     markers: list[Marker] = Field(default_factory=list, max_length=500)
+    counters: list["Counter"] = Field(default_factory=list, max_length=4)   # Phase 18
+    name_tags: "NameTags" = Field(default_factory=lambda: NameTags())        # Phase 18
 
     @property
     def duration(self) -> float:
@@ -343,7 +360,8 @@ class Effect(Strict):
     when you trim, move or reorder, and simply doesn't render if that moment is cut.
     """
     id: str
-    kind: Literal["censor", "zoom", "shake", "flash", "text", "sfx", "image"]
+    kind: Literal["censor", "zoom", "shake", "flash", "text", "sfx", "image",
+                  "count", "bass"]   # Phase 18: +1 on a counter; bass-boosted audio
     media_id: str
     source_time: float = Field(ge=0)
     duration: float = Field(ge=0.03, le=30)
@@ -365,13 +383,14 @@ class Effect(Strict):
     size: float = Field(default=0.12, gt=0.02, le=0.9)  # fraction of output height (text) / width (image)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
     asset: Optional[str] = None
+    counter: Optional[str] = None     # kind == "count": which counter goes up
 
     @field_validator("id", "media_id")
     @classmethod
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
 
-    @field_validator("asset", "sound_asset")
+    @field_validator("asset", "sound_asset", "counter")
     @classmethod
     def _v_asset(cls, v: Optional[str]) -> Optional[str]:
         return None if v is None else _check_id(v)
@@ -388,6 +407,8 @@ class Effect(Strict):
             raise ValueError("text pop-ups need text")
         if self.kind == "image" and not self.asset:
             raise ValueError("image pop-ups need an image")
+        if self.kind == "count" and not self.counter:
+            raise ValueError("a count needs a counter")
         return self
 
 
@@ -400,6 +421,7 @@ class CaptionSettings(Strict):
     highlight: str = Field(default="#ffde00", pattern=COLOR_HEX)
     max_words: int = Field(default=4, ge=1, le=12)
     uppercase: bool = True
+    font: Optional[str] = Field(default=None, pattern=FONT_ID)   # Phase 18 (None = default font)
 
 
 class AudioSettings(Strict):
@@ -460,6 +482,37 @@ class FaceCam(Strict):
     @classmethod
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
+
+
+class Counter(Strict):
+    """An on-screen tally (Phase 18), e.g. KILLS 7. Each enabled "count" effect for it adds one
+    from the moment it plays; the effect is pinned to the source like any effect, so cuts and
+    moves keep it on its moment, and a cut-out count simply doesn't count."""
+    id: str
+    label: str = Field(default="KILLS", max_length=24)
+    start_value: int = Field(default=0, ge=0, le=9999)
+    start: float = Field(default=0, ge=0, le=86400)                 # shown from (timeline s)
+    end: Optional[float] = Field(default=None, ge=0, le=86400)      # shown until (None = the end)
+    x: float = Field(default=0.86, ge=0, le=1)
+    y: float = Field(default=0.12, ge=0, le=1)
+    size: float = Field(default=1.0, ge=0.5, le=2.0)
+    color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+    accent: str = Field(default="#e3242b", pattern=COLOR_HEX)
+    font: Optional[str] = Field(default=None, pattern=FONT_ID)
+
+    @field_validator("id")
+    @classmethod
+    def _v_ids(cls, v: str) -> str:
+        return _check_id(v)
+
+
+class NameTags(Strict):
+    """Phase 18: names of the people talking (one per audio track with a tag), like a voice
+    chat overlay. The one whose track is talking lights up."""
+    enabled: bool = False
+    corner: Literal["tl", "tr", "bl", "br"] = "tl"
+    size: float = Field(default=1.0, ge=0.5, le=2.0)
+    only_talking: bool = False          # show just whoever is talking instead of the whole list
 
 
 class Project(Strict):
@@ -555,6 +608,13 @@ def validate_timeline(project: Project) -> None:
                 if prev is not None and clip.transition_in.duration > prev.duration * 0.9 + EPS:
                     raise ValueError("transition is longer than the previous clip")
             prev_end = clip.end
+    cids: set[str] = set()
+    for ctr in project.timeline.counters:
+        if ctr.id in cids:
+            raise ValueError("duplicate counter id")
+        cids.add(ctr.id)
+        if ctr.end is not None and ctr.end <= ctr.start:
+            raise ValueError("a counter must end after it starts")
 
 
 def default_timeline(new_id) -> Timeline:
@@ -591,6 +651,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "schema_version": 5}
     if data.get("schema_version", 5) < 6:  # v5 -> v6: timeline markers (none)
         data = {**data, "schema_version": 6}
+    if data.get("schema_version", 6) < 7:  # v6 -> v7: fonts, counters, name tags, new looks (all defaulted)
+        data = {**data, "schema_version": 7}
     return data
 
 

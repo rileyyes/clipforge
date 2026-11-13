@@ -54,6 +54,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **Creator styles**: 22 free fonts (or add your own), outlines/shadows/glow and saved text styles, emoji stickers; Kill Count tools (counter, death cards, end tally, narration ducking); Vanoss-style tools (funny-moment finder, name tags, combo effects, bass boost, sound board); VHS, film, horror and cinema-bar looks.
 - **Polish**: titles, blurs and markers move with the clip you drag; a short first-run tour (Settings → Show the tour again); a Windows installer.
 - **Smarter AI help** (AI tab): a hook checker that scores your first 10 seconds with one-click fixes (cut the slow start, add a teaser), B-roll suggested from your own recordings, offline voiceover (free Piper voice, downloaded once), and songs matched to calm/busy parts with smooth beat-aligned loops.
 - **Pro look**: a brand kit (logo watermark, intro/outro, colours, caption style) applied in one click; pop-up words, arrows, circles and boxes with animations; green screen; side-by-side / picture-in-picture layouts; freeze frame, reverse and smooth speed ramps.
@@ -191,3 +192,7 @@ Drag media from the library onto a track, or double-click it to append.
 - [docs/THUMBNAILS.md](docs/THUMBNAILS.md) – Thumbnail Maker, free local AI setup
 - [docs/API.md](docs/API.md) – REST API reference
 - [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) – dependency, license and cost inventory
+
+## Third-party fonts
+
+The fonts in `backend/app/fonts/` are free fonts from Google Fonts, used under the SIL Open Font License 1.1 or the Apache License 2.0; each font's licence is in `backend/app/fonts/licenses/<font>.txt`. You may use them in your videos, including monetised ones.

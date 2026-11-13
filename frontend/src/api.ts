@@ -6,7 +6,7 @@ export class ApiError extends Error {
 
 const H = { "X-RJClip": "1" };
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
     headers: body !== undefined ? { ...H, "Content-Type": "application/json" } : H,

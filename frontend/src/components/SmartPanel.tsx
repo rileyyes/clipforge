@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { fmtTime, type Job } from "../api";
 import { cutRanges, findClip, newId, round6, sortClips, withTracks, type OpResult } from "../timeline/ops";
 import { insertTeaser } from "../timeline/pro";
+import { keepOnly, type Moment } from "../timeline/phase18";
+import { fontsApi } from "../fonts";
+import { addMarker } from "../timeline/ops";
 import type { Clip, MediaAsset, Timeline } from "../timeline/types";
 import { Icon, useToast } from "./ui";
 
@@ -44,6 +47,8 @@ export default function SmartPanel({ projectId, timeline, playhead, seek, commit
   saved: boolean;
 }) {
   const toast = useToast();
+  const [moments, setMoments] = useState<Moment[] | null>(null);
+  const [keep, setKeep] = useState<Set<number>>(new Set());
   const [hook, setHook] = useState<Hook | null>(null);
   const [broll, setBroll] = useState<{ suggestions: Broll[]; note: string | null } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -107,6 +112,41 @@ export default function SmartPanel({ projectId, timeline, playhead, seek, commit
 
   return (
     <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="smart-panel">
+      <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }} data-testid="funny-moments">
+        <h3 style={{ margin: 0 }}>Funny-moment finder</h3>
+        <div className="dim" style={{ fontSize: 11 }}>For long sessions with friends: finds where people get much louder than their normal talking (laughing, yelling, screaming) — more people at once scores higher. Each moment starts a few seconds early so the set-up is included. It can't tell a laugh from a shout, so preview them.</div>
+        <button className="btn sm" disabled={!!busy || !saved} onClick={async () => {
+          setBusy("moments");
+          try {
+            const m = await fontsApi.moments(projectId);
+            setMoments(m); setKeep(new Set(m.map((_, i) => i)));
+            if (!m.length) toast("No loud reactions found (are there voices on the audio tracks?)", true);
+          } catch (e: any) { toast(e.message, true); } finally { setBusy(null); }
+        }}><Icon name="search" size={13} />{busy === "moments" ? "Listening…" : moments ? "Find again" : "Find funny moments"}</button>
+        {moments && moments.length > 0 && <>
+          {moments.map((m, i) => (
+            <div key={i} className="row" style={{ gap: 6, fontSize: 12 }} data-testid="moment">
+              <input type="checkbox" checked={keep.has(i)} aria-label={`Keep moment ${i + 1}`}
+                onChange={(e) => setKeep((k) => { const n = new Set(k); if (e.target.checked) n.add(i); else n.delete(i); return n; })} />
+              <button className="btn xs" onClick={() => seek(m.start)}>{fmtTime(m.start)}–{fmtTime(m.end)}</button>
+              <span className="ellipsis grow">{m.people > 1 ? `${m.people} people` : "1 person"} reacting</span>
+              <span className="mono" style={{ color: m.score >= 70 ? "#2bb38a" : m.score >= 40 ? "#ffb703" : "var(--muted)" }}>{m.score}</span>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+            <button className="btn sm" onClick={() => {
+              let tl = timeline, n = 0;
+              for (const i of keep) { const r = addMarker(tl, moments[i].reaction, "#ff5a3c"); if (r.error === undefined) { tl = { ...r.timeline, markers: r.timeline.markers!.map((mk) => mk.id === r.id ? { ...mk, label: `Funny ${fmtTime(moments[i].reaction)}` } : mk) }; n++; } }
+              if (n && commit({ timeline: tl }, "Mark funny moments")) toast(`${n} marker${n === 1 ? "" : "s"} added (Shift+← and Shift+→ jump between them)`);
+            }} disabled={!keep.size}>Mark them</button>
+            <button className="btn sm primary" disabled={!keep.size} onClick={() => {
+              const ranges = [...keep].map((i) => [moments[i].start, moments[i].end] as [number, number]);
+              if (!confirm(`Keep only these ${ranges.length} moment${ranges.length === 1 ? "" : "s"} and cut everything else? (Ctrl+Z undoes it.)`)) return;
+              if (commit(keepOnly(timeline, ranges), "Keep only the funny moments")) { setMoments(null); seek(0); toast("Highlights cut — the moments are now back to back"); }
+            }}>Keep only these</button>
+          </div>
+        </>}
+      </div>
       <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }}>
         <h3 style={{ margin: 0 }}>Hook checker</h3>
         <div className="dim" style={{ fontSize: 11 }}>How strong are your first seconds? Viewers decide fast. Measured from your edit: when you start talking, energy, movement, intro length and your first sentence.</div>

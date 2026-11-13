@@ -219,7 +219,9 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
               <label className="field">Look
                 <select value={color.look} aria-label="Look" onChange={(e) => setColor({ look: e.target.value as ColorAdjust["look"] }, "Look")}>
                   {LOOKS.map((l) => <option key={l} value={l}>{{ none: "None", warm: "Warm", cool: "Cool", bw: "Black & white", vintage: "Vintage", vivid: "Vivid",
-                    faded: "Faded", cinematic: "Cinematic (teal & orange)", noir: "Noir" }[l]}</option>)}
+                    faded: "Faded", cinematic: "Cinematic (teal & orange)", noir: "Noir",
+                    horror: "Horror (sickly, dark edges)", vhs: "VHS tape", film: "Old film (grain)", vignette: "Vignette (dark edges)",
+                    letterbox: "Cinema bars" }[l]}</option>)}
                 </select>
               </label>
               <Slider label="Brightness" value={color.brightness} min={-0.5} max={0.5} step={0.01} fmt={signed} onChange={(v) => setColor({ brightness: v }, "Brightness")} />

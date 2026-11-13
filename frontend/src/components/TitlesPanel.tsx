@@ -1,15 +1,22 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { fmtTime } from "../api";
+import { fontsApi } from "../fonts";
+import { applyStyle, styleOf, TEXT_PRESETS } from "../timeline/phase18";
+import FontSelect from "./FontSelect";
 import { addTitle, removeTitle, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
-import { FREE_TEMPLATES, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
+import { FREE_TEMPLATES, type TextStyle, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
 
+const STICKERS = ["😂", "🤣", "💀", "☠️", "🔥", "😱", "😭", "👀", "🤯", "😡", "🤔", "😎", "👍", "👎", "💯", "❤️",
+  "💥", "⚡", "🎯", "🏆", "🍿", "🔪", "🩸", "👻", "🧟", "🎃", "🤡", "🐐", "🧠", "😈", "🙏", "❓"];
 const ANIMS: [TitleAnim, string][] = [["pop", "Pop"], ["bounce", "Bounce"], ["slide_up", "Slide up"], ["typewriter", "Typewriter"], ["none", "None"]];
 import { Icon } from "./ui";
 
 /** Editor → Text: titles on the timeline (lower thirds, big titles, banners, subscribe, chapter cards). */
-export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top }: {
+export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top, bottom }: {
   /** shown first (Phase 15: apply the brand kit) */
   top?: React.ReactNode;
+  /** shown last (Phase 18: Kill Count, name tags) */
+  bottom?: React.ReactNode;
   timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
   sel: string | null; setSel: (id: string | null) => void;
@@ -17,6 +24,9 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
   const titles = [...(timeline.titles ?? [])].sort((a, b) => a.start - b.start);
   const cur = titles.find((t) => t.id === sel) ?? null;
   const set = (patch: Partial<Title>, label: string) => cur && commit(updateTitle(timeline, cur.id, patch), label, true);
+  const [mine, setMine] = useState<TextStyle[]>([]);
+  useEffect(() => { fontsApi.styles().then(setMine).catch(() => {}); }, []);
+  const shape = cur ? ["arrow", "circle", "box"].includes(cur.template) && !cur.text : false;
 
   return (
     <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="titles-panel">
@@ -48,8 +58,18 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
       {cur && (
         <div className="insp-section">
           <h3 style={{ margin: 0 }}>Edit title</h3>
-          <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>
-          {!FREE_TEMPLATES.includes(cur.template) && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : "Second line"}
+          {cur.template === "sticker" ? (
+            <div className="field">Emoji
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2 }} data-testid="sticker-picker">
+                {STICKERS.map((em) => <button key={em} className={"btn xs" + (cur.text === em ? " on" : " ghost")} aria-label={`Sticker ${em}`}
+                  style={{ fontFamily: "'rjf-emoji'", fontSize: 16, padding: 2 }} onClick={() => set({ text: em }, "Sticker")}>{em}</button>)}
+              </div>
+            </div>
+          ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "death_card" ? "Who died" : cur.template === "tally" ? "Heading" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
+          {cur.template === "number_card" && <label className="field">Number<input type="number" min={0} max={999} value={cur.number ?? 1} aria-label="Card number"
+            onChange={(e) => Number.isFinite(+e.target.value) && set({ number: +e.target.value }, "Card number")} /></label>}
+          {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every death card before it, with the counter's total (or how many deaths) at that point.</div>}
+          {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "death_card" ? "How (e.g. Machete)" : "Second line"}
             <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
           <div className="insp-grid">
             <label className="field">Starts at <span className="dim">{fmtTime(cur.start)}</span>
@@ -74,7 +94,7 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             </div>
             <div className="dim" style={{ fontSize: 11 }}>Tip: drag it on the preview to place it.</div>
           </>)}
-          {cur.template !== "chapter" && cur.template !== "big_title" && !FREE_TEMPLATES.includes(cur.template) && (
+          {["lower_third", "top_banner", "subscribe"].includes(cur.template) && (
             <div className="row" style={{ gap: 4 }}>
               {(["left", "center", "right"] as const).map((a) => (
                 <button key={a} className={"btn xs" + (cur.align === a ? " on" : " ghost")} onClick={() => set({ align: a }, "Title position")}>{a[0].toUpperCase() + a.slice(1)}</button>
@@ -83,8 +103,46 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
           )}
           <label className="field">Size <span className="dim">{Math.round(cur.size * 100)}%</span>
             <input type="range" min={0.5} max={2} step={0.05} value={cur.size} onChange={(e) => set({ size: +e.target.value }, "Title size")} /></label>
+          {!shape && cur.template !== "sticker" && (
+            <div className="insp-section" style={{ margin: 0 }} data-testid="text-style">
+              <h3 style={{ margin: 0 }}>Font & style</h3>
+              <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
+                {[...TEXT_PRESETS, ...mine].map((p, i) => (
+                  <span key={p.name + i} className="row" style={{ gap: 0 }}>
+                    <button className="btn xs" title={`Use the ${p.name} style`}
+                      style={{ fontFamily: `'rjf-${p.font}', 'DejaVu Sans'`, color: p.color, textShadow: p.glow ? `0 0 6px ${p.glow_color}` : undefined,
+                        WebkitTextStroke: p.stroke ? `1px ${p.stroke_color}` : undefined, background: "#222", fontWeight: p.font ? 400 : 700 }}
+                      onClick={() => set(applyStyle(p), "Text style")}>{i >= TEXT_PRESETS.length ? "★ " : ""}{p.name}</button>
+                    {i >= TEXT_PRESETS.length && <button className="btn xs ghost" aria-label={`Delete my style ${p.name}`} title="Delete this style of yours"
+                      onClick={async () => { try { setMine(await fontsApi.saveStyles(mine.filter((m) => m.name !== p.name))); } catch (e: any) { alert(e.message); } }}>×</button>}
+                  </span>
+                ))}
+              </div>
+              <FontSelect value={cur.font} onChange={(font) => set({ font }, "Title font")} />
+              <div className="insp-grid">
+                <label className="field">Outline <span className="dim">{cur.stroke == null ? "default" : `${cur.stroke}px`}</span>
+                  <input type="range" aria-label="Outline" min={0} max={24} step={1} value={cur.stroke ?? 0} onChange={(e) => set({ stroke: +e.target.value }, "Title outline")} /></label>
+                <label className="field">Outline colour<input type="color" aria-label="Outline colour" value={cur.stroke_color ?? "#000000"} onChange={(e) => set({ stroke_color: e.target.value, stroke: cur.stroke ?? 6 }, "Title outline")} /></label>
+                <label className="field">Shadow <span className="dim">{cur.shadow == null ? "default" : `${cur.shadow}px`}</span>
+                  <input type="range" aria-label="Shadow" min={0} max={24} step={1} value={cur.shadow ?? 0} onChange={(e) => set({ shadow: +e.target.value }, "Title shadow")} /></label>
+                <label className="field">Glow <span className="dim">{cur.glow ? `${cur.glow}px` : "off"}</span>
+                  <input type="range" aria-label="Glow" min={0} max={40} step={1} value={cur.glow ?? 0} onChange={(e) => set({ glow: +e.target.value }, "Title glow")} /></label>
+                <label className="field">Glow colour<input type="color" aria-label="Glow colour" value={cur.glow_color ?? "#ffde00"} onChange={(e) => set({ glow_color: e.target.value, glow: cur.glow || 12 }, "Title glow")} /></label>
+              </div>
+              <div className="row" style={{ gap: 4 }}>
+                <button className="btn xs" onClick={() => set({ font: null, stroke: null, shadow: null, glow: 0 }, "Reset text style")}>Reset style</button>
+                <button className="btn xs" onClick={async () => {
+                  const name = prompt("Name this style", `My style ${mine.length + 1}`)?.trim().slice(0, 30);
+                  if (!name) return;
+                  try { setMine(await fontsApi.saveStyles([...mine.filter((m) => m.name !== name), styleOf(cur, name)].slice(-40))); }
+                  catch (e: any) { alert(e.message); }
+                }}>Save as my style</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+      {bottom}
       <div className="muted" style={{ fontSize: 11 }}>Titles stay at their time on the timeline. Cutting with the Script tab moves them along.</div>
     </div>
   );

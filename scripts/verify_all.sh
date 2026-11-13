@@ -48,11 +48,15 @@ echo "== browser E2E: Phase 16 (hook checker, teaser, B-roll from your clips, vo
 python3 scripts/e2e_phase16.py 2>&1 | grep -E "OK|hook score|teaser|B-roll|voiceover|music plan|export ok|Error|assert"
 echo "== browser E2E: Phase 17 (first-run tour, titles/markers/blurs follow moved clips)"
 python3 scripts/e2e_phase17.py 2>&1 | grep -E "OK|tour steps|after dragging|after undo|Error|assert"
+echo "== browser E2E: Phase 18 (fonts & text styles, Kill Count, name tags, combos, funny moments, new looks)"
+python3 scripts/e2e_phase18.py 2>&1 | grep -E "OK|my font|counter in|export ok|funny moments|keep only|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null
 RJCLIP_WORKSPACE="$SMOKE_WS" RJCLIP_PORT=8798 python3 -m app.main >/dev/null 2>&1 &
 SMOKE_PID=$!   # the server itself (not a subshell), so kill really stops it
+# stop it even if the smoke test fails (a leftover server on 8798 broke the next run's E2E tests)
+trap 'kill $SMOKE_PID 2>/dev/null || true' EXIT
 popd >/dev/null
 for _ in $(seq 60); do curl -fs http://127.0.0.1:8798/api/health >/dev/null 2>&1 && break; sleep 0.5; done
 python3 scripts/smoke_export.py --base http://127.0.0.1:8798 2>&1 | grep -E "export|all good|Error"

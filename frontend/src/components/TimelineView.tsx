@@ -80,7 +80,7 @@ export interface TimelineProps {
   commit: (r: OpResult, label: string) => void;
   onDropMedia: (mediaId: string, time: number, trackId: string) => void;
   onTrackToggle: (trackId: string, flag: "muted" | "hidden" | "locked") => void;
-  onTrackRole?: (trackId: string, role: "dialogue" | "music") => void;
+  onTrackRole?: (trackId: string, role: "dialogue" | "music" | "narration") => void;
   onRemoveTrack: (trackId: string) => void;
   toolbar: React.ReactNode;
   markers?: { t: number; color: string; title: string }[];
@@ -311,9 +311,13 @@ export default function TimelineView(p: TimelineProps) {
                 <button className={"tbtn" + (t.muted ? " on" : "")} title={t.muted ? "Unmute track" : "Mute track"} onClick={() => p.onTrackToggle(t.id, "muted")}><Icon name={t.muted ? "mute" : "vol"} size={14} /></button>
               )}
               {t.kind === "audio" && p.onTrackRole && (
-                <button className="tbtn" title={t.role === "music" ? "Music track (ducked under dialogue) — click to make it dialogue" : "Dialogue track — click to make it a music track"}
-                  style={{ color: t.role === "music" ? "var(--accent-2)" : undefined }}
-                  onClick={() => p.onTrackRole!(t.id, t.role === "music" ? "dialogue" : "music")}><Icon name={t.role === "music" ? "music" : "mic"} size={14} /></button>
+                <button className="tbtn" data-role={t.role ?? "dialogue"}
+                  title={t.role === "music" ? "Music track (quieter while someone talks) — click to make it narration"
+                    : t.role === "narration" ? "Narration track (everything else gets quieter while you talk) — click to make it dialogue"
+                    : "Dialogue track — click to make it a music track"}
+                  style={{ color: t.role === "music" ? "var(--accent-2)" : t.role === "narration" ? "#ffb703" : undefined }}
+                  onClick={() => p.onTrackRole!(t.id, t.role === "music" ? "narration" : t.role === "narration" ? "dialogue" : "music")}>
+                  <Icon name={t.role === "music" ? "music" : "mic"} size={14} />{t.role === "narration" && <span style={{ fontSize: 9, fontWeight: 700 }}>N</span>}</button>
               )}
               <button className={"tbtn" + (t.locked ? " on" : "")} title={t.locked ? "Unlock track" : "Lock track"} onClick={() => p.onTrackToggle(t.id, "locked")}><Icon name={t.locked ? "lock" : "unlock"} size={14} /></button>
               <span className="spacer" />

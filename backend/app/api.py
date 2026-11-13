@@ -21,6 +21,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from . import brand as brand_mod
+from . import fontlib, reactions
 from . import derive as derive_mod
 from . import ffmpeg as ff
 from . import media as media_svc
@@ -31,7 +32,7 @@ from . import analysis as analysis_svc
 from .autoedit import AutoEditSettings, EDLError, edl_to_timeline, plan as plan_edit
 from .render import render_project, validate_export
 from .transcription import available_transcriber
-from .schema import SOUNDS, AudioSettings, CaptionSettings, Effect, FaceCam, OutputSettings, Project, Timeline, now_iso
+from .schema import COLOR_HEX, FONT_ID, SOUNDS, AudioSettings, CaptionSettings, Effect, FaceCam, OutputSettings, Project, Timeline, now_iso
 from . import rcache
 from .library import Library, LibraryError, project_sound
 from .history import HistoryNotFound, HistoryStore, compare as compare_docs, doc_of
@@ -550,7 +551,7 @@ def build_routes(svc: Services) -> list[Route]:
             return await refuse_upload(request, 507, "workspace storage quota reached; delete projects or run cleanup")
         du = shutil.disk_usage(S.workspace)
         if declared and declared.isdigit() and int(declared) > du.free - 2 * 1024**3:
-            return err(507, "not enough free disk space for this file")
+            return await refuse_upload(request, 507, "not enough free disk space for this file")
 
         if not ff.tools_available(S.ffmpeg_bin, S.ffprobe_bin):
             return await refuse_upload(request, 503, ff.MISSING_FFMPEG)
@@ -689,6 +690,93 @@ def build_routes(svc: Services) -> list[Route]:
         if not f or not f.is_file():
             return err(404, "no logo")
         return FileResponse(f, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    # ---------------------------------------------------------------- fonts, text styles (Phase 18)
+    async def fonts_list(request: Request):
+        return JSONResponse({"fonts": fontlib.list_fonts(S.workspace)})
+
+    async def fonts_add(request: Request):
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > fontlib.MAX_BYTES:
+            return await refuse_upload(request, 413, "That font file is too big (20 MB at most).")
+        data = b""
+        async for chunk in request.stream():
+            data += chunk
+            if len(data) > fontlib.MAX_BYTES:
+                return err(413, "That font file is too big (20 MB at most).")
+        try:
+            f = fontlib.add(S.workspace, data, request.query_params.get("filename", ""))
+        except ValueError as exc:
+            return err(415, str(exc))
+        return JSONResponse({"font": f, "fonts": fontlib.list_fonts(S.workspace)})
+
+    async def fonts_delete(request: Request):
+        if not fontlib.delete(S.workspace, request.path_params["fid"]):
+            return err(404, "no such font of yours")
+        return JSONResponse({"fonts": fontlib.list_fonts(S.workspace)})
+
+    async def font_file(request: Request):
+        r = fontlib.resolve(S.workspace, request.path_params["fid"])
+        if not r:
+            return err(404, "unknown font")
+        path, _ = r
+        mt = "font/otf" if path.suffix.lower() == ".otf" else "font/ttf"
+        return FileResponse(path, media_type=mt, headers={"Cache-Control": "max-age=3600"})
+
+    class TextStyle(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        name: str = Field(min_length=1, max_length=30)
+        font: Optional[str] = Field(default=None, pattern=FONT_ID)
+        color: str = Field(default="#ffffff", pattern=COLOR_HEX)
+        accent: str = Field(default="#ff5a3c", pattern=COLOR_HEX)
+        stroke: Optional[float] = Field(default=None, ge=0, le=24)
+        stroke_color: str = Field(default="#000000", pattern=COLOR_HEX)
+        shadow: Optional[float] = Field(default=None, ge=0, le=24)
+        glow: float = Field(default=0, ge=0, le=40)
+        glow_color: str = Field(default="#ffde00", pattern=COLOR_HEX)
+
+    class TextStyles(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        styles: list[TextStyle] = Field(default_factory=list, max_length=40)
+
+    def styles_path():
+        return S.workspace / "text_styles.json"
+
+    async def text_styles_get(request: Request):
+        try:
+            data = TextStyles.model_validate(json.loads(styles_path().read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            data = TextStyles()
+        return JSONResponse(data.model_dump(mode="json"))
+
+    async def text_styles_put(request: Request):
+        body = await body_model(request, TextStyles)
+        atomic_write_json(styles_path(), body.model_dump(mode="json"))
+        return JSONResponse(body.model_dump(mode="json"))
+
+    # ---------------------------------------------------------------- funny moments, talking (Phase 18)
+    async def funny_moments(request: Request):
+        pid = pid_of(request)
+        from starlette.concurrency import run_in_threadpool
+        p = load(pid)
+        try:
+            moments = await run_in_threadpool(reactions.funny_moments, p, S, store.dir(pid))
+        except ff.FFmpegError as exc:
+            return err(422, f"Couldn't read the audio: {exc}")
+        return JSONResponse({"moments": moments})
+
+    async def media_talk(request: Request):
+        pid = pid_of(request)
+        from starlette.concurrency import run_in_threadpool
+        mid = validate_id(request.path_params["mid"])
+        asset = load(pid).media_by_id().get(mid)
+        if not asset:
+            return err(404, "unknown media")
+        try:
+            iv = await run_in_threadpool(reactions.talk_for_media, S, store.dir(pid), asset)
+        except ff.FFmpegError as exc:
+            return err(422, f"Couldn't read the audio: {exc}")
+        return JSONResponse({"talk": iv})
 
     class WatermarkBody(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -2159,6 +2247,14 @@ def build_routes(svc: Services) -> list[Route]:
         Route("/api/voice/setup", voice_setup, methods=["POST"]),
         Route(P + "/brand/watermark.png", project_watermark_image, methods=["GET"]),
         Route(P + "/brand/import", project_brand_import, methods=["POST"]),
+        Route("/api/fonts", fonts_list, methods=["GET"]),
+        Route("/api/fonts", fonts_add, methods=["POST"]),
+        Route("/api/fonts/{fid}", fonts_delete, methods=["DELETE"]),
+        Route("/api/fonts/{fid}/file", font_file, methods=["GET"]),
+        Route("/api/text-styles", text_styles_get, methods=["GET"]),
+        Route("/api/text-styles", text_styles_put, methods=["PUT"]),
+        Route(P + "/moments", funny_moments, methods=["GET"]),
+        Route(P + "/media/{mid}/talk", media_talk, methods=["GET"]),
         Route("/api/brand", brand_get, methods=["GET"]),
         Route("/api/brand", brand_put, methods=["PUT"]),
         Route("/api/brand/logo", brand_logo_get, methods=["GET"]),

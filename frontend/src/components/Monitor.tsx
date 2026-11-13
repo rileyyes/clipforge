@@ -3,9 +3,11 @@ import { effectSoundUrl, fmtTime, mediaUrl } from "../api";
 import { blurAt, clipAt, clipEnd, sourceTimeAt, timelineDuration, transitionAt } from "../timeline/ops";
 import { transitionLook } from "../timeline/transitionCss";
 import { activeEffects } from "../timeline/effects";
-import { colorCss, cropCss, propAt } from "../timeline/keyframes";
+import { colorCss, cropCss, lookOverlay, propAt } from "../timeline/keyframes";
 import { camAspect, camAt, layoutBox } from "../timeline/facecam";
 import TitlesPreview from "./TitlesPreview";
+import OverlaysPreview from "./OverlaysPreview";
+import { tallyInfo } from "../timeline/phase18";
 import CaptionsPreview from "./CaptionsPreview";
 import type { CapChunk } from "../timeline/captions";
 import type { CaptionSettings, Clip, Effect, FaceCam, MediaMap, OutputSettings, Timeline } from "../timeline/types";
@@ -46,12 +48,24 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
   const played = useRef<Set<string>>(new Set());
   const screenRef = useRef<HTMLDivElement>(null);
   const [scr, setScr] = useState({ w: 640, h: 360 });
+  // the space the picture may use (the wrap minus its padding); the screen gets the largest
+  // size with the video's shape that fits — never cropped when the preview area is short
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const el = screenRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => setScr({ w: el.clientWidth, h: el.clientHeight }));
     ro.observe(el);
-    return () => ro.disconnect();
+    const wrap = wrapRef.current;
+    const rw = wrap ? new ResizeObserver(() => {
+      const cs = getComputedStyle(wrap);
+      const w = wrap.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const h = wrap.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      setRoom(w > 0 && h > 0 ? { w, h } : null);
+    }) : null;
+    if (wrap && rw) rw.observe(wrap);
+    return () => { ro.disconnect(); rw?.disconnect(); };
   }, []);
   const sounds = useRef<Map<string, HTMLAudioElement>>(new Map());
   const active = activeEffects(timeline, effects, playhead);
@@ -291,8 +305,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
           <defs>{keyed.map((c) => <filter key={c.id} id={`ck-${c.id}`} colorInterpolationFilters="sRGB" x="0" y="0" width="1" height="1"><feColorMatrix type="matrix" values={chromaMatrix(c.chroma!)} /></filter>)}</defs>
         </svg>
       )}
-      <div className="screen-wrap">
-        <div className="screen" ref={screenRef} style={{ aspectRatio: `${ar}`, height: ar < 1 ? "100%" : undefined, width: ar >= 1 ? "100%" : undefined }}>
+      <div className="screen-wrap" ref={wrapRef}>
+        <div className="screen" ref={screenRef} style={room
+          ? { width: Math.floor(Math.min(room.w, room.h * ar)), height: Math.floor(Math.min(room.w, room.h * ar) / ar) }
+          : { aspectRatio: `${ar}`, height: ar < 1 ? "100%" : undefined, width: ar >= 1 ? "100%" : undefined }}>
           <div className="stage" style={{ position: "absolute", inset: 0,
             transform: `scale(${zoom}) translate(${shaking ? Math.sin(playhead * 61) * 1.2 : 0}%, ${shaking ? Math.cos(playhead * 47) * 1.2 : 0}%)`,
             transformOrigin: zoomFx ? `${zoomFx.x * 100}% ${zoomFx.y * 100}%` : "50% 50%" }}>
@@ -312,6 +328,12 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
                     style={{ visibility: clip ? "visible" : "hidden", zIndex: z + 1, ...(clip ? merge(layerStyle(clip), look?.b) : {}) }}
                     onError={() => setVideoError("This file can't play in the browser yet — a preview copy is being prepared. Export still uses the original.")}
                     onLoadedData={() => setVideoError(null)} />
+                  {clip && !tr && lookOverlay(clip.color?.look) && (() => {
+                    const ls = layerStyle(clip);
+                    return <div data-testid="look-overlay" data-look={clip.color?.look} style={{ position: "absolute", zIndex: z + 2, pointerEvents: "none",
+                      left: ls.left, top: ls.top, width: ls.width, height: ls.height, transform: ls.transform, opacity: ls.opacity, clipPath: ls.clipPath,
+                      ...lookOverlay(clip.color?.look) } as React.CSSProperties} />;
+                  })()}
                   {look?.overlay && <div data-testid="transition-overlay" style={{ position: "absolute", inset: 0, zIndex: z + 3, pointerEvents: "none", ...look.overlay }} />}
                 </React.Fragment>
               );
@@ -353,7 +375,10 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
             oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
             W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2}
-            sel={titleSel} onMove={onTitleMove} />}
+            sel={titleSel} onMove={onTitleMove} tally={(x) => tallyInfo(timeline, effects, x)} />}
+          {((timeline.counters?.length ?? 0) > 0 || timeline.name_tags?.enabled) && <OverlaysPreview projectId={projectId} timeline={timeline}
+            effects={effects} t={playhead} k={scr.w / output.width} W={output.width} H={output.height}
+            oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {watermark && (() => {
             const k = scr.w / output.width, oy = (scr.h - output.height * k) / 2;
             const m = { x: output.width * 0.03 * k, y: output.height * 0.03 * k };

@@ -25,7 +25,7 @@ from playwright.async_api import async_playwright
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(tempfile.mkdtemp(prefix="rjclip-e2e-lib-"))
 WS = TMP / "ws"
-PORT = 8798
+PORT = 8820
 B = f"http://127.0.0.1:{PORT}"
 MIC = TMP / "mic.wav"
 IMG = TMP / "face.png"
@@ -52,10 +52,12 @@ def setup() -> str:
     p = api("POST", "/api/projects", {"name": "Library test"})
     m = api("POST", f"/api/projects/{p['id']}/media?filename=talk.mp4", raw=vid.read_bytes())["media"]
     job = api("POST", f"/api/projects/{p['id']}/autoedit/analyze", {"media_id": m["id"]})
-    for _ in range(100):
-        if api("GET", f"/api/jobs/{job['id']}")["status"] == "succeeded":
+    for _ in range(400):
+        j = api("GET", f"/api/jobs/{job['id']}")
+        if j["status"] not in ("queued", "running"):
             break
         time.sleep(0.3)
+    assert j["status"] == "succeeded", (j["status"], j.get("error"), j.get("error_detail"))
     af = WS / "projects" / p["id"] / "analysis" / f"{m['id']}.json"
     a = json.loads(af.read_text())
     a["words"] = [{"start": 1.0, "end": 1.3, "text": " oh", "p": 0.9}, {"start": 1.5, "end": 2.0, "text": " shit", "p": 0.93}]

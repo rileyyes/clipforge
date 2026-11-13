@@ -24,20 +24,21 @@ import subprocess
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 from . import ffmpeg as ff
 from .config import Settings
 from .jobs import JobContext
 from .schema import Clip, MediaAsset, OutputSettings, Project, Track
 from . import effects as fx
-from .effects import mutes_for_clip
+from .effects import boosts_for_clip, mutes_for_clip
 from . import look
 from . import facecam, matte
 from . import titles as titles_mod
 from . import blur as blur_mod
 from .rcache import RenderCache
 from .library import project_sound
+from . import fontlib, overlays, reactions
 from .storage import PathSecurityError
 
 # transition kind -> FFmpeg xfade transition (dips are done with fades instead)
@@ -82,6 +83,10 @@ class RenderPlan:
     overlays: list[Seg] = field(default_factory=list)
     audio_tracks: list[list[Seg]] = field(default_factory=list)
     audio_roles: list[str] = field(default_factory=list)
+    # Phase 18: who's talking per audio track (set by render_project; None = nobody)
+    talk_of: Optional[Callable] = None
+    overlay_cache: Optional[list] = None
+    workspace: Optional[Path] = None   # for your own fonts
 
     @property
     def duration(self) -> float:
@@ -289,7 +294,8 @@ def gap_video_args(seg: Seg, out: OutputSettings, fps: Fraction, dest: Path) -> 
 
 
 def audio_segment_args(src: Path, seg: Seg, dest: Path,
-                       mutes: list[tuple[float, float]] = ()) -> list[str]:
+                       mutes: list[tuple[float, float]] = (),
+                       boosts: list[tuple[float, float, float]] = ()) -> list[str]:
     """``mutes``: censor windows (seconds from the clip's in-point) where the original
     speech is silenced — the bleep is mixed in separately, so nothing leaks through."""
     c = seg.clip
@@ -302,6 +308,14 @@ def audio_segment_args(src: Path, seg: Seg, dest: Path,
     if mutes:
         cond = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in mutes)
         mute = ["asetpts=PTS-STARTPTS", f"volume=0:enable='{cond}'"]
+    # Phase 18 bass boost: heavy low end, pushed into a soft clipper (the "bass boosted" sound).
+    # The final loudness pass still levels the whole video, so it can't blow your ears out.
+    for a, b, amt in [(a - offset, b - offset, amt) for a, b, amt in boosts if b - offset > 0]:
+        cond = f"between(t,{max(0.0, a):.3f},{b:.3f})"
+        if not mute:
+            mute = ["asetpts=PTS-STARTPTS"]
+        mute += [f"bass=g={8 + 10 * amt:.1f}:f=200:t=s:w=0.5:enable='{cond}'", f"volume={1.4 + 0.8 * amt:.2f}:enable='{cond}'",
+                 f"asoftclip=type=tanh:threshold=0.9:enable='{cond}'"]
     fades = []
     if seg.fade_in > 0:
         fades.append(f"afade=t=in:st=0:d={seg.fade_in:.3f}")
@@ -449,6 +463,8 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                    encoder_pref: str = "auto") -> dict:
     out = project.output
     plan = plan_render(project, out)
+    plan.workspace = settings.workspace
+    plan.talk_of = lambda tr: reactions.track_talk(project, settings, project_dir, tr)
     media = project.media_by_id()
     originals = project_dir / "media" / "original"
 
@@ -517,11 +533,11 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
                 if s.kind == "transition":
                     pa, pb = _handles(s)
                     na, nb = f"a{ti:02d}_{i:05d}_ta.wav", f"a{ti:02d}_{i:05d}_tb.wav"
-                    jobs.append((audio_segment_args(src_of(s.prev), pa, work / na, mutes_for_clip(project, pa.clip)), 0.01, na))
-                    jobs.append((audio_segment_args(src_of(s.clip), pb, work / nb, mutes_for_clip(project, pb.clip)), 0.01, nb))
+                    jobs.append((audio_segment_args(src_of(s.prev), pa, work / na, mutes_for_clip(project, pa.clip), boosts_for_clip(project, pa.clip)), 0.01, na))
+                    jobs.append((audio_segment_args(src_of(s.clip), pb, work / nb, mutes_for_clip(project, pb.clip), boosts_for_clip(project, pb.clip)), 0.01, nb))
                     jobs.append((audio_transition_args(work / na, work / nb, s, work / name), 0.01, name))
                     continue
-                args = (audio_segment_args(src_of(s.clip), s, work / name, mutes_for_clip(project, s.clip))
+                args = (audio_segment_args(src_of(s.clip), s, work / name, mutes_for_clip(project, s.clip), boosts_for_clip(project, s.clip))
                         if s.kind == "clip" else gap_audio_args(s, work / name))
                 # audio is ~10x cheaper than video; weight accordingly
                 jobs.append((args, s.count / AUDIO_RATE * 0.1, name))
@@ -532,14 +548,17 @@ def render_project(ctx: JobContext, settings: Settings, project: Project,
         events = []
         missing_sounds = 0
         for e in project.effects:
-            if not e.enabled or e.kind not in ("censor", "sfx") or e.sound in (None, "mute"):
+            if not e.enabled or e.kind not in ("censor", "sfx", "count") or e.sound in (None, "mute"):
                 continue
-            wins = fx.map_to_timeline(project, e, "audio") or (fx.map_to_timeline(project, e, "video")
-                                                                 if e.kind == "sfx" else [])
+            if e.kind == "count":  # a counter's +1 sounds where its number pops (the picture)
+                wins = fx.map_to_timeline(project, e, "video") or fx.map_to_timeline(project, e, "audio")
+            else:
+                wins = fx.map_to_timeline(project, e, "audio") or (fx.map_to_timeline(project, e, "video")
+                                                                     if e.kind == "sfx" else [])
             for w in wins:
                 a = int(round(w.start * AUDIO_RATE))
                 n = int(round(w.end * AUDIO_RATE)) - a
-                if e.kind == "sfx":  # sound effects play their natural length
+                if e.kind in ("sfx", "count"):  # sound effects play their natural length
                     n = int(e.duration * AUDIO_RATE)
                 n = min(n, plan.total_samples - a)
                 if n > 32:
@@ -857,16 +876,32 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         if chunks:
             family = _caption_font_cached(work)
             ass = f"cap{tag}.ass" if win else "captions.ass"
-            (work / ass).write_text(fx.captions_ass(project, chunks, family, H, W), encoding="utf-8")
+            staged = _fonts_cached(project, work, plan.workspace)
+            custom = staged.get(project.captions.font) if project.captions.font else None
+            text = (fx.captions_ass(project, chunks, custom[0] if custom else family, H, W, bold=not custom)
+                    + (f"; font {project.captions.font} {Path(custom[1]).stat().st_size}\n" if custom else ""))
+            (work / ass).write_text(text, encoding="utf-8")
             g.append(f"[{last}]ass={ass}:fontsdir=.[cap]")
             last, cwd = "cap", work
-    tl = [t.model_dump() for t in project.timeline.titles
-          if t.start < D and (not win or (t.start + t.duration > lo - 0.1 and t.start < hi + 0.1))]
-    if tl:
+    all_titles = [t.model_dump() for t in project.timeline.titles]
+    tl = [t for t in all_titles
+          if t["start"] < D and (not win or (t["start"] + t["duration"] > lo - 0.1 and t["start"] < hi + 0.1))]
+    staged = _fonts_cached(project, work, plan.workspace)
+    if plan.overlay_cache is None:
+        family = _caption_font_cached(work)
+        font = next(iter(sorted(work.glob("capfont.*"))), None)
+        plan.overlay_cache = overlays.events(project, W, H, D, staged, titles_mod.Measure(str(font) if font else None),
+                                             plan.talk_of or (lambda tr: []))
+    extra = [ln for a, b, ln in plan.overlay_cache if a < D and (not win or (b > lo - 0.1 and a < hi + 0.1))]
+    if tl or extra:
         family = _caption_font_cached(work)
         font = next(iter(sorted(work.glob("capfont.*"))), None)
         ass = f"titles{tag}.ass" if win else "titles.ass"
-        (work / ass).write_text(titles_mod.ass(tl, W, H, family, str(font) if font else None), encoding="utf-8")
+        if any(t["template"] == "tally" for t in tl):
+            _tally_info(project, tl, all_titles)
+        stamp = "".join(f"; font {i} {Path(p).stat().st_size} {Path(p).name}\n" for i, (_, p) in sorted(staged.items()))
+        (work / ass).write_text(titles_mod.ass(tl, W, H, family, str(font) if font else None, fonts=staged,
+                                               extra=extra, stamp=stamp, all_titles=all_titles), encoding="utf-8")
         g.append(f"[{last}]ass={ass}:fontsdir=.[ttl]")
         last, cwd = "ttl", work
     wm = project.watermark
@@ -892,6 +927,30 @@ def _caption_chunks_cached(project: Project, project_dir: Path, work: Path) -> l
     chunks = fx.caption_chunks(project, project_dir)
     p.write_text(json.dumps(chunks), encoding="utf-8")
     return chunks
+
+
+def _fonts_cached(project: Project, work: Path, workspace: Optional[Path]) -> dict:
+    """Stage the fonts the titles/counters/captions use into the work folder (once per render)."""
+    p = work / "fonts_staged.json"
+    if p.exists():
+        return {k: tuple(v) for k, v in json.loads(p.read_text(encoding="utf-8")).items()}
+    staged = fontlib.stage(workspace, work, overlays.font_ids(project)) if workspace else {}
+    p.write_text(json.dumps(staged), encoding="utf-8")
+    return staged
+
+
+def _tally_info(project: Project, shown: list[dict], all_titles: list[dict]) -> None:
+    """A tally's total is its counter's value when it starts (if there is a counter), else
+    the number of death cards before it. Filled in place on the shown titles."""
+    ticks = overlays.counter_ticks(project)
+    ctr = project.timeline.counters[0] if project.timeline.counters else None
+    cards = sorted((x for x in all_titles if x["template"] == "death_card"), key=lambda x: x["start"])
+    for t in shown:
+        if t["template"] != "tally":
+            continue
+        before = [c for c in cards if c["start"] < t["start"]] or cards
+        total = (ctr.start_value + sum(1 for x in ticks.get(ctr.id, []) if x <= t["start"] + 1e-3)) if ctr else len(before)
+        t["_tally"] = {"entries": [(c.get("text", ""), c.get("subtext", "")) for c in before], "total": total}
 
 
 def _caption_font_cached(work: Path) -> str:
@@ -939,7 +998,7 @@ def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path
         lf = work / f"audio{ti:02d}.ffconcat"
         _write_concat(lf, names)
         inputs += ["-f", "concat", "-i", str(lf)]
-    groups = {"dialogue": [], "music": [], "fx": []}
+    groups = {"dialogue": [], "music": [], "fx": [], "narration": []}
     for i, r in enumerate(roles):
         groups[r if r in groups else "dialogue"].append(f"[{i}:a]")
     g: list[str] = []
@@ -979,6 +1038,31 @@ def mix_audio(settings: Settings, project: Project, plan: RenderPlan, work: Path
     elif groups["music"]:
         mix(groups["music"], "mus")
         finals.append("[mus]")
+    if groups["narration"]:
+        # Phase 18: your narration on top; the recordings and music underneath get quieter
+        # while you talk (same strength as music ducking; off = just mixed together)
+        mix(groups["narration"], "nar")
+        chain = []
+        if a.noise_reduction != "off":
+            chain.append(f"anlmdn=s={NR[a.noise_reduction]}")
+        if a.enhance_voice:
+            chain += ["highpass=f=80", "equalizer=f=3000:t=q:w=1.2:g=3",
+                      "acompressor=threshold=0.125:ratio=3:attack=10:release=150:makeup=1.5"]
+        if chain:
+            g.append(f"[nar]{','.join(chain)}[narp]")
+        nar = "narp" if chain else "nar"
+        if finals and a.ducking != "off":
+            g.append(f"[{nar}]asplit=2[narm][narsc]")
+            if len(finals) == 1:
+                g.append(f"{finals[0]}anull[bed]")
+            else:
+                g.append(f"{''.join(finals)}amix=inputs={len(finals)}:duration=longest:normalize=0[bed]")
+            g.append(f"[bed][narsc]sidechaincompress=threshold=0.02:ratio={DUCK[a.ducking] * 1.5:g}:attack=30:"
+                     f"release=400:makeup=1[bedd]")
+            finals = ["[narm]", "[bedd]"]
+            info["narration_ducking"] = a.ducking
+        else:
+            finals.append(f"[{nar}]")
     if groups["fx"]:
         mix(groups["fx"], "fxm")
         finals.append("[fxm]")

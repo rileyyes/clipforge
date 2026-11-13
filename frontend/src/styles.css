@@ -147,7 +147,7 @@ table.list tr:hover td { background: var(--panel); }
 .transport { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--panel); }
 .tc { font-family: var(--mono); font-size: 13px; padding: 3px 8px; background: var(--bg); border-radius: 5px; border: 1px solid var(--line); }
 
-.insp-section { display: grid; gap: 10px; padding: 10px 2px 16px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.insp-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 10px 2px 16px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
 .insp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .kv { display: grid; grid-template-columns: 96px 1fr; gap: 4px 8px; font-size: 12px; }
 .kv dt { color: var(--muted); }

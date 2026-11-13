@@ -182,6 +182,34 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 18 — Creator styles: fonts, Kill Count, Vanoss-style tools, looks 🟡 (built and tested automatically; waiting for your hands-on test)
+
+**Fonts & text styles**
+- ✅ 22 free fonts built in (Bold, Clean, Fun, Horror, Retro & gaming, Handwritten), each shipped with its licence (SIL Open Font License or Apache 2.0, in `backend/app/fonts/licenses/`). Add your own `.ttf`/`.otf` in **Settings → Fonts** (web fonts and font collections are turned down with a message)
+- ✅ Every title, caption style and counter can use any of them; the preview loads the real font, so it looks like the export
+- ✅ Outline (size + colour), drop shadow and glow on any title; 10 ready-made styles (Bold outline, Horror, Blood drip, Comic, Cartoon, Arcade, Neon, Glitch, Marker, Clean); **Save as my style** keeps your own
+- ✅ **Emoji stickers**: 32 one-colour emoji (Noto Emoji) you can tint, place, turn and animate like pop-up words. (Full-colour images: use *My library* images, as before)
+
+**Kill Count tools** (Text tab)
+- ✅ **Kill at the playhead**: type who and how, press Kill → the counter goes up (with a sound) and a death card (KILL #n, name, how) slams in. One Ctrl+Z takes the whole kill back
+- ✅ **Counters** (up to 4, e.g. KILLS and DEATHS): label, starting number, place, colours, font, size, when they show. Each +1 is pinned to the footage like other effects, so cutting and moving keeps it on its moment, and a count you cut out stops counting
+- ✅ **End tally**: a full-screen recap listing every death card before it and the total; adding one ends the counter there
+- ✅ **Narration tracks**: the track button now cycles dialogue → music → narration. Everything else (the movie/game sound and music) gets quieter while your narration talks, using the Ducking strength
+- ✅ **Number cards** for Top-10 style videos (#7 + text)
+
+**Vanoss-style tools**
+- ✅ **Funny-moment finder** (AI tab): finds where people get much louder than their normal talking — laughing, yelling, screaming — across all mic tracks (more people at once = higher score), starting each moment a few seconds early for the set-up. **Mark them** (markers) or **Keep only these** (cuts everything else). It can't tell a laugh from a shout: it's a loudness finder, you pick the funny ones
+- ✅ **Name tags** (Text tab): name each mic's audio track; a voice-chat style list shows everyone and lights up whoever is talking (or only shows the talker). Based on loudness, so game sound on a mic counts as talking
+- ✅ **Combos** (Effects tab): one click adds several effects — Meme zoom (zoom + shake + boom), Bass boosted, Airhorn hype, Record scratch, Bonk
+- ✅ **Bass boost** effect: crunchy, boosted low end for a stretch (the final loudness pass keeps the video's level safe)
+- ✅ **Sound board** (Effects tab): one click drops any built-in sound or one of yours at the playhead, even while playing. (Your own sounds and images were already supported in *My library*)
+
+**Looks** (Clip tab): Horror, VHS tape (scanlines, colour bleed, noise), Old film (grain + vignette), Vignette, Cinema bars. (Whip, zoom and glitch transitions already existed from Phase 9.)
+
+**Fixes found on the way**
+- The preview picture was cropped top and bottom when the preview area was shorter than the video's shape (e.g. a 1280×720 window): it now always fits whole
+- Settings sections in the side panel no longer stick out sideways when a row of buttons is wide
+
 ## Phase 17 — Polish 🟡 (built and tested automatically; waiting for your hands-on test)
 
 - ✅ **Titles, blurs and markers follow the clip you move**: drag a clip (or several, or type a new start in the Clip tab) and the titles and markers on it move with it, so they stay on the same moment. They belong to the clip on the lowest video track at that point (your main picture), so moving a face cam or B-roll on V2 doesn't drag them; a blur goes with the picture it covers (the top one). One Ctrl+Z puts everything back. Trimming doesn't move them

@@ -7,10 +7,14 @@ preview draws the same templates with CSS (frontend/src/components/TitlesPreview
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
-TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box")
+TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box",
+             "death_card", "tally", "number_card", "sticker")
 SHAPES = ("arrow", "circle", "box")
+FREE = ("pop_text", "sticker", *SHAPES)       # placed anywhere (x, y), rotated, animated
+STICKER_FONT = "emoji"                         # fontlib id of the sticker font (Noto Emoji)
 K = 0.5523  # bezier circle constant
 IN, OUT = 0.4, 0.3  # seconds of in / out animation
 
@@ -125,8 +129,25 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
         line(1, f"\\an5\\pos({x + w / 2:.0f},{y + h / 2:.0f}){fad}{pop}\\fs{fs}\\b1\\c{_c(col)}\\bord0\\shad0", label)
         if sub:
             line(1, f"\\an8\\pos({x + w / 2:.0f},{y + h + 10 * k:.0f}){fad}\\fs{int(fs * 0.6)}\\c{_c('#ffffff')}\\bord{3 * k:.1f}", sub)
-    elif t["template"] in ("pop_text", *SHAPES):
+    elif t["template"] in FREE:
         out += _free(t, W, H, k, a, b)
+    elif t["template"] == "death_card":
+        out += _death_card(t, W, H, k, m, span, fad)
+    elif t["template"] == "tally":
+        out += _tally(t, W, H, k, m, span)
+    elif t["template"] == "number_card":
+        fs, ts, ss = int(300 * k), int(78 * k), int(42 * k)
+        cy = H * 0.42
+        line(0, f"\\an7\\pos(0,0)\\fad({ms(0.2)},{ms(OUT)})\\p1\\c{_c('#000000')}\\alpha&H70&\\bord0\\shad0", _rect(W, H))
+        pop = f"\\fscx40\\fscy40\\t(0,{ms(IN * 0.6)},\\fscx112\\fscy112)\\t({ms(IN * 0.6)},{ms(IN)},\\fscx100\\fscy100)"
+        line(1, f"\\an5\\pos({W / 2:.0f},{cy:.0f}){fad}{pop}\\fs{fs}\\b1\\c{_c(acc)}\\3c{_c('#000000')}\\bord{10 * k:.1f}\\shad{6 * k:.1f}",
+             f"#{int(t.get('number', 1))}")
+        if text:
+            line(1, f"\\an8\\move({W / 2:.0f},{cy + fs * 0.55 + H * 0.05:.0f},{W / 2:.0f},{cy + fs * 0.55:.0f},{ms(0.15)},{ms(IN + 0.15)})"
+                    f"{fad}\\fs{ts}\\b1\\c{_c(col)}\\3c{_c('#000000')}\\bord{5 * k:.1f}\\shad{3 * k:.1f}", text)
+        if sub:
+            line(1, f"\\an8\\pos({W / 2:.0f},{cy + fs * 0.55 + ts * 1.3:.0f}){fad}\\fs{ss}\\b0\\c{_c(col)}\\alpha&H30&"
+                    f"\\3c{_c('#000000')}\\bord{3 * k:.1f}", sub)
     elif t["template"] == "chapter":
         fs, ss = int(96 * k), int(40 * k)
         line(0, f"\\an7\\pos(0,0)\\fad({ms(IN)},{ms(OUT)})\\p1\\c{_c('#000000')}\\alpha&H50&\\bord0\\shad0", _rect(W, H))
@@ -190,6 +211,13 @@ def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
     fad = f"\\fad(120,{int(OUT * 1000)})"
     frz = f"\\frz{rot:.1f}" if abs(rot) > 1e-6 else ""
     out = []
+    if t["template"] == "sticker":
+        # the sticker font is line art: an outline in its own colour makes the lines bold
+        fs = int(240 * k)
+        pos, _ = _anim("pop" if kind == "typewriter" else kind, x, y, H)
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an5{pos}{fad}{frz}\\fs{fs}\\b0\\c{_c(col)}\\3c{_c(col)}"
+                   f"\\bord{max(1.0, 2.5 * k):.1f}\\shad{5 * k:.1f}\\4c{_c('#000000', 0x60)}}}{_esc(t.get('text', ''))}")
+        return out
     if t["template"] == "pop_text":
         fs = int(96 * k)
         pos, _ = _anim("none" if kind == "typewriter" else kind, x, y, H)
@@ -218,21 +246,140 @@ def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
     return out
 
 
-def ass(titles: list[dict], W: int, H: int, family: str, font_path: Optional[str]) -> str:
-    m = Measure(font_path)
+def _death_card(t: dict, W: int, H: int, k: float, m: Measure, span: str, fad: str) -> list[str]:
+    """Who died and how, with KILL #n (n = its place among the death cards). Slams in from the left."""
+    name, cause = _esc(t.get("text", "")), _esc(t.get("subtext") or "")
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#e3242b")
+    label = f"KILL #{t.get('_kill_n', 1)}"
+    fl, fn, fc = int(30 * k), int(66 * k), int(38 * k)
+    pad = 26 * k
+    w = max(m.width(label, fl), m.width(name, fn), m.width(cause, fc), 300 * k) + 2 * pad + 12 * k
+    h = pad + fl * 1.35 + fn * 1.15 + (fc * 1.3 if cause else 0) + pad * 0.7
+    x, y = W * 0.05, H * 0.78 - h
+    tx = x + 12 * k + pad
+
+    def mv(px: float, py: float) -> str:
+        return f"\\move({px - 60 * k:.0f},{py:.0f},{px:.0f},{py:.0f},0,140)"
+    out = [f"Dialogue: 0,{span},T,,0,0,0,,{{\\an7{mv(x, y)}{fad}\\p1\\c{_c('#000000')}\\alpha&H28&\\bord0\\shad{4 * k:.1f}}}{_rounded(w, h, 8 * k)}",
+           f"Dialogue: 1,{span},T,,0,0,0,,{{\\an7{mv(x, y)}{fad}\\p1\\c{_c(acc)}\\bord0\\shad0}}{_rect(12 * k, h)}",
+           f"Dialogue: 2,{span},T,,0,0,0,,{{\\an7{mv(tx, y + pad * 0.8)}{fad}\\fs{fl}\\b1\\c{_c(acc)}\\bord0\\shad0}}{label}",
+           f"Dialogue: 2,{span},T,,0,0,0,,{{\\an7{mv(tx, y + pad * 0.8 + fl * 1.35)}{fad}\\fs{fn}\\b1\\c{_c(col)}\\bord0\\shad0}}{name}"]
+    if cause:
+        out.append(f"Dialogue: 2,{span},T,,0,0,0,,{{\\an7{mv(tx, y + pad * 0.8 + fl * 1.35 + fn * 1.15)}{fad}\\fs{fc}\\b0"
+                   f"\\c{_c(col)}\\alpha&H30&\\bord0\\shad0}}{cause}")
+    return out
+
+
+def _tally(t: dict, W: int, H: int, k: float, m: Measure, span: str) -> list[str]:
+    """End-of-video tally: heading, the total, then every death card's name (and how), revealed one by one."""
+    info = t.get("_tally") or {"entries": [], "total": 0}
+    entries = info["entries"][:36]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#e3242b")
+    heading = _esc(t.get("text") or "FINAL TALLY")
+    dur = t["duration"]
+    fad = f"\\fad(250,{int(OUT * 1000)})"
+    fh, ft, fe = int(64 * k), int(150 * k), int(36 * k)
+    out = [f"Dialogue: 0,{span},T,,0,0,0,,{{\\an7\\pos(0,0)\\fad(250,{int(OUT * 1000)})\\p1\\c{_c('#000000')}\\alpha&H18&\\bord0\\shad0}}{_rect(W, H)}",
+           f"Dialogue: 1,{span},T,,0,0,0,,{{\\an8\\pos({W / 2:.0f},{H * 0.07:.0f}){fad}\\fs{fh}\\b1\\c{_c(col)}\\bord0\\shad{3 * k:.1f}}}{heading}",
+           f"Dialogue: 1,{span},T,,0,0,0,,{{\\an8\\pos({W / 2:.0f},{H * 0.07 + fh * 1.2:.0f}){fad}"
+           f"\\fscx40\\fscy40\\t(0,240,\\fscx112\\fscy112)\\t(240,400,\\fscx100\\fscy100)\\fs{ft}\\b1\\c{_c(acc)}"
+           f"\\3c{_c('#000000')}\\bord{6 * k:.1f}\\shad{4 * k:.1f}}}{int(info['total'])}"]
+    if not entries:
+        return out
+    n = len(entries)
+    cols = 1 if n <= 8 else 2 if n <= 18 else 3
+    rows = -(-n // cols)
+    top = H * 0.07 + fh * 1.2 + ft * 1.15
+    row_h = min(fe * 1.4, (H * 0.95 - top) / rows)
+    fs = int(min(fe, row_h / 1.4))
+    col_w = W * 0.9 / cols
+    step = min(0.25, max(0.05, dur * 0.4 / n))
+    for i, (name, cause) in enumerate(entries):
+        c, r = divmod(i, rows)
+        x = W * 0.05 + c * col_w + (col_w / 2 if cols == 1 else 0)
+        an = 8 if cols == 1 else 7
+        y = top + r * row_h
+        label = f"{i + 1}. {_esc(name)}" + (f"  {{\\alpha&H50&}}— {_esc(cause)}" if cause else "")
+        t0 = int((0.45 + i * step) * 1000)
+        out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an{an}\\pos({x:.0f},{y:.0f})\\fad(0,{int(OUT * 1000)})\\alpha&HFF&"
+                   f"\\t({t0},{t0 + 180},\\alpha&H00&)\\fs{fs}\\b1\\c{_c(col)}\\bord0\\shad{2 * k:.1f}}}{label}")
+    return out
+
+
+_BORD = re.compile(r"\\bord[0-9.]+")
+_SHAD = re.compile(r"\\shad[0-9.]+")
+_C3 = re.compile(r"\\3c&H[0-9A-Fa-f]+&")
+
+
+def _restyle(lines: list[str], t: dict, k: float, family: Optional[str]) -> list[str]:
+    """Apply the title's font and text style (outline, shadow, glow) to its text lines.
+    Shapes (\\p1 drawings) keep their look. Nothing set = the template's own look."""
+    stroke, shadow, glow = t.get("stroke"), t.get("shadow"), float(t.get("glow") or 0)
+    if family is None and stroke is None and shadow is None and glow <= 0:
+        return lines
+    out = []
+    for ln in lines:
+        parts = ln.split(",", 9)
+        text = parts[9]
+        if not text.startswith("{") or "\\p1" in text[:text.index("}")]:
+            out.append(ln)
+            continue
+        end = text.index("}")
+        tags, body = text[1:end], text[end + 1:]
+        if family:
+            tags = tags.replace("\\b1", "\\b0") + f"\\fn{family}"
+        if stroke is not None:
+            tags = _C3.sub("", _BORD.sub("", tags)) + f"\\bord{stroke * k:.1f}\\3c{_c(t.get('stroke_color', '#000000'))}"
+        if shadow is not None:
+            tags = _SHAD.sub("", tags) + f"\\shad{shadow * k:.1f}"
+        head = ",".join(parts[:9])
+        if glow > 0:
+            gt = _SHAD.sub("", _C3.sub("", _BORD.sub("", tags)))
+            out.append(f"{head},{{{gt}\\1a&HFF&\\bord{glow * k:.1f}\\blur{glow * k * 0.8:.1f}"
+                       f"\\3c{_c(t.get('glow_color', '#ffde00'))}\\shad0}}{body}")
+        out.append(f"{head},{{{tags}}}{body}")
+    return out
+
+
+def ass(titles: list[dict], W: int, H: int, family: str, font_path: Optional[str],
+        fonts: Optional[dict] = None, extra: Optional[list[str]] = None, stamp: str = "",
+        all_titles: Optional[list[dict]] = None) -> str:
+    """``fonts``: font id -> (family, file) for the fonts staged in the work folder.
+    ``extra``: ready Dialogue lines drawn above every title (counters, name tags).
+    ``stamp``: comment lines identifying the font files (so a changed file changes the text)."""
+    fonts = fonts or {}
+    default_m = Measure(font_path)
+    measures: dict[str, Measure] = {}
+    # death cards are numbered in time order; the tally lists the ones before it
+    # (numbered among all the project's titles, not just the ones in this render block)
+    cards = sorted((x for x in (all_titles or titles) if x["template"] == "death_card"), key=lambda x: x["start"])
+    ordered = []
+    for x in sorted(titles, key=lambda t: t["start"]):
+        if x["template"] == "death_card":
+            x = {**x, "_kill_n": next((i for i, c in enumerate(cards, 1) if c["id"] == x["id"]), 1)}
+        elif x["template"] == "tally" and "_tally" not in x:
+            before = [c for c in cards if c["start"] < x["start"]] or cards
+            x = {**x, "_tally": {"entries": [(c.get("text", ""), c.get("subtext", "")) for c in before], "total": len(before)}}
+        ordered.append(x)
     head = (f"[Script Info]\nScriptType: v4.00+\nPlayResX: {W}\nPlayResY: {H}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n\n"
+            f"{stamp}"
             "[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
             "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
             "MarginL, MarginR, MarginV, Encoding\n"
             f"Style: T,{family},48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,0,2,7,0,0,0,1\n\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lines = []
-    for i, t in enumerate(sorted(titles, key=lambda t: t["start"])):
-        # later titles above earlier ones
-        lines += [ln.replace("Dialogue: ", f"Dialogue: {i * 3}+", 1) for ln in events(t, W, H, m)]
+    for i, t in enumerate(ordered):
+        fid = STICKER_FONT if t["template"] == "sticker" else t.get("font")
+        fam, path = fonts.get(fid, (None, None)) if fid else (None, None)
+        m = measures.setdefault(fid, Measure(path)) if fam else default_m
+        k = H / 1080 * t.get("size", 1.0)
+        # later titles above earlier ones (5 layers each: glow copies share their text's layer)
+        lines += [ln.replace("Dialogue: ", f"Dialogue: {i * 3}+", 1) for ln in _restyle(events(t, W, H, m), t, k, fam)]
     fixed = []
     for ln in lines:  # Layer = base*3 + template layer
         pre, rest = ln.split(",", 1)
         base, lay = pre[len("Dialogue: "):].split("+")
         fixed.append(f"Dialogue: {int(base) + int(lay)},{rest}")
+    fixed += list(extra or [])  # their layers are set by the caller (above every title)
     return head + "\n".join(fixed) + "\n"

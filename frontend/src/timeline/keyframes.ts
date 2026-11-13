@@ -65,7 +65,26 @@ const LOOK_CSS: Record<Look, string> = {
   bw: "grayscale(1)", vintage: "sepia(0.45) contrast(0.9) saturate(0.85)", vivid: "saturate(1.35) contrast(1.08)",
   faded: "contrast(0.84) saturate(0.8) brightness(1.04)", cinematic: "contrast(1.08) saturate(0.9) hue-rotate(-6deg)",
   noir: "grayscale(1) contrast(1.35)",
+  // Phase 18 (grain, scanlines, vignette and bars are drawn by lookOverlay)
+  horror: "saturate(0.45) contrast(1.25) brightness(0.95) sepia(0.12) hue-rotate(45deg)",
+  vhs: "saturate(1.25) contrast(0.92) blur(0.6px)", film: "sepia(0.12) contrast(1.06) saturate(0.9)",
+  vignette: "", letterbox: "",
 };
+
+const GRAIN = `url("data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0 0.5  0 0 0 0.6 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>')}")`;
+const VIGNETTE = (a: number) => `radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,${a}) 100%)`;
+/** Extra layer over a clip for looks a CSS filter can't do (grain, scanlines, vignette, bars). */
+export function lookOverlay(look: Look | undefined): Record<string, string> | null {
+  switch (look) {
+    case "vignette": return { background: VIGNETTE(0.6) };
+    case "horror": return { background: VIGNETTE(0.75) };
+    case "film": return { background: `${GRAIN}, ${VIGNETTE(0.5)}`, backgroundSize: "160px 160px, 100% 100%", opacity: "0.9" };
+    case "vhs": return { background: `repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 1px, transparent 1px 3px), ${GRAIN}`,
+      backgroundSize: "100% 100%, 160px 160px" };
+    case "letterbox": return { background: "linear-gradient(to bottom, #000 0 11%, transparent 11% 89%, #000 89%)" };
+    default: return null;
+  }
+}
 
 /** CSS filter approximating the colour settings (the export uses the exact FFmpeg filters). */
 export function colorCss(c?: ColorAdjust): string {

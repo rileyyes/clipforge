@@ -11,7 +11,8 @@ export interface Transform {
 }
 export interface Chroma { color: string; similarity: number; blend: number }
 export interface Crop { left: number; right: number; top: number; bottom: number }
-export const LOOKS = ["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir"] as const;
+export const LOOKS = ["none", "warm", "cool", "bw", "vintage", "vivid", "faded", "cinematic", "noir",
+  "horror", "vhs", "film", "vignette", "letterbox"] as const;
 export type Look = (typeof LOOKS)[number];
 export interface ColorAdjust { brightness: number; contrast: number; saturation: number; gamma: number; temperature: number; look: Look }
 export type KfProp = "scale" | "x" | "y" | "rotation" | "opacity" | "volume";
@@ -60,19 +61,28 @@ export interface Track {
   muted: boolean;
   hidden: boolean;
   locked: boolean;
-  role?: "dialogue" | "music";
+  /** audio: music ducks under dialogue; everything ducks under narration (Phase 18) */
+  role?: "dialogue" | "music" | "narration";
+  /** name tag shown while this track is talking (Phase 18) */
+  tag?: string; tag_color?: string;
   clips: Clip[];
 }
 
-export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box";
+export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box"
+  | "death_card" | "tally" | "number_card" | "sticker";
 export interface Title {
   id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
   color: string; accent: string; align: "left" | "center" | "right"; size: number;
   /** pop_text and shapes: centre (fractions of the frame), rotation (degrees, clockwise), in-animation */
   x?: number; y?: number; rotation?: number; anim?: TitleAnim;
+  /** Phase 18: font id (null = default), outline/shadow (null = the template's), glow (0 = off), number_card number */
+  font?: string | null; stroke?: number | null; stroke_color?: string; shadow?: number | null;
+  glow?: number; glow_color?: string; number?: number;
 }
+/** The style part of a title, saved as a preset */
+export type TextStyle = Pick<Title, "font" | "color" | "accent" | "stroke" | "stroke_color" | "shadow" | "glow" | "glow_color"> & { name: string };
 export type TitleAnim = "none" | "pop" | "typewriter" | "slide_up" | "bounce";
-export const FREE_TEMPLATES: TitleTemplate[] = ["pop_text", "arrow", "circle", "box"];
+export const FREE_TEMPLATES: TitleTemplate[] = ["pop_text", "sticker", "arrow", "circle", "box"];
 
 export interface BlurKey { t: number; x: number; y: number; w: number; h: number }  // timeline s; frame fractions
 export interface Blur {
@@ -95,7 +105,16 @@ export interface Timeline {
   titles?: Title[];
   blurs?: Blur[];
   markers?: Marker[];
+  counters?: Counter[];
+  name_tags?: NameTags;
 }
+
+/** An on-screen tally (Phase 18). Each enabled "count" effect for it adds one when it plays. */
+export interface Counter {
+  id: string; label: string; start_value: number; start: number; end: number | null;
+  x: number; y: number; size: number; color: string; accent: string; font: string | null;
+}
+export interface NameTags { enabled: boolean; corner: "tl" | "tr" | "bl" | "br"; size: number; only_talking: boolean }
 
 export interface MediaAsset {
   id: string;
@@ -129,7 +148,7 @@ export interface OutputSettings {
   fit_mode: "fit" | "fill";
 }
 
-export type EffectKind = "censor" | "zoom" | "shake" | "flash" | "text" | "sfx" | "image";
+export type EffectKind = "censor" | "zoom" | "shake" | "flash" | "text" | "sfx" | "image" | "count" | "bass";
 export type Sound = "beep" | "boing" | "scratch" | "honk" | "quack" | "mute" | "boom" | "whoosh" | "ding" | "pop" | "airhorn" | "custom";
 
 export interface Effect {
@@ -139,11 +158,14 @@ export interface Effect {
   sound_asset?: string | null;
   text: string | null; word: string | null; context: string | null; confidence: number | null; needs_review: boolean;
   scale: number; intensity: number; x: number; y: number; size: number; color: string; asset: string | null;
+  /** kind === "count": which counter goes up */
+  counter?: string | null;
 }
 
 export interface CaptionSettings {
   enabled: boolean; style: "bold_pop" | "clean" | "highlight"; position: "bottom" | "middle" | "top";
   size: number; color: string; highlight: string; max_words: number; uppercase: boolean;
+  font?: string | null;
 }
 
 export interface AudioSettings {

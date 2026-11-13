@@ -661,8 +661,15 @@ export function setFades(tl: Timeline, id: string, fade_in: number, fade_out: nu
   return { timeline: sanitize(timeline) };
 }
 
-export function setTrackRole(tl: Timeline, id: string, role: "dialogue" | "music"): OpResult {
+export function setTrackRole(tl: Timeline, id: string, role: "dialogue" | "music" | "narration"): OpResult {
   return { timeline: withTracks(tl, (t) => (t.id === id && t.kind === "audio" ? { ...t, role } : t)) };
+}
+
+/** Name tag for an audio track (Phase 18): shown while it's talking, when name tags are on. */
+export function setTrackTag(tl: Timeline, id: string, tag: string, color?: string): OpResult {
+  if (color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(color)) return { error: "Colours must be like #5865f2" };
+  return { timeline: withTracks(tl, (t) => (t.id === id && t.kind === "audio"
+    ? { ...t, tag: tag.slice(0, 24), ...(color !== undefined ? { tag_color: color } : {}) } : t)) };
 }
 
 // ---------------------------------------------------------------- smoother jump cuts
@@ -805,6 +812,11 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["arrow", "Arrow", { text: "", x: 0.4, y: 0.5, rotation: 30, anim: "pop", duration: 3, accent: "#ff3b30" }],
   ["circle", "Circle", { text: "", x: 0.5, y: 0.5, rotation: 0, anim: "pop", duration: 3, accent: "#ff3b30" }],
   ["box", "Box", { text: "", x: 0.5, y: 0.5, rotation: 0, anim: "pop", duration: 3, accent: "#ffde00" }],
+  // Phase 18
+  ["sticker", "Emoji sticker", { text: "😂", x: 0.75, y: 0.3, rotation: -8, anim: "pop", duration: 2.5, color: "#ffde00" }],
+  ["death_card", "Death card", { text: "Victim", subtext: "How they died", duration: 4, accent: "#e3242b" }],
+  ["number_card", "Number card", { text: "Your pick", subtext: "", number: 10, duration: 3, accent: "#ffde00" }],
+  ["tally", "End tally", { text: "FINAL KILL COUNT", subtext: "", duration: 8, accent: "#e3242b" }],
 ];
 
 export function addTitle(tl: Timeline, template: TitleTemplate, at: number): OpResult & { id?: string } {
@@ -823,6 +835,11 @@ export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title,
   n.size = Math.max(0.5, Math.min(2, n.size));
   n.text = n.text.slice(0, 80); n.subtext = n.subtext.slice(0, 100);
   if (!/^#[0-9a-fA-F]{6}$/.test(n.color) || !/^#[0-9a-fA-F]{6}$/.test(n.accent)) return { error: "Colours must be like #ff5a3c" };
+  if ([n.stroke_color, n.glow_color].some((c) => c !== undefined && !/^#[0-9a-fA-F]{6}$/.test(c))) return { error: "Colours must be like #ff5a3c" };
+  if (n.stroke != null) n.stroke = Math.max(0, Math.min(24, n.stroke));
+  if (n.shadow != null) n.shadow = Math.max(0, Math.min(24, n.shadow));
+  if (n.glow != null) n.glow = Math.max(0, Math.min(40, n.glow));
+  if (n.number != null) n.number = Math.max(0, Math.min(999, Math.round(n.number)));
   return { timeline: { ...tl, titles: (tl.titles ?? []).map((x) => (x.id === id ? n : x)) } };
 }
 

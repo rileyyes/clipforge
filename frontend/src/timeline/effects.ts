@@ -23,7 +23,7 @@ export function effectWindows(tl: Timeline, e: Effect, kind: "video" | "audio"):
     .sort((a, b) => a.start - b.start);
 }
 
-export const isAudioFx = (k: EffectKind) => k === "censor" || k === "sfx";
+export const isAudioFx = (k: EffectKind) => k === "censor" || k === "sfx" || k === "bass";
 
 /** First place the effect appears in the edit, or null if that moment was cut. */
 export function effectTime(tl: Timeline, e: Effect): number | null {
@@ -71,6 +71,7 @@ export function newEffectAt(tl: Timeline, t: number, kind: EffectKind, extra: Pa
     censor: { duration: 0.5, sound: "beep" }, zoom: { duration: 1.2, scale: 1.25 }, shake: { duration: 0.5, intensity: 0.6 },
     flash: { duration: 0.15 }, text: { duration: 1.3, text: "NO WAY", y: 0.22, size: 0.13, color: "#ffde00" },
     sfx: { duration: 0.6, sound: "boom" }, image: { duration: 1.5, size: 0.12, y: 0.35 },
+    count: { duration: 0.6, sound: "ding" }, bass: { duration: 1.5, intensity: 1 },
   };
   return {
     id: newId(), kind, media_id: hit.media_id, source_time: Math.max(0, +src.toFixed(3)), duration: 1, enabled: true,

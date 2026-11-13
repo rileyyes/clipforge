@@ -112,6 +112,16 @@ LOOK_FILTERS = {
     "faded": ["curves=all='0/0.08 1/0.92'", "eq=saturation=0.8"],
     "cinematic": ["colorbalance=rs=-0.05:bs=0.07:rh=0.07:bh=-0.06", "eq=contrast=1.08"],
     "noir": ["hue=s=0", "eq=contrast=1.35"],
+    # Phase 18
+    "horror": ["eq=saturation=0.45:contrast=1.25:brightness=-0.04", "colorbalance=gs=0.06:bs=-0.03:gm=0.04",
+               "vignette=angle=PI/3.5"],
+    "vhs": ["rgbashift=rh=3:bh=-3", "eq=saturation=1.25:contrast=0.92", "gblur=sigma=0.7",
+            "noise=alls=14:allf=t", "drawgrid=w=iw:h=4:t=1:c=black@0.22"],
+    "film": ["colortemperature=temperature=5600", "eq=contrast=1.06:saturation=0.9", "noise=alls=10:allf=t",
+             "vignette=angle=PI/4.5"],
+    "vignette": ["vignette=angle=PI/4"],
+    "letterbox": ["drawbox=x=0:y=0:w=iw:h=ih*0.11:color=black:t=fill",
+                  "drawbox=x=0:y=ih-ih*0.11:w=iw:h=ih*0.11:color=black:t=fill"],
 }
 
 

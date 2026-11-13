@@ -125,6 +125,19 @@ def mutes_for_clip(project: Project, clip: Clip) -> list[tuple[float, float]]:
     return out
 
 
+def boosts_for_clip(project: Project, clip: Clip) -> list[tuple[float, float, float]]:
+    """Bass-boost windows (Phase 18) inside one audio clip, relative to its source in-point,
+    with their strength (0-1)."""
+    out = []
+    for e in project.effects:
+        if e.kind != "bass" or not e.enabled or e.media_id != clip.media_id:
+            continue
+        a, b = max(e.source_time, clip.source_in), min(e.source_time + e.duration, clip.source_out)
+        if b > a:
+            out.append((round(a - clip.source_in, 4), round(b - clip.source_in, 4), e.intensity))
+    return out
+
+
 # ---------------------------------------------------------------- suggestions
 def edit_words(project: Project, project_dir: Path) -> list[dict]:
     """Transcript words that survive in the final edit, in timeline order:
@@ -411,7 +424,8 @@ def caption_chunks(project: Project, project_dir: Path) -> list[dict]:
     return chunks
 
 
-def captions_ass(project: Project, chunks: list[dict], font_family: str, H: int, W: int) -> str:
+def captions_ass(project: Project, chunks: list[dict], font_family: str, H: int, W: int, bold: bool = True) -> str:
+    """``bold=False`` for a chosen font (Phase 18): display fonts are drawn as designed, not fake-bolded."""
     cs = project.captions
     size = int(H * cs.size)
     align = {"bottom": 2, "middle": 5, "top": 8}[cs.position]
@@ -422,7 +436,7 @@ def captions_ass(project: Project, chunks: list[dict], font_family: str, H: int,
             "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, "
             "MarginL, MarginR, MarginV, Encoding\n"
             f"Style: Cap,{font_family},{size},{_ass_color(cs.color)},{_ass_color(cs.highlight)},&H00000000,{back},"
-            f"-1,0,0,0,100,100,0,0,{border},{outline},{0 if cs.style == 'clean' else 2},{align},{int(W*0.06)},{int(W*0.06)},{margin},1\n\n"
+            f"{-1 if bold else 0},0,0,0,100,100,0,0,{border},{outline},{0 if cs.style == 'clean' else 2},{align},{int(W*0.06)},{int(W*0.06)},{margin},1\n\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lines = []
     esc = lambda s: s.replace("\\", "").replace("{", "(").replace("}", ")")  # noqa: E731

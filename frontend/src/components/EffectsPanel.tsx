@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, effectSoundUrl, fmtTime, library, type BrollSuggestion, type Job, type LibraryItem } from "../api";
 import LibraryPanel from "./LibraryPanel";
 import { activeEffects, effectTime, moveEffectTo, newEffectAt, parseTime } from "../timeline/effects";
+import { COMBOS } from "../timeline/phase18";
+import FontSelect from "./FontSelect";
 import type { AudioSettings, CaptionSettings, Effect, EffectKind, Sound, Timeline } from "../timeline/types";
 import { Icon, JobRow, useToast } from "./ui";
 
@@ -15,8 +17,10 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 
 const CENSOR_SOUNDS: Sound[] = ["beep", "boing", "scratch", "honk", "quack", "mute"];
 const SFX: Sound[] = ["boom", "pop", "whoosh", "ding", "boing", "airhorn", "scratch", "honk", "quack"];
-const KIND_LABEL: Record<EffectKind, string> = { censor: "Bleep", zoom: "Zoom", shake: "Shake", flash: "Flash", text: "Pop-up text", sfx: "Sound", image: "Image" };
-const KIND_COLOR: Record<EffectKind, string> = { censor: "#ff5a6a", zoom: "#4cc9f0", shake: "#f2b84b", flash: "#ffffff", text: "#ffde00", sfx: "#2bb38a", image: "#c77dff" };
+const KIND_LABEL: Record<EffectKind, string> = { censor: "Bleep", zoom: "Zoom", shake: "Shake", flash: "Flash", text: "Pop-up text", sfx: "Sound", image: "Image",
+  count: "Count +1", bass: "Bass boost" };
+const KIND_COLOR: Record<EffectKind, string> = { censor: "#ff5a6a", zoom: "#4cc9f0", shake: "#f2b84b", flash: "#ffffff", text: "#ffde00", sfx: "#2bb38a", image: "#c77dff",
+  count: "#e3242b", bass: "#9b5de5" };
 export const FX_COLOR = KIND_COLOR;
 
 let previewing: HTMLAudioElement | null = null;
@@ -187,7 +191,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
         <div className="dim" style={{ fontSize: 11 }}>Zooms, shakes, pop-up text and sounds on the loudest reactions. Your images are only used where you place them.</div>
         <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
           <span className="muted" style={{ fontSize: 11 }}>Add at playhead:</span>
-          {(["zoom", "shake", "flash", "text", "sfx", "censor"] as EffectKind[]).map((k) => (
+          {(["zoom", "shake", "flash", "text", "sfx", "censor", "bass"] as EffectKind[]).map((k) => (
             <button key={k} className="btn sm" onClick={() => add(k)}>{KIND_LABEL[k]}</button>
           ))}
           <select className="btn sm" value="" onChange={(e) => { if (e.target.value === "__up") fileRef.current?.click(); else if (e.target.value) add("image", { asset: e.target.value }); }}>
@@ -203,6 +207,30 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
             if (!r.ok) return toast(d.error, true);
             loadImages(); add("image", { asset: d.id });
           }} />
+        </div>
+        <div className="row" style={{ flexWrap: "wrap", gap: 4 }} data-testid="combos">
+          <span className="muted" style={{ fontSize: 11 }}>Combos:</span>
+          {COMBOS.map((c) => (
+            <button key={c.id} className="btn sm" title={c.hint} onClick={() => {
+              const made = c.make(timeline, playhead);
+              if (!made.length) return toast("Move the playhead over a clip first", true);
+              setFx([...effects, ...made], captions, c.label);
+            }}>{c.label}</button>
+          ))}
+        </div>
+        <div data-testid="sound-board" style={{ display: "grid", gap: 4 }}>
+          <span className="muted" style={{ fontSize: 11 }}>Sound board — click to drop a sound at the playhead (works while it plays):</span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(76px, 1fr))", gap: 4 }}>
+            {SFX.map((sname) => (
+              <button key={sname} className="btn xs" onClick={() => add("sfx", { sound: sname })}>{sname}</button>
+            ))}
+            {mySounds.map((m) => (
+              <button key={m.id} className="btn xs" title={m.name} onClick={async () => {
+                try { await library.use(projectId, "sound", m.id); } catch (e: any) { return toast(e.message, true); }
+                add("sfx", { sound: "custom", sound_asset: m.id, duration: Math.max(0.05, Math.min(30, m.duration ?? 1)) });
+              }}><span className="ellipsis">★ {m.name}</span></button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -261,6 +289,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
           <label className="field">Position<select value={captions.position} onChange={(e) => cap({ position: e.target.value as any })}><option>bottom</option><option>middle</option><option>top</option></select></label>
           <label className="field">Words per line<input type="number" min={1} max={12} value={captions.max_words} onChange={(e) => cap({ max_words: Math.max(1, Math.min(12, +e.target.value || 4)) })} /></label>
           <label className="field">Size<input type="range" min={0.04} max={0.15} step={0.005} value={captions.size} onChange={(e) => cap({ size: +e.target.value })} /></label>
+          <FontSelect label="Caption font" value={captions.font} onChange={(font) => cap({ font })} />
         </div>
         <a className="btn sm" href={`/api/projects/${projectId}/captions.srt`} download>Download .srt (for YouTube)</a>
       </div>
@@ -284,7 +313,7 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
         </div>
         <label className="row" style={{ fontSize: 12 }}><input type="checkbox" checked={audio.enhance_voice} onChange={(e) => setAudio({ ...audio, enhance_voice: e.target.checked }, "Enhance voice")} />
           Enhance voice (cut rumble, add clarity, even out levels)</label>
-        <div className="dim" style={{ fontSize: 11 }}>Noise removal and voice enhancement apply to dialogue tracks. Ducking lowers tracks marked as music (♪ button on the track) while someone talks. Noise removal makes exports slower. All applied in the export.</div>
+        <div className="dim" style={{ fontSize: 11 }}>Noise removal and voice enhancement apply to dialogue tracks. Ducking lowers tracks marked as music (♪ button on the track) while someone talks, and lowers everything under a track marked as narration. Noise removal makes exports slower. All applied in the export.</div>
       </div>
 
       {/* ---------------- list */}
@@ -315,6 +344,12 @@ export default function EffectsPanel({ projectId, timeline, effects, captions, p
               <div style={{ fontSize: 12 }}>“{e.word}” {e.confidence != null && <span className="dim">({Math.round(e.confidence * 100)}% sure)</span>}</div>
               {e.context && <div className="dim" style={{ fontSize: 11 }}>…{e.context}…</div>}
             </>)}
+            {e.kind === "bass" && <label className="field">Crunch {Math.round(e.intensity * 100)}%<input type="range" min={0} max={1} step={0.05} value={e.intensity} onChange={(ev) => patch(e.id, { intensity: +ev.target.value })} /></label>}
+            {e.kind === "count" && <div className="row" style={{ fontSize: 12, gap: 6 }}>
+              <span className="muted">Sound</span>
+              <select value={e.sound ?? ""} onChange={(ev) => patch(e.id, { sound: (ev.target.value || null) as Sound | null, sound_asset: null }, "Count sound")}>
+                <option value="">None</option>{SFX.map((x) => <option key={x} value={x}>{x}</option>)}
+              </select></div>}
             {(e.kind === "censor" || e.kind === "sfx") && (
               <div className="row"><select value={soundKey(e.sound, e.sound_asset)} onChange={async (ev) => {
                 const v = parseSound(ev.target.value);
