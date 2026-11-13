@@ -235,13 +235,15 @@ async def main(pid):
         await pc.get_by_role("button", name="Lively").click()
         await pc.get_by_test_id("pacing-result").wait_for()
         rows = await pc.get_by_test_id("slow-row").count()
+        # the ruler marks follow a moment later (the timeline re-renders after the panel)
+        await pg.wait_for_function("(n) => document.querySelectorAll('[data-testid=slow-stretch]').length === n", arg=rows, timeout=10000)
         strips = await pg.get_by_test_id("slow-stretch").count()
         before = await pc.get_by_test_id("pacing-result").inner_text()
         print("pacing:", before, "| rows", rows, "| on the ruler", strips)
         assert rows > 0 and strips == rows
         await pc.get_by_role("button", name="Punch in all of them").click()
         await saved()
-        await pg.wait_for_timeout(300)
+        await pg.wait_for_function("(n) => document.querySelectorAll('[data-testid=slow-row]').length < n", arg=rows, timeout=10000)
         after = await pc.inner_text()
         print("after punch-ins:", "nice pacing" in after, "|", (await pc.get_by_test_id("pacing-result").inner_text()) if await pc.get_by_test_id("pacing-result").count() else "")
         assert await pc.get_by_test_id("slow-row").count() < rows
