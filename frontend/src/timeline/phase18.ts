@@ -1,4 +1,4 @@
-// Phase 18: counters (Kill Count), death cards, combo effects, keep-only-the-funny-moments,
+// Phase 18: counters, callout cards, combo effects, keep-only-the-funny-moments,
 // who's talking (name tags) and text style presets. Same rules as the backend
 // (backend/app/overlays.py counter_ticks, reactions.track_talk).
 import { effectWindows, newEffectAt } from "./effects";
@@ -11,7 +11,7 @@ const HEX = /^#[0-9a-fA-F]{6}$/;
 // ---------------------------------------------------------------- counters
 export const MAX_COUNTERS = 4;
 
-export function addCounter(tl: Timeline, label = "KILLS"): OpResult & { id?: string } {
+export function addCounter(tl: Timeline, label = "COUNT"): OpResult & { id?: string } {
   const list = tl.counters ?? [];
   if (list.length >= MAX_COUNTERS) return { error: `At most ${MAX_COUNTERS} counters` };
   // a second counter goes under the first so they don't sit on top of each other
@@ -61,8 +61,8 @@ export function countAt(tl: Timeline, counterId: string, t: number, sound: Sound
   return e ?? { error: "There's no footage at the playhead to count on" };
 }
 
-/** One "Kill": +1 on the counter (made if there isn't one) and a death card, at t. */
-export function addKill(tl: Timeline, effects: Effect[], t: number, name: string, how: string, sound: Sound | null = "boom"):
+/** "Count it": +1 on the counter (made if there isn't one) and a callout card, at t. */
+export function addCount(tl: Timeline, effects: Effect[], t: number, name: string, how: string, sound: Sound | null = "boom"):
   { timeline: Timeline; effects: Effect[]; titleId: string } | { error: string } {
   let cur = tl;
   let ctr = (cur.counters ?? [])[0];
@@ -73,20 +73,20 @@ export function addKill(tl: Timeline, effects: Effect[], t: number, name: string
   }
   const e = countAt(cur, ctr.id, t, sound);
   if ("error" in e) return { error: e.error! };
-  const r = addTitle(cur, "death_card", t);
-  if (r.error !== undefined || !r.id) return { error: r.error ?? "Couldn't add the death card" };
-  const titles = r.timeline.titles!.map((x) => (x.id === r.id ? { ...x, text: (name || "Victim").slice(0, 80), subtext: how.slice(0, 100) } : x));
+  const r = addTitle(cur, "count_card", t);
+  if (r.error !== undefined || !r.id) return { error: r.error ?? "Couldn't add the callout card" };
+  const titles = r.timeline.titles!.map((x) => (x.id === r.id ? { ...x, text: (name || "Name").slice(0, 80), subtext: how.slice(0, 100) } : x));
   return { timeline: { ...r.timeline, titles }, effects: [...effects, e], titleId: r.id };
 }
 
-/** Death cards in time order with their KILL # (same numbering as the export). */
-export function deathCards(tl: Timeline): (Title & { n: number })[] {
-  return (tl.titles ?? []).filter((t) => t.template === "death_card").sort((a, b) => a.start - b.start).map((t, i) => ({ ...t, n: i + 1 }));
+/** Callout cards in time order with their # (same numbering as the export). */
+export function countCards(tl: Timeline): (Title & { n: number })[] {
+  return (tl.titles ?? []).filter((t) => t.template === "count_card").sort((a, b) => a.start - b.start).map((t, i) => ({ ...t, n: i + 1 }));
 }
 
-/** What a tally shows: the deaths before it and the total (its counter's value then, else how many). */
+/** What a tally shows: the callout cards before it and the total (its counter's value then, else how many). */
 export function tallyInfo(tl: Timeline, effects: Effect[], tally: Title): { entries: [string, string][]; total: number } {
-  const cards = deathCards(tl);
+  const cards = countCards(tl);
   const before = cards.filter((c) => c.start < tally.start);
   const list = before.length ? before : cards;
   const ctr = (tl.counters ?? [])[0];

@@ -171,7 +171,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
         case 31: { const a = r() * 30; res = insertTeaser(tl, a, a + 0.3 + r() * 6); break; }
         // Phase 18
         case 32: { const a = r() * 30; res = keepOnly(tl, [[a, a + r() * 8], [a + r() * 20, a + 10 + r() * 10]]); break; }
-        case 33: res = r() < 0.5 ? addCounter(tl, pick(["KILLS", "DEATHS", ""])) : (tl.counters?.length
+        case 33: res = r() < 0.5 ? addCounter(tl, pick(["COUNT", "SCORE", ""])) : (tl.counters?.length
           ? updateCounter(tl, pick(tl.counters).id, { start: r() * 20, end: r() < 0.5 ? null : r() * 40, x: r(), y: r(), size: r() * 3, start_value: r() * 20000 })
           : { error: "none" }); break;
         case 34: { const a = tl.tracks.filter((x) => x.kind === "audio");
@@ -179,7 +179,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
             : setTrackRole(tl, pick(a).id, pick(["dialogue", "music", "narration"] as const))) : { error: "none" }; break; }
         case 35: { const tid = (tl.titles ?? [])[0]?.id;
           res = tid ? updateTitle(tl, tid, { font: pick([null, "anton", "creepster"]), stroke: r() < 0.3 ? null : r() * 40, shadow: r() * 30 - 3,
-            glow: r() * 60, number: r() * 2000, glow_color: pick(["#ffde00", "#00ff00"]) }) : addTitle(tl, pick(["sticker", "death_card", "number_card", "tally"] as const), t); break; }
+            glow: r() * 60, number: r() * 2000, glow_color: pick(["#ffde00", "#00ff00"]) }) : addTitle(tl, pick(["sticker", "count_card", "number_card", "tally"] as const), t); break; }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

@@ -24,7 +24,7 @@ export interface TallyInfo { entries: [string, string][]; total: number }
 
 export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove, tally }: {
   titles: Title[]; t: number; k: number; W: number; H: number; ox: number; oy: number;
-  /** what an end tally lists (death cards before it, total) */
+  /** what a tally screen lists (callout cards before it, total) */
   tally?: (x: Title) => TallyInfo;
   /** the selected title; pop-up words and shapes can then be dragged into place */
   sel?: string | null; onMove?: (id: string, x: number, y: number, done: boolean) => void;
@@ -34,11 +34,11 @@ export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove,
   return <>{on.map((x) => FREE_TEMPLATES.includes(x.template)
     ? <Free key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy} selected={sel === x.id} onMove={onMove} />
     : <One key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy}
-        killN={x.template === "death_card" ? killNumber(titles, x) : 0} tally={x.template === "tally" ? tally?.(x) : undefined} />)}</>;
+        cardN={x.template === "count_card" ? cardNumber(titles, x) : 0} tally={x.template === "tally" ? tally?.(x) : undefined} />)}</>;
 }
 
-function killNumber(all: Title[], x: Title): number {
-  return all.filter((c) => c.template === "death_card").sort((a, b) => a.start - b.start).findIndex((c) => c.id === x.id) + 1;
+function cardNumber(all: Title[], x: Title): number {
+  return all.filter((c) => c.template === "count_card").sort((a, b) => a.start - b.start).findIndex((c) => c.id === x.id) + 1;
 }
 
 /** pop_text, arrow, circle, box (export: titles.py _free): centre at (x, y), turned clockwise, in-animation. */
@@ -112,8 +112,8 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
   );
 }
 
-function One({ x, t, k, W, H, ox, oy, killN, tally }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number;
-  killN: number; tally?: TallyInfo }) {
+function One({ x, t, k, W, H, ox, oy, cardN, tally }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number;
+  cardN: number; tally?: TallyInfo }) {
   const s = (H / 1080) * x.size * k;             // px on screen per design px at 1080p
   const fadeOut = Math.min(1, Math.max(0, (x.duration - t) / OUT));
   const pin = ease(t / IN);
@@ -156,14 +156,14 @@ function One({ x, t, k, W, H, ox, oy, killN, tally }: { x: Title; t: number; k: 
         {x.subtext && <div style={{ fontSize: 31 * s, color: "#fff", textShadow: "0 0 3px #000", marginTop: 10 * s }}>{x.subtext}</div>}
       </>);
     }
-    case "death_card": {
-      // export: titles.py _death_card (box bottom at 78 %, slides 60 px in over 0.14 s)
+    case "count_card": {
+      // export: titles.py _count_card (box bottom at 78 %, slides 60 px in over 0.14 s)
       const slide = -60 * s * (1 - Math.min(1, t / 0.14));
       const pad = 26 * s;
       return frame({ left: left + w * 0.05 + slide, top: top + h * 0.78, transform: "translateY(-100%)", background: "rgba(0,0,0,.84)",
         borderLeft: `${12 * s}px solid ${x.accent}`, borderRadius: 8 * s, padding: `${pad * 0.8}px ${pad}px ${pad * 0.7}px`,
         boxShadow: `${4 * s}px ${4 * s}px 0 rgba(0,0,0,.4)`, minWidth: 300 * s, opacity: Math.min(1, t / 0.15) }, <>
-        <div style={{ fontSize: 30 * s, lineHeight: 1.35, color: x.accent, ...(x.font ? {} : { fontWeight: 700 }) }}>KILL #{killN || 1}</div>
+        <div style={{ fontSize: 30 * s, lineHeight: 1.35, color: x.accent, ...(x.font ? {} : { fontWeight: 700 }) }}>#{cardN || 1}</div>
         <div style={{ fontSize: 66 * s, lineHeight: 1.15 }}>{x.text}</div>
         {x.subtext && <div style={{ fontSize: 38 * s, lineHeight: 1.3, opacity: 0.8, fontWeight: x.font ? 400 : 400 }}>{x.subtext}</div>}
       </>);

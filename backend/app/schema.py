@@ -248,7 +248,7 @@ class Title(Strict):
     template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter",
                       "pop_text", "arrow", "circle", "box",
                       # Phase 18
-                      "death_card", "tally", "number_card", "sticker"] = "lower_third"
+                      "count_card", "tally", "number_card", "sticker"] = "lower_third"
     text: str = Field(default="Your name", max_length=80)
     subtext: str = Field(default="", max_length=100)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
@@ -273,6 +273,12 @@ class Title(Strict):
     @classmethod
     def _v_ids(cls, v: str) -> str:
         return _check_id(v)
+
+    @field_validator("template", mode="before")
+    @classmethod
+    def _v_old_names(cls, v):
+        # the callout card was saved as "death_card" for a short while in Phase 18
+        return "count_card" if v == "death_card" else v
 
 
 class BlurKey(Strict):
@@ -485,11 +491,11 @@ class FaceCam(Strict):
 
 
 class Counter(Strict):
-    """An on-screen tally (Phase 18), e.g. KILLS 7. Each enabled "count" effect for it adds one
+    """An on-screen tally (Phase 18), e.g. COUNT 7. Each enabled "count" effect for it adds one
     from the moment it plays; the effect is pinned to the source like any effect, so cuts and
     moves keep it on its moment, and a cut-out count simply doesn't count."""
     id: str
-    label: str = Field(default="KILLS", max_length=24)
+    label: str = Field(default="COUNT", max_length=24)
     start_value: int = Field(default=0, ge=0, le=9999)
     start: float = Field(default=0, ge=0, le=86400)                 # shown from (timeline s)
     end: Optional[float] = Field(default=None, ge=0, le=86400)      # shown until (None = the end)

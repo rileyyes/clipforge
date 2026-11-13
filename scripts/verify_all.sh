@@ -48,7 +48,7 @@ echo "== browser E2E: Phase 16 (hook checker, teaser, B-roll from your clips, vo
 python3 scripts/e2e_phase16.py 2>&1 | grep -E "OK|hook score|teaser|B-roll|voiceover|music plan|export ok|Error|assert"
 echo "== browser E2E: Phase 17 (first-run tour, titles/markers/blurs follow moved clips)"
 python3 scripts/e2e_phase17.py 2>&1 | grep -E "OK|tour steps|after dragging|after undo|Error|assert"
-echo "== browser E2E: Phase 18 (fonts & text styles, Kill Count, name tags, combos, funny moments, new looks)"
+echo "== browser E2E: Phase 18 (fonts & text styles, counter, name tags, combos, funny moments, new looks)"
 python3 scripts/e2e_phase18.py 2>&1 | grep -E "OK|my font|counter in|export ok|funny moments|keep only|Error|assert"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)

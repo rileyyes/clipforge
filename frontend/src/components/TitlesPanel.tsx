@@ -15,7 +15,7 @@ import { Icon } from "./ui";
 export default function TitlesPanel({ timeline, playhead, seek, commit, sel, setSel, top, bottom }: {
   /** shown first (Phase 15: apply the brand kit) */
   top?: React.ReactNode;
-  /** shown last (Phase 18: Kill Count, name tags) */
+  /** shown last (Phase 18: counter, name tags) */
   bottom?: React.ReactNode;
   timeline: Timeline; playhead: number; seek: (t: number) => void;
   commit: (r: OpResult, label: string, coalesce?: boolean) => boolean;
@@ -65,11 +65,11 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
                   style={{ fontFamily: "'rjf-emoji'", fontSize: 16, padding: 2 }} onClick={() => set({ text: em }, "Sticker")}>{em}</button>)}
               </div>
             </div>
-          ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "death_card" ? "Who died" : cur.template === "tally" ? "Heading" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
+          ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "count_card" ? "Name" : cur.template === "tally" ? "Heading" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
           {cur.template === "number_card" && <label className="field">Number<input type="number" min={0} max={999} value={cur.number ?? 1} aria-label="Card number"
             onChange={(e) => Number.isFinite(+e.target.value) && set({ number: +e.target.value }, "Card number")} /></label>}
-          {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every death card before it, with the counter's total (or how many deaths) at that point.</div>}
-          {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "death_card" ? "How (e.g. Machete)" : "Second line"}
+          {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every callout card before it, with the counter's total (or how many cards) at that point.</div>}
+          {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "count_card" ? "Detail" : "Second line"}
             <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
           <div className="insp-grid">
             <label className="field">Starts at <span className="dim">{fmtTime(cur.start)}</span>

@@ -814,9 +814,9 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["box", "Box", { text: "", x: 0.5, y: 0.5, rotation: 0, anim: "pop", duration: 3, accent: "#ffde00" }],
   // Phase 18
   ["sticker", "Emoji sticker", { text: "😂", x: 0.75, y: 0.3, rotation: -8, anim: "pop", duration: 2.5, color: "#ffde00" }],
-  ["death_card", "Death card", { text: "Victim", subtext: "How they died", duration: 4, accent: "#e3242b" }],
+  ["count_card", "Callout card", { text: "Name", subtext: "Detail", duration: 4, accent: "#e3242b" }],
   ["number_card", "Number card", { text: "Your pick", subtext: "", number: 10, duration: 3, accent: "#ffde00" }],
-  ["tally", "End tally", { text: "FINAL KILL COUNT", subtext: "", duration: 8, accent: "#e3242b" }],
+  ["tally", "Tally screen", { text: "FINAL COUNT", subtext: "", duration: 8, accent: "#e3242b" }],
 ];
 
 export function addTitle(tl: Timeline, template: TitleTemplate, at: number): OpResult & { id?: string } {

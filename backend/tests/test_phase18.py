@@ -1,5 +1,5 @@
-"""Phase 18: fonts and text styles, Kill Count tools (counter, death cards, tally, narration
-ducking), Vanoss tools (funny moments, name tags, bass boost) and new looks/templates."""
+"""Phase 18: fonts and text styles, counter tools (counter, callout cards, tally, narration
+ducking), reaction & group tools (funny moments, name tags, bass boost) and new looks/templates."""
 from __future__ import annotations
 
 import subprocess
@@ -133,25 +133,30 @@ def test_sticker_uses_the_emoji_font(tmp_path):
     assert yellow.sum() > 500 and abs(xs.mean() - 320) < 30 and abs(ys.mean() - 180) < 30   # a real glyph, centred
 
 
-def test_death_cards_are_numbered_and_the_tally_lists_them():
-    mk = lambda s, name, how: Title(id=new_id(), start=s, duration=3, template="death_card", text=name, subtext=how).model_dump()  # noqa: E731
+def test_count_cards_are_numbered_and_the_tally_lists_them():
+    mk = lambda s, name, how: Title(id=new_id(), start=s, duration=3, template="count_card", text=name, subtext=how).model_dump()  # noqa: E731
     cards = [mk(10, "Steve", "Machete"), mk(2, "Ann", "Axe"), mk(20, "Late", "")]
-    tally = Title(id=new_id(), start=15, duration=6, template="tally", text="FINAL KILL COUNT").model_dump()
+    tally = Title(id=new_id(), start=15, duration=6, template="tally", text="FINAL COUNT").model_dump()
     a = titles.ass(cards + [tally], 1280, 720, "DejaVu Sans", None)
-    assert "KILL #1}Ann" in a.replace("\\fs20\\b1\\c&H002B24E3&\\bord0\\shad0", "") or a.index("KILL #1") < a.index("Ann")
+    assert a.index("}#1\n") < a.index("}Ann")
     ev = a.split("[Events]")[1]
-    assert ev.count("KILL #") == 3 and "KILL #2" in ev and "KILL #3" in ev
+    assert ev.count("}#") == 3 and "}#2\n" in ev and "}#3\n" in ev and "KILL" not in ev
     tl = [ln for ln in ev.splitlines() if "0:00:15.00" in ln]
     body = "\n".join(tl)
-    assert "1. Ann" in body and "2. Steve" in body and "Late" not in body     # only the deaths before it
+    assert "1. Ann" in body and "2. Steve" in body and "Late" not in body     # only the cards before it
     assert "}2\n" in body + "\n" or "}2" in body                              # the total
     # in a render block that doesn't contain the earlier cards, numbering stays the same
     part = titles.ass([cards[0]], 1280, 720, "DejaVu Sans", None, all_titles=cards)
-    assert "KILL #2" in part
+    assert "}#2\n" in part
+
+
+def test_old_callout_name_still_opens():
+    t = Title.model_validate({"id": new_id(), "start": 0, "template": "death_card", "text": "x"})
+    assert t.template == "count_card"
 
 
 def test_number_card_and_new_templates_validate():
-    for tpl in ("death_card", "tally", "number_card", "sticker"):
+    for tpl in ("count_card", "tally", "number_card", "sticker"):
         Title(id=new_id(), start=0, template=tpl, text="x")
     with pytest.raises(ValidationError):
         Title(id=new_id(), start=0, template="number_card", number=1000)
@@ -166,7 +171,7 @@ def _counter_project(tmp_path):
     s, p, pdir, media = _project(tmp_path, [("blue", 0, {"start": 0, "source_in": 0, "source_out": 6}),
                                             ("blue", 2, {"start": 0, "source_in": 0, "source_out": 6})])
     mid = media["blue"].id
-    ctr = Counter(id=new_id(), label="Kills", x=0.5, y=0.5, accent="#ff0000", size=2.0)
+    ctr = Counter(id=new_id(), label="Goals", x=0.5, y=0.5, accent="#ff0000", size=2.0)
     effs = [Effect(id=new_id(), kind="count", media_id=mid, source_time=t, duration=0.5, counter=ctr.id, sound="boom")
             for t in (1.0, 3.0)]
     d = p.model_dump(mode="json")

@@ -1,8 +1,8 @@
-// Phase 18: counters, kills, death cards and the tally, combos, keep-only, who's talking, text styles.
+// Phase 18: counters, counts, callout cards and the tally, combos, keep-only, who's talking, text styles.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addMedia, addTitle, cutRanges, setTrackRole, setTrackTag, splitAt, timelineDuration, updateTitle } from "./ops";
-import { addCounter, addKill, applyStyle, COMBOS, countAt, counterTicks, counterValue, deathCards, keepOnly, removeCounter,
+import { addCounter, addCount, applyStyle, COMBOS, countAt, counterTicks, counterValue, countCards, keepOnly, removeCounter,
   styleOf, tallyInfo, TEXT_PRESETS, trackTalk, updateCounter } from "./phase18";
 import type { Effect, MediaAsset, Timeline } from "./types";
 
@@ -19,10 +19,10 @@ const empty = (): Timeline => ({ tracks: [
 ] });
 const base = () => ok(addMedia(empty(), A));
 
-test("a Kill makes the counter (if needed), a +1 and a numbered death card, together", () => {
+test("Count it makes the counter (if needed), a +1 and a numbered callout card, together", () => {
   let tl = base();
   let fx: Effect[] = [];
-  const r1 = addKill(tl, fx, 5, "Steve", "Machete");
+  const r1 = addCount(tl, fx, 5, "Steve", "Machete");
   assert.ok(!("error" in r1));
   if ("error" in r1) return;
   tl = r1.timeline; fx = r1.effects;
@@ -30,21 +30,21 @@ test("a Kill makes the counter (if needed), a +1 and a numbered death card, toge
   assert.equal(fx.length, 1);
   assert.equal(fx[0].kind, "count"); assert.equal(fx[0].counter, tl.counters![0].id); assert.equal(fx[0].sound, "boom");
   const card = tl.titles!.find((t) => t.id === r1.titleId)!;
-  assert.equal(card.template, "death_card"); assert.equal(card.text, "Steve"); assert.equal(card.subtext, "Machete");
-  const r2 = addKill(tl, fx, 2, "", "");
+  assert.equal(card.template, "count_card"); assert.equal(card.text, "Steve"); assert.equal(card.subtext, "Machete");
+  const r2 = addCount(tl, fx, 2, "", "");
   assert.ok(!("error" in r2));
   if ("error" in r2) return;
   assert.equal(r2.timeline.counters!.length, 1);                      // the same counter
-  assert.deepEqual(deathCards(r2.timeline).map((c) => [c.n, c.text]), [[1, "Victim"], [2, "Steve"]]);   // numbered by time
+  assert.deepEqual(countCards(r2.timeline).map((c) => [c.n, c.text]), [[1, "Name"], [2, "Steve"]]);   // numbered by time
   const ticks = counterTicks(r2.timeline, r2.effects, r2.timeline.counters![0].id);
   assert.deepEqual(ticks.map((x) => +x.toFixed(3)), [2, 5]);
   const c = r2.timeline.counters![0];
   assert.deepEqual([1, 2, 4, 5, 9].map((t) => counterValue(c, ticks, t)), [0, 1, 1, 2, 2]);
-  assert.ok("error" in addKill(empty(), [], 3, "x", "y"));            // nothing to count on
+  assert.ok("error" in addCount(empty(), [], 3, "x", "y"));            // nothing to count on
 });
 
 test("counts follow the footage: a cut-out count stops counting, moving pieces moves the tick", () => {
-  const r = addKill(base(), [], 10, "A", "");
+  const r = addCount(base(), [], 10, "A", "");
   if ("error" in r) throw new Error(r.error);
   const cid = r.timeline.counters![0].id;
   const cut = ok(cutRanges(r.timeline, [[8, 12]]));
@@ -71,10 +71,10 @@ test("counters: limits, validation, removing takes its counts with it", () => {
   assert.deepEqual(r.effects.map((e) => e.counter), [c2.id]);
 });
 
-test("the tally lists the death cards before it and the counter's total then", () => {
+test("the tally lists the callout cards before it and the counter's total then", () => {
   let tl = base(); let fx: Effect[] = [];
   for (const [t, n] of [[3, "A"], [6, "B"], [20, "Late"]] as [number, string][]) {
-    const r = addKill(tl, fx, t, n, "how");
+    const r = addCount(tl, fx, t, n, "how");
     if ("error" in r) throw new Error(r.error);
     tl = r.timeline; fx = r.effects;
   }
@@ -143,7 +143,7 @@ test("text styles: presets apply, values are clamped, colours checked, a title's
   const s = styleOf(tl.titles![0], "Mine");
   assert.equal(s.name, "Mine"); assert.equal(s.stroke, 24);
   // new templates have sensible defaults
-  for (const tpl of ["sticker", "death_card", "number_card", "tally"] as const) {
+  for (const tpl of ["sticker", "count_card", "number_card", "tally"] as const) {
     const t = ok(addTitle(base(), tpl, 0)).titles![0];
     assert.ok(t.text.length > 0, tpl);
   }

@@ -69,7 +69,7 @@ export interface Track {
 }
 
 export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box"
-  | "death_card" | "tally" | "number_card" | "sticker";
+  | "count_card" | "tally" | "number_card" | "sticker";
 export interface Title {
   id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
   color: string; accent: string; align: "left" | "center" | "right"; size: number;

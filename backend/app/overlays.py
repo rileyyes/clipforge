@@ -1,4 +1,4 @@
-"""Phase 18 overlays drawn by libass above every title: counters (KILLS 7) and name tags
+"""Phase 18 overlays drawn by libass above every title: counters (COUNT 7) and name tags
 (who's talking). They go in the titles ASS file as extra events.
 
 The Editor's preview draws the same things in CSS (frontend/src/components/OverlaysPreview.tsx)

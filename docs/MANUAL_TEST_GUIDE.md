@@ -198,7 +198,7 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
-## Phase 18: fonts, Kill Count, Vanoss-style tools, looks
+## Phase 18: fonts, counter tools, reaction & group tools, looks
 
 | # | Do this | You should see |
 |---|---|---|
@@ -206,11 +206,11 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 | 18.2 | Editor → **Text** → **Pop-up words** → click the **Horror** style | Creepy red text with a glow in the preview. Try other styles, the **Font** list (your font is under *Yours*), **Outline**, **Shadow**, **Glow** |
 | 18.3 | **Save as my style** | A ★ button with your style; use it on another title. × deletes it |
 | 18.4 | **Emoji sticker** → pick 💀, drag it on the preview, change its colour | A tinted emoji sticker; it pops in |
-| 18.5 | Kill Count: pause on a moment, type a name and how → **Kill at …** (do it twice) | A KILLS counter top right goes 0 → 1 → 2 exactly at those moments, each with a red flash and a boom; a death card KILL #1 / #2 |
-| 18.6 | **Ctrl+Z** once | The whole last kill (count + card) goes away. **Ctrl+Y** brings it back |
-| 18.7 | Cut out the part with the first kill (Script tab or split + ripple delete) | The counter only counts what's left |
-| 18.8 | Near the end → **End tally here** | Full screen: FINAL KILL COUNT, the total, and the names in order; the counter stops there |
-| 18.9 | Put a movie clip on V1 and your narration on its own audio track → click that track's mic button until it shows **N** (narration) → export | The movie's sound gets quieter while you talk |
+| 18.5 | Text → **Counter**: pause on a moment, type a name and a detail → **Count it at …** (do it twice) | A COUNT counter top right goes 0 → 1 → 2 exactly at those moments, each with a red flash and a boom; a callout card #1 / #2 |
+| 18.6 | **Ctrl+Z** once | The whole last count (+1 and card) goes away. **Ctrl+Y** brings it back |
+| 18.7 | Cut out the part with the first count (Script tab or split + ripple delete) | The counter only counts what's left |
+| 18.8 | Near the end → **Tally screen here** | Full screen: FINAL COUNT, the total, and the names in order; the counter stops there |
+| 18.9 | Put a clip on V1 and your narration on its own audio track → click that track's mic button until it shows **N** (narration) → export | The clip's sound gets quieter while you talk |
 | 18.10 | Two mics on two audio tracks → Text → **Name tags**: name each, tick **Show name tags** → play | Each name lights up while that person is loud |
 | 18.11 | A long session → **AI** tab → **Find funny moments** | A list of loud reactions with scores; click a time to jump there. **Mark them** adds markers; **Keep only these** cuts the rest (Ctrl+Z undoes) |
 | 18.12 | **Effects** tab → **Combos** → **Meme zoom**, **Bass boosted**; click a few **Sound board** buttons while playing | Several effects at once; sounds dropped where the playhead was |

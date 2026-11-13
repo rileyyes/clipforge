@@ -11,7 +11,7 @@ import re
 from typing import Optional
 
 TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box",
-             "death_card", "tally", "number_card", "sticker")
+             "count_card", "tally", "number_card", "sticker")
 SHAPES = ("arrow", "circle", "box")
 FREE = ("pop_text", "sticker", *SHAPES)       # placed anywhere (x, y), rotated, animated
 STICKER_FONT = "emoji"                         # fontlib id of the sticker font (Noto Emoji)
@@ -131,8 +131,8 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
             line(1, f"\\an8\\pos({x + w / 2:.0f},{y + h + 10 * k:.0f}){fad}\\fs{int(fs * 0.6)}\\c{_c('#ffffff')}\\bord{3 * k:.1f}", sub)
     elif t["template"] in FREE:
         out += _free(t, W, H, k, a, b)
-    elif t["template"] == "death_card":
-        out += _death_card(t, W, H, k, m, span, fad)
+    elif t["template"] == "count_card":
+        out += _count_card(t, W, H, k, m, span, fad)
     elif t["template"] == "tally":
         out += _tally(t, W, H, k, m, span)
     elif t["template"] == "number_card":
@@ -246,11 +246,11 @@ def _free(t: dict, W: int, H: int, k: float, a: float, b: float) -> list[str]:
     return out
 
 
-def _death_card(t: dict, W: int, H: int, k: float, m: Measure, span: str, fad: str) -> list[str]:
-    """Who died and how, with KILL #n (n = its place among the death cards). Slams in from the left."""
+def _count_card(t: dict, W: int, H: int, k: float, m: Measure, span: str, fad: str) -> list[str]:
+    """A callout: name and detail, with #n (n = its place among the callout cards). Slams in from the left."""
     name, cause = _esc(t.get("text", "")), _esc(t.get("subtext") or "")
     col, acc = t.get("color", "#ffffff"), t.get("accent", "#e3242b")
-    label = f"KILL #{t.get('_kill_n', 1)}"
+    label = f"#{t.get('_card_n', 1)}"
     fl, fn, fc = int(30 * k), int(66 * k), int(38 * k)
     pad = 26 * k
     w = max(m.width(label, fl), m.width(name, fn), m.width(cause, fc), 300 * k) + 2 * pad + 12 * k
@@ -271,7 +271,7 @@ def _death_card(t: dict, W: int, H: int, k: float, m: Measure, span: str, fad: s
 
 
 def _tally(t: dict, W: int, H: int, k: float, m: Measure, span: str) -> list[str]:
-    """End-of-video tally: heading, the total, then every death card's name (and how), revealed one by one."""
+    """End-of-video tally: heading, the total, then every callout card's name (and detail), revealed one by one."""
     info = t.get("_tally") or {"entries": [], "total": 0}
     entries = info["entries"][:36]
     col, acc = t.get("color", "#ffffff"), t.get("accent", "#e3242b")
@@ -350,13 +350,13 @@ def ass(titles: list[dict], W: int, H: int, family: str, font_path: Optional[str
     fonts = fonts or {}
     default_m = Measure(font_path)
     measures: dict[str, Measure] = {}
-    # death cards are numbered in time order; the tally lists the ones before it
+    # callout cards are numbered in time order; the tally lists the ones before it
     # (numbered among all the project's titles, not just the ones in this render block)
-    cards = sorted((x for x in (all_titles or titles) if x["template"] == "death_card"), key=lambda x: x["start"])
+    cards = sorted((x for x in (all_titles or titles) if x["template"] == "count_card"), key=lambda x: x["start"])
     ordered = []
     for x in sorted(titles, key=lambda t: t["start"]):
-        if x["template"] == "death_card":
-            x = {**x, "_kill_n": next((i for i, c in enumerate(cards, 1) if c["id"] == x["id"]), 1)}
+        if x["template"] == "count_card":
+            x = {**x, "_card_n": next((i for i, c in enumerate(cards, 1) if c["id"] == x["id"]), 1)}
         elif x["template"] == "tally" and "_tally" not in x:
             before = [c for c in cards if c["start"] < x["start"]] or cards
             x = {**x, "_tally": {"entries": [(c.get("text", ""), c.get("subtext", "")) for c in before], "total": len(before)}}

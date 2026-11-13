@@ -6,7 +6,7 @@ import HistoryPanel from "../components/HistoryPanel";
 import FaceCamPanel from "../components/FaceCamPanel";
 import ScriptPanel from "../components/ScriptPanel";
 import TitlesPanel from "../components/TitlesPanel";
-import { KillCountPanel, NameTagsPanel } from "../components/KillCountPanel";
+import { CounterPanel, NameTagsPanel } from "../components/CounterPanel";
 import BlurPanel from "../components/BlurPanel";
 import BeatPanel from "../components/BeatPanel";
 import { effectTime } from "../timeline/effects";
@@ -199,7 +199,7 @@ export default function Editor({ projectId }: { projectId: string }) {
     lastLabel.current = { label, at: now };
     dirty.current = true; setEffects(next); setCaptions(caps); force((n) => n + 1);
   };
-  /** Timeline + effects changed together (e.g. a Kill: counter, +1 and death card) = one undo step. */
+  /** Timeline + effects changed together (e.g. Count it: counter, +1 and callout card) = one undo step. */
   const commitBoth = (tl: Timeline, fx: Effect[], label: string) => {
     history.current.push(snapshot(), label);
     lastLabel.current = { label, at: Date.now() };
@@ -460,7 +460,7 @@ export default function Editor({ projectId }: { projectId: string }) {
                 commit={commit} setCaptions={(c, label) => setFx(effects, c, label)}
                 onWatermark={() => { reloadMedia(); }} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }} />}
               bottom={<>
-                <KillCountPanel timeline={timeline} effects={effects} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
+                <CounterPanel timeline={timeline} effects={effects} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
                   commit={commit} commitBoth={commitBoth} setSel={setOverlaySel} />
                 <NameTagsPanel timeline={timeline} commit={commit} />
               </>} />

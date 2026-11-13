@@ -1,12 +1,12 @@
-"""Browser end-to-end test of Phase 18 (fonts, Kill Count, Vanoss tools, new looks).
+"""Browser end-to-end test of Phase 18 (fonts, counter tools, reaction & group tools, new looks).
 
 At 1280×720:
 - Settings: the built-in fonts are listed; add your own .ttf (shows up, can be used); a web
   font file is turned down with a message.
 - Text tab: a pop-up title gets the Horror preset (Creepster really loaded and drawn), an
   outline and glow; your own font; an emoji sticker.
-- Kill Count: two Kills (counter + numbered death cards) — the preview counter goes 0 → 1 → 2
-  at the right moments; one Ctrl+Z takes a whole Kill back; an end tally lists the deaths.
+- Counter: two counts (counter + numbered callout cards) — the preview counter goes 0 → 1 → 2
+  at the right moments; one Ctrl+Z takes a whole count back; a tally screen lists the cards.
 - Name tags on two mics; the tag of whoever is loud lights up in the preview.
 - Audio track set to narration (the track button cycles dialogue → music → narration).
 - Effects: a combo adds zoom + shake + boom at once; the sound board drops a sound; caption font.
@@ -73,7 +73,7 @@ def hexid():
 
 def setup():
     me, friend = voice(TMP / "me.mp4", (24, 27)), voice(TMP / "friend.m4a", (24.5, 28), video=False)
-    pid = api("POST", "/api/projects", {"name": "Kill Count"})["id"]
+    pid = api("POST", "/api/projects", {"name": "Counter test"})["id"]
     ids = []
     for f in (me, friend):
         r = api("POST", f"/api/projects/{pid}/media?filename={f.name}", raw=f.read_bytes())
@@ -189,21 +189,21 @@ async def main(pid):
         st = [x for x in project(pid)["timeline"]["titles"] if x["template"] == "sticker"][0]
         assert st["text"] == "💀", st
 
-        # ---- Kill Count
-        kc = pg.get_by_test_id("kill-count")
+        # ---- counter tools
+        kc = pg.get_by_test_id("counter-tools")
         await seek(5)
-        await kc.get_by_label("Victim").fill("Steve")
-        await kc.get_by_label("How they died").fill("Machete")
-        await kc.get_by_role("button", name="Kill at").click()
-        await toast("Kill #1")
+        await kc.get_by_label("Callout name").fill("Steve")
+        await kc.get_by_label("Callout detail").fill("Machete")
+        await kc.get_by_role("button", name="Count it at").click()
+        await toast("#1 counted")
         await seek(9)
-        await kc.get_by_label("Victim").fill("Ann")
-        await kc.get_by_label("How they died").press("Enter")
-        await toast("Kill #2")
+        await kc.get_by_label("Callout name").fill("Ann")
+        await kc.get_by_label("Callout detail").press("Enter")
+        await toast("#2 counted")
         await saved()
         p = project(pid)
         counts = [e for e in p["effects"] if e["kind"] == "count"]
-        cards = [x for x in p["timeline"]["titles"] if x["template"] == "death_card"]
+        cards = [x for x in p["timeline"]["titles"] if x["template"] == "count_card"]
         assert len(p["timeline"]["counters"]) == 1 and len(counts) == 2 and len(cards) == 2, (p["timeline"]["counters"], counts, cards)
         vals = {}
         for t in (4.8, 5.3, 8.8, 9.4):
@@ -212,21 +212,22 @@ async def main(pid):
         print("counter in the preview:", vals)
         assert vals == {4.8: "0", 5.3: "1", 8.8: "1", 9.4: "2"}, vals
         await seek(9.5)
-        assert "KILL #2" in await pg.get_by_test_id("title-preview").filter(has_text="Ann").first.inner_text()
-        await pg.screenshot(path=str(TMP / "kill.png"))
-        # one undo takes the whole second kill back
+        card = await pg.get_by_test_id("title-preview").filter(has_text="Ann").first.inner_text()
+        assert "#2" in card and "KILL" not in card.upper(), card
+        await pg.screenshot(path=str(TMP / "count.png"))
+        # one undo takes the whole second count back
         await pg.locator(".timeline").click(position={"x": 5, "y": 5})
         await pg.keyboard.press("Control+z")
         await saved()
         p = project(pid)
-        assert len([e for e in p["effects"] if e["kind"] == "count"]) == 1 and len([x for x in p["timeline"]["titles"] if x["template"] == "death_card"]) == 1
+        assert len([e for e in p["effects"] if e["kind"] == "count"]) == 1 and len([x for x in p["timeline"]["titles"] if x["template"] == "count_card"]) == 1
         await pg.keyboard.press("Control+y")
         await saved()
         # end tally
         await seek(15)
-        await kc.get_by_role("button", name="End tally here").click()
+        await kc.get_by_role("button", name="Tally screen here").click()
         await seek(17)
-        tally = pg.get_by_test_id("title-preview").filter(has_text="FINAL KILL COUNT")
+        tally = pg.get_by_test_id("title-preview").filter(has_text="FINAL COUNT")
         await tally.first.wait_for()
         body = await pg.locator(".screen").inner_text()
         assert "1. Steve" in body and "2. Ann" in body, body
@@ -287,7 +288,7 @@ async def main(pid):
         await saved()
 
         # ---- export with all of it (the export page itself is covered by earlier tests)
-        j = api("POST", f"/api/projects/{pid}/exports", {"filename": "killcount", "quality": "draft"})
+        j = api("POST", f"/api/projects/{pid}/exports", {"filename": "counter", "quality": "draft"})
         for _ in range(1200):
             j = api("GET", f"/api/jobs/{j['id']}")
             if j["status"] not in ("queued", "running"):

@@ -941,10 +941,10 @@ def _fonts_cached(project: Project, work: Path, workspace: Optional[Path]) -> di
 
 def _tally_info(project: Project, shown: list[dict], all_titles: list[dict]) -> None:
     """A tally's total is its counter's value when it starts (if there is a counter), else
-    the number of death cards before it. Filled in place on the shown titles."""
+    the number of callout cards before it. Filled in place on the shown titles."""
     ticks = overlays.counter_ticks(project)
     ctr = project.timeline.counters[0] if project.timeline.counters else None
-    cards = sorted((x for x in all_titles if x["template"] == "death_card"), key=lambda x: x["start"])
+    cards = sorted((x for x in all_titles if x["template"] == "count_card"), key=lambda x: x["start"])
     for t in shown:
         if t["template"] != "tally":
             continue
