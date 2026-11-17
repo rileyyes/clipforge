@@ -101,6 +101,7 @@ class Services:
         self.jobs.register("make_short", self._make_short)
         self.jobs.register("youtube_upload", self._youtube_upload)
         self.jobs.register("facecam_sync", self._facecam_sync)
+        self.jobs.register("multicam", self._multicam)
         self.jobs.register("facecam_matte", self._facecam_matte)
         self.jobs.register("blur_track", self._blur_track)
         self.jobs.register("voice_setup", self._voice_setup)
@@ -248,6 +249,75 @@ class Services:
         ctx.check_cancel()
         r = sync.find_offset(a, b)
         return {"offset": r.offset, "confidence": r.confidence, "media_id": cam.id, "main_media_id": main.id}
+
+    def _multicam(self, ctx: JobContext) -> dict:
+        """Phase 21: line up every camera and mic with the main recording, then pick a camera
+        for every moment (see multicam.py)."""
+        import numpy as np
+
+        from . import multicam as MC, reactions, sync
+        pid, prm = ctx.job.project_id, ctx.job.params
+        p = self.store.load(pid)
+        pdir = self.store.dir(pid)
+        media = p.media_by_id()
+        orig = pdir / "media" / "original"
+        main = media[prm["main_media_id"]]
+        angles = prm["angles"]
+        steps = 2 + sum(1 for a in angles[1:] if a.get("offset") is None) + sum(
+            1 for a in angles if a.get("mic_media_id") and a.get("mic_offset") is None)
+        step = 1
+        ctx.stage(step, steps, "Listening to the main recording")
+        main_pcm = sync.decode(self.settings.ffmpeg_bin, orig / main.stored_name) if main.has_audio else None
+        ctx.check_cancel()
+
+        def line_up(asset, what):
+            nonlocal step
+            if main_pcm is None or not asset.has_audio:
+                raise ValueError(f"{asset.original_name} has no sound, so it can't be lined up automatically. Type its offset (the small box next to it) instead.")
+            step += 1
+            ctx.stage(step, steps, f"Lining up {what}")
+            r = sync.find_offset(main_pcm, sync.decode(self.settings.ffmpeg_bin, orig / asset.stored_name))
+            ctx.check_cancel()
+            return r.offset, r.confidence
+
+        out = []
+        for i, a in enumerate(angles):
+            cam = media[a["media_id"]]
+            if i == 0:
+                off, conf = 0.0, 1.0
+            elif a.get("offset") is not None:
+                off, conf = float(a["offset"]), 1.0
+            else:
+                off, conf = line_up(cam, f"camera {i + 1}")
+            mic_id = a.get("mic_media_id")
+            if mic_id:
+                if a.get("mic_offset") is not None:
+                    moff, mconf = float(a["mic_offset"]), 1.0
+                elif mic_id == main.id:
+                    moff, mconf = 0.0, 1.0
+                else:
+                    moff, mconf = line_up(media[mic_id], f"mic {i + 1}")
+            else:
+                moff, mconf = off, conf
+            out.append({"media_id": cam.id, "offset": round(off, 4), "confidence": conf,
+                        "mic_media_id": mic_id, "mic_offset": round(moff, 4), "mic_confidence": mconf})
+        step += 1
+        ctx.stage(step, steps, "Choosing a camera for every moment")
+        main_db = reactions.loudness(self.settings, pdir, main) if main.has_audio else np.full(int(main.duration / MC.HOP), -120.0)
+        mics = []
+        if prm["mode"] == "speaker":
+            for i, a in enumerate(out):
+                src = media[a["mic_media_id"] or a["media_id"]]
+                if src.has_audio:
+                    mics.append((reactions.loudness(self.settings, pdir, src), a["mic_offset"], i))
+            if len(mics) < 2:
+                raise ValueError("Following who's talking needs sound from at least two of the cameras or mics.")
+        sw = MC.plan(main_db, mics, mode=prm["mode"], n_angles=len(out), wide=prm.get("wide"),
+                     min_shot=prm.get("min_shot", 2.0), pace=prm.get("pace", 5.0))
+        return {"main_media_id": main.id, "angles": out, "mode": prm["mode"], "wide": prm.get("wide"),
+                "min_shot": prm.get("min_shot", 2.0), "pace": prm.get("pace", 5.0),
+                "switches": [{"t": s.t, "angle": s.angle} for s in sw],
+                "share": MC.summary(sw, main.duration, len(out))}
 
     def _facecam_matte(self, ctx: JobContext) -> dict:
         """Prepare background removal for a face cam recording ahead of exporting."""
@@ -1127,10 +1197,13 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, "This media is used on the timeline. Remove its clips first.")
         if p.facecam and asset.id in (p.facecam.media_id, p.facecam.main_media_id):
             return err(409, "This media is used by the face cam. Remove the face cam first (Editor → Face cam).")
+        mc = p.timeline.multicam
+        if mc and any(asset.id in (a.media_id, a.mic_media_id) for a in mc.angles):
+            return err(409, "This media is one of the multicam cameras or mics. Turn multicam off first (Editor → Clip → Multicam).")
         # background jobs still reading this file would block deletion on Windows
         busy = [j for j in svc.jobs.active_for_project(pid)
                 if j.params.get("media_id") == asset.id
-                and j.kind in ("derive_media", "analyze", "transcribe", "facecam_matte", "facecam_sync")]
+                and j.kind in ("derive_media", "analyze", "transcribe", "facecam_matte", "facecam_sync", "multicam")]
         for j in busy:
             svc.jobs.cancel(j.id)
         import asyncio
@@ -1513,6 +1586,146 @@ def build_routes(svc: Services) -> list[Route]:
             return err(409, "Both recordings need sound to be lined up automatically. Set the offset by hand instead.")
         job = svc.jobs.submit("facecam_sync", pid, {"media_id": cam.id, "main_media_id": main.id})
         return JSONResponse(job.model_dump(), status_code=202)
+
+    class MulticamAngleBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        media_id: str
+        mic_media_id: Optional[str] = None
+        offset: Optional[float] = Field(default=None, ge=-86400, le=86400)       # known: skip lining up
+        mic_offset: Optional[float] = Field(default=None, ge=-86400, le=86400)
+
+    class MulticamBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        angles: list[MulticamAngleBody] = Field(min_length=2, max_length=4)       # [0] = the main recording
+        mode: Literal["speaker", "pace"] = "speaker"
+        wide: Optional[int] = Field(default=None, ge=0, le=3)
+        min_shot: float = Field(default=2.0, ge=0.5, le=20)
+        pace: float = Field(default=5.0, ge=1, le=60)
+
+    async def multicam_plan(request: Request):
+        """Phase 21: line up the cameras and choose one for every moment (background job)"""
+        pid = pid_of(request)
+        body = await body_model(request, MulticamBody)
+        p = load(pid)
+        media = p.media_by_id()
+        ids = [a.media_id for a in body.angles]
+        if len(set(ids)) != len(ids):
+            return err(422, "Pick each camera once.")
+        for a in body.angles:
+            cam = media.get(a.media_id)
+            if cam is None or (a.mic_media_id and a.mic_media_id not in media):
+                return err(404, "media not found")
+            if not cam.has_video:
+                return err(409, f"{cam.original_name} has no picture, so it can't be a camera. Use it as a mic instead.")
+            if a.mic_media_id and not media[a.mic_media_id].has_audio:
+                return err(409, f"{media[a.mic_media_id].original_name} has no sound.")
+        if body.wide is not None and body.wide >= len(body.angles):
+            return err(422, "The wide camera has to be one of the cameras.")
+        main = media[ids[0]]
+        if not main.has_audio and any(a.offset is None for a in body.angles[1:]):
+            return err(409, "The main recording has no sound, so the cameras can't be lined up automatically. Type each camera's offset (the small box next to it).")
+        prm = {"main_media_id": main.id, "angles": [a.model_dump() for a in body.angles], "mode": body.mode,
+               "wide": body.wide, "min_shot": body.min_shot, "pace": body.pace}
+        job = svc.jobs.submit("multicam", pid, prm)
+        return JSONResponse(job.model_dump(), status_code=202)
+
+    class CommandBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        text: str = Field(min_length=1, max_length=500)
+        playhead: float = Field(default=0, ge=0, le=86400)
+
+    COMMAND_SYSTEM = (
+        "You turn a video editor's request into commands for the RJClip editor. Use ONLY these command forms, "
+        "one per line, times as m:ss: "
+        "cut M:SS to M:SS | split at M:SS | go to M:SS | add a zoom at M:SS | add a shake at M:SS | add a flash at M:SS | "
+        "add a bass boost at M:SS | add a <beep|boing|scratch|honk|quack|boom|whoosh|ding|pop|airhorn|riser|impact> at M:SS | "
+        "add text \"WORDS\" at M:SS | add a title \"WORDS\" at M:SS | add a lower third \"NAME\" at M:SS | "
+        "add a marker \"NAME\" at M:SS | add a bar chart at M:SS | add a percent ring at M:SS | add a list at M:SS | "
+        "add a progress bar | add a quote card at M:SS | add an end screen | add a subscribe button at M:SS | add a timer at M:SS | "
+        "music to N% | voice to N% | sound effects to N% | mute <music|voice|A1|A2> | unmute ... | solo ... | unsolo ... | "
+        "blend <screen|multiply|overlay|soft light|add|lighten|darken|difference|normal> | undo. "
+        "'here' means the playhead. If the request can't be done with these, return no lines. "
+        'Reply ONLY with JSON: {"lines": ["...", "..."]}')
+
+    async def command_ai(request: Request):
+        """Phase 21: let the free local AI (Ollama) rewrite a request as editor commands. The Editor
+        checks and runs them like typed commands; nothing is sent anywhere else."""
+        from starlette.concurrency import run_in_threadpool
+        from . import language
+        pid_of(request)
+        body = await body_model(request, CommandBody)
+        model = await run_in_threadpool(language.text_model)
+        if model is None:
+            return err(409, "The local AI isn't running. " + language_setup_help())
+        m, sec = divmod(int(body.playhead), 60)
+        try:
+            data = await run_in_threadpool(model.chat_json, COMMAND_SYSTEM, f"The playhead is at {m}:{sec:02d}.\nRequest: {body.text}")
+        except Exception as e:  # noqa: BLE001 - shown to the user
+            return err(502, f"The local AI didn't answer: {e}")
+        lines = data.get("lines", []) if isinstance(data, dict) else []
+        lines = [str(x).strip()[:200] for x in lines if isinstance(x, (str, int, float)) and str(x).strip()][:20]
+        return JSONResponse({"lines": lines})
+
+    class AutoColorBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        media_ids: list[str] = Field(min_length=1, max_length=8)
+        mode: Literal["fix", "match"] = "fix"
+        reference_media_id: Optional[str] = None
+
+    async def color_auto(request: Request):
+        """Phase 21: automatic colour per recording — fix exposure and white balance, or match
+        another camera. Returns colour settings to put on that recording's clips."""
+        import shutil
+        import tempfile
+        from starlette.concurrency import run_in_threadpool
+        from . import colorfix as CF
+        from .schema import ColorAdjust
+        pid = pid_of(request)
+        body = await body_model(request, AutoColorBody)
+        p = load(pid)
+        media = p.media_by_id()
+        if any(m not in media or not media[m].has_video for m in body.media_ids):
+            return err(404, "Pick recordings with a picture.")
+        if body.mode == "match":
+            ref = media.get(body.reference_media_id or "")
+            if ref is None or not ref.has_video:
+                return err(422, "Pick the camera to match.")
+            if ref.id in body.media_ids:
+                return err(422, "A camera can't match itself.")
+        orig = store.dir(pid) / "media" / "original"
+        clips = [c for t in p.timeline.tracks if t.kind == "video" for c in t.clips]
+
+        def ranges(mid: str) -> list[tuple[float, float]]:
+            rs = [(c.source_in, c.source_out) for c in clips if c.media_id == mid]
+            return rs or [(0.0, media[mid].duration)]
+
+        def color_of(mid: str) -> ColorAdjust:
+            return next((c.color for c in clips if c.media_id == mid), ColorAdjust())
+
+        def work() -> dict:
+            tmp = Path(tempfile.mkdtemp(prefix="rjclip-color-"))
+            try:
+                target = CF.TARGET
+                if body.mode == "match":
+                    png = CF.sample(S.ffmpeg_bin, orig / ref.stored_name, ranges(ref.id), tmp / "ref")
+                    if png is None:
+                        raise ValueError("Couldn't read frames from the camera to match.")
+                    target = CF.target_of(S.ffmpeg_bin, png, color_of(ref.id))
+                out = {}
+                for mid in body.media_ids:
+                    png = CF.sample(S.ffmpeg_bin, orig / media[mid].stored_name, ranges(mid), tmp / mid)
+                    if png is None:
+                        continue
+                    c, before, after = CF.solve(S.ffmpeg_bin, png, target, body.mode == "match", color_of(mid))
+                    out[mid] = {"color": c.model_dump(), "before": before.as_dict(), "after": after.as_dict(),
+                                "changed": c.model_copy(update={"look": "none"}) != ColorAdjust()}
+                return {"results": out, "target": target.as_dict()}
+            finally:
+                shutil.rmtree(tmp, ignore_errors=True)
+        try:
+            return JSONResponse(await run_in_threadpool(work))
+        except ValueError as e:
+            return err(422, str(e))
 
     async def facecam_face_crop(request: Request):
         """Suggest a crop of the face cam around your face (head and shoulders)"""
@@ -2287,6 +2500,9 @@ def build_routes(svc: Services) -> list[Route]:
         Route(P + "/autoedit/ai-rate", start_ai_rate, methods=["POST"]),
         Route(P + "/shorts/suggest", shorts_suggest, methods=["POST"]),
         Route(P + "/facecam/sync", facecam_sync, methods=["POST"]),
+        Route(P + "/multicam", multicam_plan, methods=["POST"]),
+        Route(P + "/color/auto", color_auto, methods=["POST"]),
+        Route(P + "/command/ai", command_ai, methods=["POST"]),
         Route(P + "/facecam/face-crop", facecam_face_crop, methods=["POST"]),
         Route(P + "/facecam/matte", facecam_matte, methods=["POST"]),
         Route(P + "/blur/track", blur_track, methods=["POST"]),

@@ -89,7 +89,9 @@ function Num({ label, value, onCommit, step = 0.01, min, max, suffix }: {
   );
 }
 
-export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades, playhead, seek, extra }: {
+export default function Inspector({ timeline, media, selection, onPatch, onTrim, onMove, onTransition, onFades, playhead, seek, extra, autoColor }: {
+  /** Phase 21: automatic colour for the selected clip's recording */
+  autoColor?: (mediaId: string) => React.ReactNode;
   /** more tools shown at the end (Phase 15: freeze, reverse, ramps, layouts, green screen) */
   extra?: React.ReactNode;
   timeline: Timeline; media: MediaMap; selection: string[]; playhead: number; seek: (t: number) => void;
@@ -229,6 +231,7 @@ export default function Inspector({ timeline, media, selection, onPatch, onTrim,
             <div className="insp-section" data-testid="color">
               <div className="row"><h3 style={{ margin: 0 }}>Colour</h3><span className="spacer" />
                 <button className="btn xs ghost" onClick={() => patch({ color: NO_COLOR }, "Reset colour")}>Reset</button></div>
+              {autoColor?.(clip.media_id)}
               <label className="field">Look
                 <select value={color.look} aria-label="Look" onChange={(e) => setColor({ look: e.target.value as ColorAdjust["look"] }, "Look")}>
                   {LOOKS.map((l) => <option key={l} value={l}>{{ none: "None", warm: "Warm", cool: "Cool", bw: "Black & white", vintage: "Vintage", vivid: "Vivid",

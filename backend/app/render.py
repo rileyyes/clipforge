@@ -932,6 +932,10 @@ def _video_effects(project: Project, project_dir: Path, plan: "RenderPlan", out:
         ass = f"titles{tag}.ass" if win else "titles.ass"
         if any(t["template"] == "tally" for t in tl):
             _tally_info(project, tl, all_titles)
+        marks = sorted((m.t, m.label) for m in project.timeline.markers)
+        for t in tl:                      # Phase 21: a progress bar shows the chapters (markers)
+            if t["template"] == "progress":
+                t["_chapters"] = marks
         stamp = "".join(f"; font {i} {Path(p).stat().st_size} {Path(p).name}\n" for i, (_, p) in sorted(staged.items()))
         (work / ass).write_text(titles_mod.ass(tl, W, H, family, str(font) if font else None, fonts=staged,
                                                extra=extra, stamp=stamp, all_titles=all_titles), encoding="utf-8")

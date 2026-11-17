@@ -410,7 +410,7 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
             oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}
           {(timeline.titles?.length ?? 0) > 0 && <TitlesPreview titles={timeline.titles!} t={playhead} k={scr.w / output.width}
             W={output.width} H={output.height} ox={0} oy={(scr.h - output.height * (scr.w / output.width)) / 2}
-            sel={titleSel} onMove={onTitleMove} tally={(x) => tallyInfo(timeline, effects, x)} />}
+            sel={titleSel} onMove={onTitleMove} tally={(x) => tallyInfo(timeline, effects, x)} markers={timeline.markers} />}
           {((timeline.counters?.length ?? 0) > 0 || timeline.name_tags?.enabled) && <OverlaysPreview projectId={projectId} timeline={timeline}
             effects={effects} t={playhead} k={scr.w / output.width} W={output.width} H={output.height}
             oy={(scr.h - output.height * (scr.w / output.width)) / 2} />}

@@ -18,6 +18,9 @@ import { Icon, useJobs, useToast } from "../components/ui";
 import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
 import MixerSection from "../components/MixerSection";
+import MulticamPanel from "../components/MulticamPanel";
+import AutoColor from "../components/AutoColor";
+import CommandBox from "../components/CommandBox";
 import ProTools from "../components/ProTools";
 import BrandApply from "../components/BrandApply";
 import SmartPanel from "../components/SmartPanel";
@@ -224,6 +227,16 @@ export default function Editor({ projectId }: { projectId: string }) {
     commit(r, "Smooth jump cuts");
     toast(`${r.count} jump cut${r.count === 1 ? "" : "s"} smoothed with ${{ punch: "zoom punch-ins", blend: "quick blends", whip: "whip pans" }[mode]}`);
   };
+  /** Several kinds of change at once (the command box) as one undo step. */
+  const applyAll = (d: { timeline?: Timeline; effects?: Effect[]; audio?: AudioSettings }, label: string) => {
+    history.current.push(snapshot(), label);
+    lastLabel.current = { label, at: Date.now() };
+    dirty.current = true;
+    if (d.timeline) setTimeline(sanitize(d.timeline));
+    if (d.effects) setEffects(d.effects);
+    if (d.audio) setAudioState(d.audio);
+    force((n) => n + 1);
+  };
   const setAudio = (next: AudioSettings, label: string) => {
     const now = Date.now();
     if (!(lastLabel.current.label === label && now - lastLabel.current.at < 800)) history.current.push(snapshot(), label);
@@ -289,6 +302,10 @@ export default function Editor({ projectId }: { projectId: string }) {
       }
       if (k === " ") { e.preventDefault(); setPlaying((p) => !p); }
       else if (e.key === "?") setShowKeys((v) => !v);
+      else if (e.key === "/" && !mod) {        // Phase 21: jump to the command box
+        e.preventDefault(); setRightTab("ai");
+        setTimeout(() => (document.getElementById("rj-command") as HTMLInputElement | null)?.focus(), 50);
+      }
       else if (k === "j" && !mod) seek(Math.max(0, playhead - 2));
       else if (k === "k" && !mod) setPlaying(false);
       else if (k === "l" && !mod) setPlaying(true);
@@ -494,12 +511,19 @@ export default function Editor({ projectId }: { projectId: string }) {
             <SmartPanel projectId={projectId} timeline={timeline} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               effects={effects} addEffects={(list, label) => setFx([...effects, ...list], captions!, label)} onPacing={setSlow}
               commit={commit} jobs={jobs} onJobs={refreshJobs} onMediaAdded={async () => { await reloadMedia(); refreshJobs(); }}
-              saved={!dirty.current && save === "saved"} />
+              saved={!dirty.current && save === "saved"}
+              top={<>
+                <CommandBox projectId={projectId} timeline={timeline} effects={effects} audio={audio!} playhead={playhead} selection={selection}
+                  apply={applyAll} seek={(t) => { setPlaying(false); seek(t); }} undo={undo} redo={redo} />
+                <MulticamPanel projectId={projectId} timeline={timeline} media={media} selection={selection} commit={commit}
+                  jobs={jobs} onJobs={refreshJobs} saved={!dirty.current && save === "saved"} /></>} />
           ) : rightTab === "history" ? (
             <HistoryPanel projectId={projectId} beforeChange={flushNow} onRestored={onRestored} revision={editRev.current} />
           ) : rightTab === "clip" ? (
             <Inspector timeline={timeline} media={media} selection={selection} playhead={playhead} seek={(t) => { setPlaying(false); seek(t); }}
               onPatch={(id, patch: ClipPatch, label) => commit(updateClip(timeline, id, patch), label, true)}
+              autoColor={(mid) => <AutoColor projectId={projectId} timeline={timeline} media={media} mediaId={mid} commit={commit}
+                saved={!dirty.current && save === "saved"} />}
               onTrim={(id, edge, t) => commit(trimEdge(timeline, id, edge, t, media), "Trim clip")}
               onMove={(id, s) => commit(moveClip(timeline, id, s), "Move clip")}
               onTransition={(id, tr) => commit(setTransition(timeline, id, tr), tr ? "Set transition" : "Remove transition")}

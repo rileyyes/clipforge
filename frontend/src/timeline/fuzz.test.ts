@@ -8,12 +8,14 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import {
   MIN_CLIP, MUSIC_DEFAULTS, addMusic, addMarker, linkClips, moveClips, removeMarker, unlinkClips, addMedia, addTrack, clipDuration, clipEnd, deleteClips, duplicateClip, moveClip, removeTrack,
-  addBlur, addTitle, cutRanges, fitMusicToVideo, snapCutsToBeats, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
+  addBlur, addTitle, round6, cutRanges, fitMusicToVideo, snapCutsToBeats, removeBlur, updateBlur, removeTitle, sanitize, TITLE_TEMPLATES, updateTitle, setFades, smoothJumpCuts, setTrackRole, setTransition, splitAt, timelineDuration, toggleTrack, trimEdge, updateClip, type OpResult,
 } from "./ops";
 import { setKeyframe } from "./keyframes";
 import { addCounter, keepOnly, updateCounter } from "./phase18";
 import { slowPush } from "./phase19";
 import { resetMix, setBlend, setTrackMix } from "./phase20";
+import { applyMulticam, removeMulticam, setClipAngle } from "./phase21";
+import { parseCommand, runCommand } from "./commands";
 import { setTrackTag } from "./ops";
 import { BLEND_MODES, LOOKS, TRANSITIONS, type KfProp, type MediaAsset, type MediaMap, type Timeline } from "./types";
 
@@ -72,7 +74,7 @@ export function checkInvariants(tl: Timeline, where: string) {
         if (k) {
           // same file: same part of it too (separately linked files only need to line up)
           assert.ok(Math.abs(k.start - v.start) < 1e-4 && Math.abs(k.dur - v.dur) < 1e-4 && k.speed === v.speed
-            && (k.media !== v.media || Math.abs(k.si - v.si) < 1e-4), `${where}: linked clips out of sync`);
+            && (k.media !== v.media || Math.abs(k.si - v.si) < 1e-4), `${where}: linked clips out of sync ${JSON.stringify([k, v, tl.multicam?.angles])}`);
         } else links.set(c.link_id, v);
       }
     }
@@ -112,7 +114,7 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
       const c = clips.length ? pick(clips) : null;
       const dur = Math.max(1, timelineDuration(tl));
       const t = r() * dur * 1.2;
-      const op = Math.floor(r() * 40);
+      const op = Math.floor(r() * 43);
       let res: OpResult;
       switch (op) {
         case 0: res = addMedia(tl, pick(MEDIA), r() < 0.5 ? undefined : t, pick(tl.tracks).id); break;
@@ -200,6 +202,31 @@ test("random edit sequences (FUZZ_SEEDS, default 10 × 1500) keep every invarian
             : { error: "none" }; break; }
         case 39: res = c ? (r() < 0.5 ? setBlend(tl, [c.id], pick(["screen", "multiply", "softlight", "normal", "bogus"] as any))
           : updateClip(tl, c.id, { blend: pick(["overlay", "addition", "difference", "x"] as any) })) : { error: "none" }; break;
+        // Phase 21
+        case 40: {
+          const vids = MEDIA.filter((m) => m.has_video);
+          if (vids.length < 2 || r() < 0.2) { res = r() < 0.5 ? removeMulticam(tl, M) : { error: "none" }; break; }
+          const n = 2 + Math.floor(r() * Math.min(2, vids.length - 1));
+          const cams = [...vids].sort(() => r() - 0.5).slice(0, n);
+          const sw = [{ t: 0, angle: 0 }];
+          for (let k = 0; k < 1 + Math.floor(r() * 12); k++) sw.push({ t: round6(sw[sw.length - 1].t + 0.1 + r() * 8), angle: Math.floor(r() * n) });
+          res = applyMulticam(tl, { main_media_id: cams[0].id, mode: "speaker", wide: null, min_shot: 2, pace: 5, switches: sw,
+            angles: cams.map((m, k) => ({ media_id: m.id, offset: k ? round6(r() * 6 - 3) : 0 })) }, M);
+          break;
+        }
+        case 41: {
+          const mcs = tl.multicam;
+          res = mcs && c ? setClipAngle(tl, c.id, Math.floor(r() * mcs.angles.length), M) : { error: "none" };
+          break;
+        }
+        case 42: {
+          const lines = ["cut 0:02 to 0:04", "split at 0:03", "add a bar chart", "add a progress bar", "add an end screen", "music to 30%",
+            "mute A1", "solo A2", "unsolo A2", 'add a marker "x" at 0:01', "add a list", "add a quote card at 0:02", "blend screen"];
+          const cmd = parseCommand(pick(lines), { playhead: t, end: timelineDuration(tl) });
+          const out = "error" in cmd ? cmd : runCommand(cmd, { timeline: tl, effects: [], audio: { normalize: true, enhance_voice: false, ducking: "medium" } as any, playhead: t, selection: c ? [c.id] : [] });
+          res = "error" in out ? { error: out.error } : out.timeline ? { timeline: out.timeline } : { error: "none" };
+          break;
+        }
         default: res = c ? splitAt(tl, allClips(tl).filter(() => r() < 0.3).map((x) => x.id), t) : { error: "none" };
       }
       if (res.error !== undefined) { rejected++; assert.equal(res.timeline, undefined); continue; }

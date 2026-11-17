@@ -5,7 +5,7 @@ import { applyStyle, styleOf, TEXT_PRESETS } from "../timeline/phase18";
 import { realTimeDuration } from "../timeline/phase19";
 import { parseTime } from "../timeline/effects";
 import FontSelect from "./FontSelect";
-import { addTitle, removeTitle, RETIRED_TEMPLATES, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
+import { addTitle, MAX_PROGRESS, removeTitle, RETIRED_TEMPLATES, timelineDuration, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
 import { FREE_TEMPLATES, type TextStyle, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
 
 const STICKERS = ["😂", "🤣", "💀", "☠️", "🔥", "😱", "😭", "👀", "🤯", "😡", "🤔", "😎", "👍", "👎", "💯", "❤️",
@@ -84,7 +84,8 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
                   style={{ fontFamily: "'rjf-emoji'", fontSize: 16, padding: 2 }} onClick={() => set({ text: em }, "Sticker")}>{em}</button>)}
               </div>
             </div>
-          ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "count_card" ? "Name" : cur.template === "tally" ? "Heading" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
+          ) : <label className="field">{["arrow", "circle", "box"].includes(cur.template) ? "Label (optional)" : cur.template === "count_card" ? "Name"
+            : ["tally", "chart", "list", "end_screen"].includes(cur.template) ? "Heading" : cur.template === "ring" ? "Label" : cur.template === "quote" ? "Quote" : cur.template === "progress" ? "Text (not shown)" : "Text"}<input type="text" value={cur.text} maxLength={80} aria-label="Title text" onChange={(e) => set({ text: e.target.value }, "Title text")} /></label>}
           {cur.template === "number_card" && <label className="field">Number<input type="number" min={0} max={999} value={cur.number ?? 1} aria-label="Card number"
             onChange={(e) => Number.isFinite(+e.target.value) && set({ number: +e.target.value }, "Card number")} /></label>}
           {cur.template === "ticker" && (<>
@@ -127,12 +128,52 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
             <div className="dim" style={{ fontSize: 11 }}>A highlighter pen sweeps across the box — for a quote in a screenshot of an article or a post. The colour is the Accent.</div>
           </>)}
           {cur.template === "tally" && <div className="dim" style={{ fontSize: 11 }}>Lists every callout card before it.</div>}
-          {!FREE_TEMPLATES.includes(cur.template) && cur.template !== "tally" && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "count_card" ? "Detail" : "Second line"}
+          {/* ---- Phase 21 motion graphics */}
+          {(cur.template === "chart" || cur.template === "list") && (
+            <div className="field" data-testid="title-items">{cur.template === "chart" ? "Bars (name and number)" : "Points (one by one)"}
+              {(cur.items ?? []).map((it, i) => (
+                <div key={i} className="row" style={{ gap: 4, minWidth: 0 }}>
+                  <input type="text" aria-label={`Item ${i + 1} name`} value={it.label} maxLength={40} style={{ flex: 2, minWidth: 0 }}
+                    onChange={(e) => set({ items: (cur.items ?? []).map((x, k) => (k === i ? { ...x, label: e.target.value } : x)) }, "Chart item")} />
+                  {cur.template === "chart" && <input type="number" aria-label={`Item ${i + 1} value`} value={it.value} style={{ flex: 1, minWidth: 0 }}
+                    onChange={(e) => Number.isFinite(+e.target.value) && set({ items: (cur.items ?? []).map((x, k) => (k === i ? { ...x, value: +e.target.value } : x)) }, "Chart item")} />}
+                  <button className="btn xs ghost" aria-label={`Remove item ${i + 1}`} onClick={() => set({ items: (cur.items ?? []).filter((_, k) => k !== i) }, "Remove item")}>✕</button>
+                </div>))}
+              {(cur.items ?? []).length < 10 && <button className="btn xs ghost" style={{ justifySelf: "start" }}
+                onClick={() => set({ items: [...(cur.items ?? []), { label: cur.template === "chart" ? "New" : "New point", value: 0 }] }, "Add item")}>+ Add</button>}
+            </div>)}
+          {(cur.template === "chart" || cur.template === "ring") && (
+            <div className="insp-grid">
+              <label className="field">Numbers as<select aria-label="Number format" value={cur.format === "time" || !cur.format ? "number" : cur.format}
+                onChange={(e) => set({ format: e.target.value as Title["format"] }, "Number format")}>
+                <option value="number">1,250</option><option value="money">$1,250</option><option value="percent">45%</option></select></label>
+              {cur.template === "chart" ? <label className="field">Width <span className="dim">{Math.round((cur.w ?? 0.6) * 100)}%</span>
+                <input type="range" aria-label="Chart width" min={0.3} max={0.95} step={0.01} value={cur.w ?? 0.6} onChange={(e) => set({ w: +e.target.value }, "Chart width")} /></label>
+                : <span />}
+              {cur.template === "ring" && <>
+                <label className="field">From<input type="number" aria-label="Ring from" value={cur.count_from ?? 0}
+                  onChange={(e) => Number.isFinite(+e.target.value) && set({ count_from: +e.target.value }, "Ring value")} /></label>
+                <label className="field">To<input type="number" aria-label="Ring to" value={cur.count_to ?? 0}
+                  onChange={(e) => Number.isFinite(+e.target.value) && set({ count_to: +e.target.value }, "Ring value")} /></label>
+              </>}
+            </div>)}
+          {cur.template === "ring" && <div className="dim" style={{ fontSize: 11 }}>The ring fills to the % (or, for other numbers, up to the end value) while the number rolls up. The second line goes above the ring.</div>}
+          {cur.template === "progress" && (<>
+            <div className="row" style={{ gap: 4, flexWrap: "wrap" }}>
+              <button className="btn xs" onClick={() => set({ start: 0, duration: Math.max(0.5, timelineDuration(timeline)) }, "Progress bar: whole video")}>Whole video</button>
+              <button className={"btn xs" + ((cur.y ?? 0.97) > 0.5 ? " on" : "")} onClick={() => set({ y: 0.97 }, "Progress bar place")}>Bottom</button>
+              <button className={"btn xs" + ((cur.y ?? 0.97) <= 0.5 ? " on" : "")} onClick={() => set({ y: 0.03 }, "Progress bar place")}>Top</button>
+            </div>
+            <div className="dim" style={{ fontSize: 11 }}>Fills up as the video plays. Each marker (press M) becomes a chapter: a tick on the bar and its name above it while it plays.</div>
+          </>)}
+          {cur.template === "end_screen" && <div className="dim" style={{ fontSize: 11 }}>Leaves room for YouTube's end screen: two videos and the subscribe button. Add the real ones in YouTube Studio → Editor → End screen, over these boxes (an end screen lasts 5–20 s).</div>}
+          {!FREE_TEMPLATES.includes(cur.template) && !["tally", "list", "progress"].includes(cur.template) && <label className="field">{cur.template === "chapter" ? "Above (e.g. Part 2)" : cur.template === "count_card" ? "Detail"
+            : cur.template === "quote" ? "Who said it" : cur.template === "chart" ? "Source (small, optional)" : cur.template === "end_screen" ? "Under the circle" : "Second line"}
             <input type="text" value={cur.subtext} maxLength={100} aria-label="Title second line" onChange={(e) => set({ subtext: e.target.value }, "Title text")} /></label>}
           <div className="insp-grid">
             <label className="field">Starts at <span className="dim">{fmtTime(cur.start)}</span>
               <button className="btn xs" onClick={() => set({ start: playhead }, "Move title")}>Move to playhead</button></label>
-            <label className="field">Length (s)<input type="number" min={0.5} max={600} step={0.5} value={cur.duration} aria-label="Title length"
+            <label className="field">Length (s)<input type="number" min={0.5} max={cur.template === "progress" ? MAX_PROGRESS : 600} step={0.5} value={cur.duration} aria-label="Title length"
               onChange={(e) => Number.isFinite(+e.target.value) && set({ duration: +e.target.value }, "Title length")} /></label>
             <label className="field">Text colour<input type="color" value={cur.color} onChange={(e) => set({ color: e.target.value }, "Title colour")} /></label>
             <label className="field">Accent<input type="color" value={cur.accent} onChange={(e) => set({ accent: e.target.value }, "Title accent")} /></label>

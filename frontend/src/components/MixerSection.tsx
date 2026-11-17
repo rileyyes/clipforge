@@ -55,7 +55,7 @@ export default function MixerSection({ timeline, commit, audio, setAudio }: {
           <span className="mono dim" style={{ fontSize: 11, width: 92, flex: "none", whiteSpace: "nowrap", textAlign: "right" }}>{Math.round(fx * 100)}% · {fmtDb(fx)}</span>
         </div>
       </div>
-      {solo && <div className="chip warn" style={{ justifySelf: "start", fontSize: 11, whiteSpace: "normal", height: "auto", lineHeight: 1.35, padding: "3px 8px" }}>Solo is on: only solo tracks are heard, in the export too</div>}
+      {solo && <div className="chip warn" style={{ justifySelf: "start", fontSize: 11, whiteSpace: "normal", height: "auto", lineHeight: 1.35, padding: "3px 8px", borderRadius: 8 }}>Solo is on: only solo tracks are heard, in the export too</div>}
       {audio.normalize && <div className="dim" style={{ fontSize: 11 }}>“Normalise loudness” (Effects tab) is on, so the finished video is brought to that level overall; the mixer sets the balance between the tracks.</div>}
       <div className="dim" style={{ fontSize: 11 }}>Double-click a slider for 100 %.</div>
     </div>

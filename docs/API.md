@@ -99,6 +99,15 @@ Saving the timeline also takes an automatic checkpoint, at most every 10 minutes
 
 Effects, caption and audio settings are saved with `PUT /timeline` (`effects`, `captions`, `audio`). Project schema v3 (clips: `transition_in`, `fade_in`, `fade_out`; audio tracks: `role`). Older projects migrate automatically. Schema v6 (Phase 12) adds `timeline.markers: [{id, t, label, color}]` (max 500); `POST /publish/suggest` takes `chapters: "auto" | "markers"` to build chapters from them (409 if there are none). Schema v9 (Phase 20) adds audio tracks' `volume` (0–2, default 1) and `solo`, `audio.fx_volume` (0–2, the level of all sound effects and bleeps) and clips' `blend` (`normal`, `screen`, `multiply`, `overlay`, `lighten`, `darken`, `addition`, `difference`, `softlight`; used on video tracks above the base one).
 
+## Phase 21: multicam, auto colour, typed commands
+| Method | Path | Body | Description |
+|---|---|---|---|
+| POST | `/api/projects/{pid}/multicam` | `{angles: [{media_id, mic_media_id?, offset?, mic_offset?}] (2–4, [0] = main), mode: "speaker"\|"pace", wide?, min_shot, pace}` | job `multicam`: lines every camera/mic up with the main recording by sound (an `offset` skips that) and returns `{angles (with offset, confidence), switches: [{t, angle}], share}`. 409 when a camera without sound would need lining up, or (speaker mode) fewer than two cameras/mics have sound |
+| POST | `/api/projects/{pid}/color/auto` | `{media_ids, mode: "fix"\|"match", reference_media_id?}` | colour settings per recording (`results[media_id] = {color, before, after, changed}`), measured on frames from the edit; nothing is changed on the server |
+| POST | `/api/projects/{pid}/command/ai` | `{text, playhead}` | the local AI (Ollama, if running) rewrites a request as editor command lines (`{lines}`); 409 when there's no local AI. The Editor checks and runs the lines itself |
+
+Schema v10 adds `timeline.multicam` (`{main_media_id, angles: [{media_id, offset, mic_media_id, mic_offset, label}], mode, wide, min_shot, pace, switches}`; media in it can't be deleted while it's on), title templates `chart`, `ring`, `list`, `progress`, `quote`, `end_screen`, title `items: [{label, value}]` (max 10) and format `percent`. A progress bar may last up to 4 hours (other titles 600 s).
+
 ## Thumbnail Maker (`/api/projects/{pid}/thumbnails`)
 | Method | Path | Description |
 |---|---|---|

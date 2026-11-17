@@ -198,6 +198,26 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 21: multicam, motion graphics, auto colour, edit by typing
+
+| # | Do this | You should see |
+|---|---|---|
+| 21.1 | Editor → **AI** tab (or press **/**) → type `add a zoom at 0:05; music to 30%` → Enter | Both happen; the log shows ✓ lines. **Ctrl+Z** (outside the box) takes both back |
+| 21.2 | Try `cut 0:10 to 0:20`, `add a bar chart`, `add a marker "Intro" at 0:00`, `go to 1:00`, `mute A2` | Each does what it says. **Examples** shows more |
+| 21.3 | Type something it doesn't know (`make it pop`) | Without Ollama: "I don't know … yet" and the examples. With Ollama running: it's turned into commands (shown as "AI: …") |
+| 21.4 | Two cameras of the same conversation (e.g. phone + webcam, both with sound), the main one's edit on V1 → AI tab → **Multicam** → Cam 1 = main, Cam 2 = the other (and each person's mic if you have separate ones) → **Line up & switch** | After a moment V1 is cut into shots of both cameras, following who talks; the share line shows how much each camera got. Play it: lips match the voice on both cameras |
+| 21.5 | Select a shot on V1 → click another **Cam** button | That shot changes camera |
+| 21.6 | **Match colours to Cam 1** | Cam 2's shots get colour settings that look like Cam 1 |
+| 21.7 | Switch to **at a steady pace**, set about every 5 s → **Redo the switching** | Cuts roughly every 5 s, at pauses. **Back to one camera** puts the main one back everywhere |
+| 21.8 | Select a dark or blue-ish clip → Clip tab → Colour → **Auto fix** | The sliders move and the picture looks normal; every clip of that file changes; your look stays |
+| 21.9 | Text tab → **Bar chart** → type names and numbers | Bars grow one after another with numbers rolling up |
+| 21.10 | **Percent ring**, **List reveal**, **Quote card** | The ring fills to the % while the number rolls; points appear one by one; the quote fades in line by line |
+| 21.11 | Add markers (M), then **Progress bar** | A bar along the bottom fills as the video plays, with a tick at each marker and the chapter name above it |
+| 21.12 | **End screen** | Covers the last 20 s with room for two videos and the subscribe button (add the real ones in YouTube Studio) |
+| 21.13 | Export | Camera switches, colours and graphics are all in the video |
+
+**Notes:** multicam goes by loudness: a mic that also hears game sound or music counts it as talking, so separate mics work best. A camera with no sound can't be lined up automatically. Auto colour's white balance assumes the scene is neutral on average, so it only takes most of a cast away.
+
 ## Phase 20: sound mixer and blend modes
 
 | # | Do this | You should see |

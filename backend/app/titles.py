@@ -11,7 +11,8 @@ import re
 from typing import Optional
 
 TEMPLATES = ("lower_third", "big_title", "top_banner", "subscribe", "chapter", "pop_text", "arrow", "circle", "box",
-             "count_card", "tally", "number_card", "sticker", "ticker", "stamp", "route", "highlight")
+             "count_card", "tally", "number_card", "sticker", "ticker", "stamp", "route", "highlight",
+             "chart", "ring", "list", "progress", "quote", "end_screen")
 SHAPES = ("arrow", "circle", "box")
 FREE = ("pop_text", "sticker", "ticker", *SHAPES)   # placed anywhere (x, y), rotated, animated
 STICKER_FONT = "emoji"                         # fontlib id of the sticker font (Noto Emoji)
@@ -137,6 +138,8 @@ def events(t: dict, W: int, H: int, m: Measure) -> list[str]:
         out += _route(t, W, H, k, a, b)
     elif t["template"] == "highlight":
         out += _highlight(t, W, H, k, span)
+    elif t["template"] in MOTION:
+        out += MOTION[t["template"]](t, W, H, k, m)
     elif t["template"] == "count_card":
         out += _count_card(t, W, H, k, m, span, fad)
     elif t["template"] == "tally":
@@ -297,7 +300,7 @@ def ticker_text(v: float, t: dict) -> str:
         return f"{sign}{h}:{m:02d}:{sec:02d}" if h else f"{sign}{m}:{sec:02d}"
     n = int(round(v))
     body = f"{abs(n):,}"
-    return ("-" if n < 0 else "") + ("$" if fmt == "money" else "") + body
+    return ("-" if n < 0 else "") + ("$" if fmt == "money" else "") + body + ("%" if fmt == "percent" else "")
 
 
 def ticker_steps(t: dict) -> list[tuple[float, str]]:
@@ -523,6 +526,327 @@ def _tally(t: dict, W: int, H: int, k: float, m: Measure, span: str) -> list[str
         out.append(f"Dialogue: 1,{span},T,,0,0,0,,{{\\an{an}\\pos({x:.0f},{y:.0f})\\fad(0,{int(OUT * 1000)})\\alpha&HFF&"
                    f"\\t({t0},{t0 + 180},\\alpha&H00&)\\fs{fs}\\b1\\c{_c(col)}\\bord0\\shad{2 * k:.1f}}}{label}")
     return out
+
+
+# ---------------------------------------------------------------- Phase 21: motion graphics
+# The animation rules below are shared with the Editor preview (frontend/src/timeline/phase21.ts)
+# and checked against tests/data/motion_vectors.json.
+BAR_GROW, BAR_DELAY, BAR_STAGGER, BAR_ACCEL = 0.6, 0.25, 0.12, 0.4
+RING_DELAY, RING_GROW, RING_STEPS = 0.2, 1.0, 30
+STEP = 1 / 15                  # rolling numbers change 15 times a second
+
+
+def bar_grow(tt: float, i: int) -> float:
+    """How far bar i has grown tt seconds into the chart (0..1). Same curve as libass's
+    \\t with an acceleration below 1: fast, then settling."""
+    p = min(1.0, max(0.0, (tt - BAR_DELAY - i * BAR_STAGGER) / BAR_GROW))
+    return p ** BAR_ACCEL
+
+
+def decimals(values: list[float]) -> int:
+    """Decimals to show: as many as the data has (at most 2)."""
+    d = 0
+    for v in values:
+        for k in (0, 1, 2):
+            if abs(round(v, k) - v) < 1e-9:
+                d = max(d, k)
+                break
+        else:
+            d = 2
+    return d
+
+
+def fmt_value(v: float, fmt: str, dec: int = 0) -> str:
+    """1,250 / $1,250 / 45% (a chart's or ring's number)."""
+    n = round(v, dec)
+    body = f"{abs(n):,.{dec}f}"
+    sign = "-" if n < 0 and abs(n) > 0 else ""
+    if fmt == "money":
+        return f"{sign}${body}"
+    if fmt == "percent":
+        return f"{sign}{body}%"
+    return f"{sign}{body}"
+
+
+def ring_progress(tt: float) -> float:
+    p = min(1.0, max(0.0, (tt - RING_DELAY) / RING_GROW))
+    return 1 - (1 - p) ** 3
+
+
+def ring_value(tt: float, t: dict) -> float:
+    frm, to = float(t.get("count_from", 0)), float(t.get("count_to", 0))
+    return frm + (to - frm) * ring_progress(tt)
+
+
+def ring_fraction(v: float, t: dict) -> float:
+    """How much of the ring is filled: the % for percentages, else the share of the end value."""
+    if t.get("format") == "percent":
+        return min(1.0, max(0.0, v / 100))
+    to = float(t.get("count_to", 0))
+    return min(1.0, max(0.0, v / to)) if to > 0 else 0.0
+
+
+def list_delay(i: int, n: int, dur: float) -> float:
+    """When point i of n appears (seconds into the list)."""
+    step = min(0.6, max(0.15, dur * 0.5 / max(1, n)))
+    return 0.35 + i * step
+
+
+def _fit(m: Measure, text: str, size: int, width: float) -> str:
+    """Cut text to fit a width (with …)."""
+    if m.width(text, size) <= width:
+        return text
+    while text and m.width(text + "…", size) > width:
+        text = text[:-1]
+    return text + "…"
+
+
+def _wrap(m: Measure, text: str, size: int, width: float) -> list[str]:
+    lines: list[str] = []
+    for word in text.split():
+        if lines and m.width(lines[-1] + " " + word, size) <= width:
+            lines[-1] += " " + word
+        else:
+            lines.append(word)
+    return lines or [""]
+
+
+def _dlg(layer: int, a: float, b: float, tags: str, body: str) -> str:
+    return f"Dialogue: {layer},{_t(a)},{_t(b)},T,,0,0,0,,{{{tags}}}{body}"
+
+
+def _steps(a: float, b: float, t0: float, t1: float, value_at) -> list[tuple[float, float, str]]:
+    """(from, to, text) for a rolling number between t0 and t1 (seconds into the title), held after."""
+    out: list[tuple[float, float, str]] = []
+    n = max(1, int(round((t1 - t0) / STEP)))
+    times = [0.0] + [t0 + i * (t1 - t0) / n for i in range(1, n + 1)]
+    for i, tt in enumerate(times):
+        txt = value_at(tt)
+        s0 = a + tt
+        s1 = a + times[i + 1] if i + 1 < len(times) else b
+        if out and out[-1][2] == txt:
+            out[-1] = (out[-1][0], s1, txt)
+        elif s1 - s0 > 0.004:
+            out.append((s0, s1, txt))
+    return out
+
+
+def _chart(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    """Animated bar chart: a heading and up to 10 bars growing one after another, each with
+    its number rolling up at the end of the bar."""
+    a, b = t["start"], t["start"] + t["duration"]
+    items = [(it["label"], float(it["value"])) for it in t.get("items", [])][:10] or [("", 0.0)]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    fmt = t.get("format", "number")
+    fmt = "number" if fmt == "time" else fmt
+    vmax = max([abs(v) for _, v in items] + [1e-9])
+    fh, fl, ss = int(52 * k), int(34 * k), int(28 * k)
+    pad, rh, bt = 32 * k, 58 * k, 36 * k
+    head = _esc(t.get("text", ""))
+    sub = _esc(t.get("subtext") or "")
+    BW = float(t.get("w", 0.6)) * W
+    lw = min(max(m.width(_esc(lb), fl) for lb, _ in items) + 4 * k, BW * 0.35)
+    vw = max(m.width(fmt_value(v, fmt, decimals([v])), fl) for _, v in items) + 16 * k
+    L = max(20 * k, BW - 2 * pad - lw - 16 * k - vw)
+    head_h = fh * 1.5 if head else 0
+    BH = pad + head_h + len(items) * rh + (ss * 1.6 if sub else 0) + pad * 0.6
+    x0, y0 = float(t.get("x", 0.5)) * W - BW / 2, float(t.get("y", 0.5)) * H - BH / 2
+    fad = f"\\fad(200,{int(OUT * 1000)})"
+    out = [_dlg(0, a, b, f"\\an7\\pos({x0:.0f},{y0:.0f}){fad}\\p1\\c{_c('#000000')}\\alpha&H50&\\bord0\\shad0", _rounded(BW, BH, 14 * k))]
+    if head:
+        out.append(_dlg(2, a, b, f"\\an7\\pos({x0 + pad:.0f},{y0 + pad * 0.8:.0f}){fad}\\fs{fh}\\b1\\c{_c(col)}\\bord0\\shad0", head))
+    bx = x0 + pad + lw + 16 * k
+    for i, (label, v) in enumerate(items):
+        ry = y0 + pad + head_h + i * rh
+        cy = ry + rh / 2
+        out.append(_dlg(2, a, b, f"\\an6\\pos({x0 + pad + lw:.0f},{cy:.0f}){fad}\\fs{fl}\\b0\\c{_c(col)}\\bord0\\shad0",
+                        _fit(m, _esc(label), fl, lw)))
+        length = L * max(0.0, v) / vmax
+        d0 = int((BAR_DELAY + i * BAR_STAGGER) * 1000)
+        d1 = d0 + int(BAR_GROW * 1000)
+        if length >= 1:
+            top, bot = cy - bt / 2 - 2, cy + bt / 2 + 2
+            clip0, clip1 = f"\\clip({bx:.0f},{top:.0f},{bx + 1:.0f},{bot:.0f})", f"\\clip({bx:.0f},{top:.0f},{bx + length + 1:.0f},{bot:.0f})"
+            out.append(_dlg(1, a, b, f"\\an7\\pos({bx:.0f},{cy - bt / 2:.0f}){fad}\\p1\\c{_c(acc)}\\bord0\\shad0{clip0}"
+                                     f"\\t({d0},{d1},{BAR_ACCEL},{clip1})", _rounded(length, bt, 6 * k)))
+        t1 = BAR_DELAY + i * BAR_STAGGER + BAR_GROW
+        for s0, s1, txt in _steps(a, b, t1 - BAR_GROW, t1, lambda tt, i=i, v=v: fmt_value(v * bar_grow(tt, i), fmt, decimals([v]))):
+            last = s1 >= b - 1e-6
+            fd = f"\\fad(0,{int(OUT * 1000)})" if last else ""
+            out.append(_dlg(2, s0, s1, f"\\an4\\pos({bx + length + 12 * k:.0f},{cy:.0f}){fd}\\fs{fl}\\b1\\c{_c(col)}\\bord0\\shad0", txt))
+    if sub:
+        out.append(_dlg(2, a, b, f"\\an1\\pos({x0 + pad:.0f},{y0 + BH - pad * 0.6:.0f}){fad}\\fs{ss}\\b0\\c{_c(col)}\\alpha&H60&\\bord0\\shad0", sub))
+    return out
+
+
+def _sector(cx: float, cy: float, r0: float, r1: float, f: float) -> str:
+    """Filled ring piece from 12 o'clock clockwise, f of the way round."""
+    import math
+    n = max(2, int(64 * f) + 1)
+    angs = [-math.pi / 2 + 2 * math.pi * f * i / (n - 1) for i in range(n)]
+    outer = [(cx + r1 * math.cos(q), cy + r1 * math.sin(q)) for q in angs]
+    inner = [(cx + r0 * math.cos(q), cy + r0 * math.sin(q)) for q in reversed(angs)]
+    pts = outer + inner
+    return f"m {pts[0][0]:.1f} {pts[0][1]:.1f} l " + " ".join(f"{x:.1f} {y:.1f}" for x, y in pts[1:])
+
+
+def _ring(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    """Percent ring: a ring fills up while the number in the middle rolls up."""
+    a, b = t["start"], t["start"] + t["duration"]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    fmt = t.get("format", "percent")
+    fmt = "number" if fmt == "time" else fmt
+    dec = decimals([float(t.get("count_from", 0)), float(t.get("count_to", 0))])
+    cx, cy = float(t.get("x", 0.5)) * W, float(t.get("y", 0.5)) * H
+    R, th = 150 * k, 26 * k
+    fad = f"\\fad(200,{int(OUT * 1000)})"
+    pop = "\\fscx60\\fscy60\\t(0,200,\\fscx104\\fscy104)\\t(200,300,\\fscx100\\fscy100)"
+    out = [_dlg(0, a, b, f"\\an7\\pos(0,0){fad}\\p1\\c{_c('#000000')}\\alpha&H60&\\bord0\\shad0", _sector(cx, cy, 0, R + th * 0.9, 1.0)),
+           _dlg(1, a, b, f"\\an7\\pos(0,0){fad}\\p1\\c{_c(col)}\\alpha&HB0&\\bord0\\shad0", _sector(cx, cy, R - th / 2, R + th / 2, 1.0))]
+    frames = [RING_DELAY + RING_GROW * i / RING_STEPS for i in range(RING_STEPS + 1)]
+    for i, tt in enumerate(frames):
+        f = ring_fraction(ring_value(tt, t), t)
+        s0 = a + tt
+        s1 = a + frames[i + 1] if i + 1 < len(frames) else b
+        if f <= 0.002 or s1 - s0 < 0.004:
+            continue
+        fd = f"\\fad(0,{int(OUT * 1000)})" if i == RING_STEPS else ""
+        out.append(_dlg(2, s0, s1, f"\\an7\\pos(0,0){fd}\\p1\\c{_c(acc)}\\bord0\\shad0", _sector(cx, cy, R - th / 2, R + th / 2, f)))
+    fs = int(96 * k)
+    for s0, s1, txt in _steps(a, b, RING_DELAY, RING_DELAY + RING_GROW, lambda tt: fmt_value(ring_value(tt, t), fmt, dec)):
+        last = s1 >= b - 1e-6
+        fd = (f"\\fad(0,{int(OUT * 1000)})" if last else "") + ("\\fad(200,0)" if s0 <= a + 1e-6 and not last else "")
+        out.append(_dlg(3, s0, s1, f"\\an5\\pos({cx:.0f},{cy:.0f}){fd}\\fs{fs}\\b1\\c{_c(col)}\\bord0\\shad0", txt))
+    if t.get("text"):
+        out.append(_dlg(3, a, b, f"\\an8\\pos({cx:.0f},{cy + R + th + 18 * k:.0f}){fad}{pop}\\fs{int(44 * k)}\\b1\\c{_c(col)}"
+                                 f"\\3c{_c('#000000')}\\bord{3 * k:.1f}\\shad0", _esc(t["text"])))
+    if t.get("subtext"):
+        out.append(_dlg(3, a, b, f"\\an2\\pos({cx:.0f},{cy - R - th - 14 * k:.0f}){fad}\\fs{int(34 * k)}\\b1\\c{_c(acc)}"
+                                 f"\\3c{_c('#000000')}\\bord{3 * k:.1f}\\shad0", _esc(t["subtext"])))
+    return out
+
+
+def _list(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    """Points revealed one by one (numbered), under a heading."""
+    a, b = t["start"], t["start"] + t["duration"]
+    items = [_esc(it["label"]) for it in t.get("items", []) if it.get("label")][:10] or ["…"]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    head = _esc(t.get("text", ""))
+    fh, fi = int(60 * k), int(44 * k)
+    n = len(items)
+    rh = fi * 1.55
+    badge = fi * 1.15
+    BW = max([m.width(x, fi) for x in items] + [m.width(head, fh)]) + badge + 24 * k
+    BW = min(BW, W * 0.9)
+    BH = (fh * 1.5 if head else 0) + n * rh
+    x0, y0 = float(t.get("x", 0.5)) * W - BW / 2, float(t.get("y", 0.5)) * H - BH / 2
+    fad = f"\\fad(200,{int(OUT * 1000)})"
+    out = []
+    if head:
+        out.append(_dlg(2, a, b, f"\\an7\\pos({x0:.0f},{y0:.0f}){fad}\\fs{fh}\\b1\\c{_c(col)}\\3c{_c('#000000')}\\bord{4 * k:.1f}\\shad{3 * k:.1f}", head))
+    top = y0 + (fh * 1.5 if head else 0)
+    for i, label in enumerate(items):
+        d = int(list_delay(i, n, float(t["duration"])) * 1000)
+        cy = top + i * rh + rh / 2
+        hide = f"\\alpha&HFF&\\t({d},{d + 250},\\alpha&H00&)"
+        mv = lambda px, py: f"\\move({px - 40 * k:.0f},{py:.0f},{px:.0f},{py:.0f},{d},{d + 250})"  # noqa: E731
+        out.append(_dlg(1, a, b, f"\\an7{mv(x0, cy - badge / 2)}\\fad(0,{int(OUT * 1000)}){hide}\\p1\\c{_c(acc)}\\bord0\\shad{2 * k:.1f}",
+                        _rounded(badge, badge, 10 * k)))
+        out.append(_dlg(2, a, b, f"\\an5{mv(x0 + badge / 2, cy)}\\fad(0,{int(OUT * 1000)}){hide}\\fs{int(fi * 0.8)}\\b1\\c{_c('#ffffff')}\\bord0\\shad0", str(i + 1)))
+        out.append(_dlg(2, a, b, f"\\an4{mv(x0 + badge + 20 * k, cy)}\\fad(0,{int(OUT * 1000)}){hide}\\fs{fi}\\b1\\c{_c(col)}"
+                                 f"\\3c{_c('#000000')}\\bord{3 * k:.1f}\\shad{2 * k:.1f}", label))
+    return out
+
+
+def _progress(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    """A progress bar along the bottom (or top) filling up over the title's time, with a tick at
+    each chapter (marker) and the current chapter's name above it."""
+    a, b = t["start"], t["start"] + t["duration"]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    y = float(t.get("y", 0.97)) * H
+    mx = W * 0.03
+    bw, bh = W - 2 * mx, max(4.0, 10 * k)
+    top = y - bh / 2
+    dur = float(t["duration"])
+    out = [_dlg(0, a, b, f"\\an7\\pos({mx:.0f},{top:.0f})\\fad(300,{int(OUT * 1000)})\\p1\\c{_c('#ffffff')}\\alpha&HA0&\\bord0\\shad0",
+                _rect(bw, bh)),
+           _dlg(1, a, b, f"\\an7\\pos({mx:.0f},{top:.0f})\\fad(300,{int(OUT * 1000)})\\p1\\c{_c(acc)}\\bord0\\shad0"
+                         f"\\clip({mx:.0f},{top - 2:.0f},{mx + 1:.0f},{top + bh + 2:.0f})\\t(0,{int(dur * 1000)},\\clip({mx:.0f},{top - 2:.0f},{mx + bw:.0f},{top + bh + 2:.0f}))",
+                _rect(bw, bh))]
+    chapters = [(float(c[0]), str(c[1])) for c in t.get("_chapters", []) if a <= float(c[0]) < b]
+    fs = int(30 * k)
+    for i, (ct, label) in enumerate(chapters):
+        xx = mx + bw * (ct - a) / dur
+        if ct > a + 0.05:
+            out.append(_dlg(2, a, b, f"\\an8\\pos({xx:.0f},{top - 1:.0f})\\fad(300,{int(OUT * 1000)})\\p1\\c{_c('#000000')}\\bord0\\shad0",
+                            _rect(max(2.0, 4 * k), bh + 2)))
+        end = chapters[i + 1][0] if i + 1 < len(chapters) else b
+        if label.strip() and end - ct > 0.3:
+            out.append(_dlg(2, ct, end, f"\\an1\\pos({mx:.0f},{top - 8 * k:.0f})\\fad(200,200)\\fs{fs}\\b1\\c{_c(col)}"
+                                        f"\\3c{_c('#000000')}\\bord{3 * k:.1f}\\shad0", _esc(label)[:60]))
+    return out
+
+
+def _quote(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    """Quote card: a big quotation mark, the words appearing line by line, and who said it."""
+    a, b = t["start"], t["start"] + t["duration"]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    fq, ft, fs = int(200 * k), int(58 * k), int(38 * k)
+    BW = W * 0.76
+    pad = 56 * k
+    lines = _wrap(m, _esc(t.get("text", "")), ft, BW - 2 * pad)
+    sub = _esc(t.get("subtext") or "")
+    BH = pad * 1.6 + len(lines) * ft * 1.3 + (fs * 1.8 if sub else 0) + pad * 0.6
+    cx, cy = float(t.get("x", 0.5)) * W, float(t.get("y", 0.5)) * H
+    x0, y0 = cx - BW / 2, cy - BH / 2
+    fad = f"\\fad(250,{int(OUT * 1000)})"
+    out = [_dlg(0, a, b, f"\\an7\\pos({x0:.0f},{y0:.0f}){fad}\\p1\\c{_c('#000000')}\\alpha&H38&\\bord0\\shad{4 * k:.1f}", _rounded(BW, BH, 18 * k)),
+           _dlg(1, a, b, f"\\an7\\pos({x0 + pad * 0.5:.0f},{y0 - fq * 0.25:.0f}){fad}\\fs{fq}\\b1\\c{_c(acc)}\\bord0\\shad0", "\u201c")]
+    per = min(0.5, max(0.15, float(t["duration"]) * 0.35 / max(1, len(lines))))
+    for i, ln in enumerate(lines):
+        d = int((0.3 + i * per) * 1000)
+        out.append(_dlg(2, a, b, f"\\an7\\pos({x0 + pad:.0f},{y0 + pad * 1.6 + i * ft * 1.3:.0f})\\fad(0,{int(OUT * 1000)})"
+                                 f"\\alpha&HFF&\\t({d},{d + 300},\\alpha&H00&)\\fs{ft}\\b1\\c{_c(col)}\\bord0\\shad0", ln))
+    if sub:
+        d = int((0.3 + len(lines) * per) * 1000)
+        out.append(_dlg(2, a, b, f"\\an9\\pos({x0 + BW - pad:.0f},{y0 + pad * 1.6 + len(lines) * ft * 1.3 + fs * 0.4:.0f})"
+                                 f"\\fad(0,{int(OUT * 1000)})\\alpha&HFF&\\t({d},{d + 300},\\alpha&H00&)\\fs{fs}\\b0\\c{_c(acc)}\\bord0\\shad0", f"— {sub}"))
+    return out
+
+
+def end_screen_boxes(W: int, H: int) -> dict:
+    """Where the end screen leaves room for YouTube's own end-screen elements (two videos and
+    the subscribe button): boxes as (x, y, w, h), circle as (cx, cy, r). Same in the preview."""
+    vw = W * 0.34
+    vh = vw * 9 / 16
+    return {"videos": [(W * 0.31 - vw / 2, H * 0.47 - vh / 2, vw, vh), (W * 0.69 - vw / 2, H * 0.47 - vh / 2, vw, vh)],
+            "subscribe": (W * 0.5, H * 0.82, H * 0.075)}
+
+
+def _end_screen(t: dict, W: int, H: int, k: float, m: Measure) -> list[str]:
+    a, b = t["start"], t["start"] + t["duration"]
+    col, acc = t.get("color", "#ffffff"), t.get("accent", "#ff5a3c")
+    lay = end_screen_boxes(W, H)
+    out = [_dlg(0, a, b, f"\\an7\\pos(0,0)\\fad(400,{int(OUT * 1000)})\\p1\\c{_c('#000000')}\\alpha&H70&\\bord0\\shad0", _rect(W, H))]
+    head = _esc(t.get("text", "") or "WATCH NEXT")
+    out.append(_dlg(2, a, b, f"\\an8\\pos({W / 2:.0f},{H * 0.1:.0f})\\fad(300,{int(OUT * 1000)})\\fs{int(70 * k)}\\b1\\c{_c(col)}"
+                             f"\\3c{_c('#000000')}\\bord{4 * k:.1f}\\shad{3 * k:.1f}", head))
+    for i, (x, y, w, h) in enumerate(lay["videos"]):
+        d = 250 + i * 150
+        pop = f"\\1a&HFF&\\3a&HFF&\\t({d},{d + 250},\\1a&H60&\\3a&H00&)"
+        out.append(_dlg(1, a, b, f"\\an7\\pos({x:.0f},{y:.0f})\\fad(0,{int(OUT * 1000)})\\p1\\c{_c('#000000')}{pop}"
+                                 f"\\3c{_c(acc)}\\bord{max(2.0, 6 * k):.1f}\\shad0", _rounded(w, h, 12 * k)))
+    cx, cy, r = lay["subscribe"]
+    d = 550
+    out.append(_dlg(1, a, b, f"\\an7\\pos(0,0)\\fad(0,{int(OUT * 1000)})\\p1\\c{_c('#000000')}\\1a&HFF&\\3a&HFF&\\t({d},{d + 250},\\1a&H60&\\3a&H00&)"
+                             f"\\3c{_c(col)}\\bord{max(2.0, 5 * k):.1f}\\shad0", _disc(cx, cy, r)))
+    if t.get("subtext"):
+        out.append(_dlg(2, a, b, f"\\an8\\pos({cx:.0f},{cy + r + 14 * k:.0f})\\fad(0,{int(OUT * 1000)})\\alpha&HFF&\\t({d},{d + 250},\\alpha&H00&)"
+                                 f"\\fs{int(34 * k)}\\b1\\c{_c(col)}\\bord{3 * k:.1f}\\3c{_c('#000000')}\\shad0", _esc(t["subtext"])))
+    return out
+
+
+MOTION = {"chart": _chart, "ring": _ring, "list": _list, "progress": _progress, "quote": _quote, "end_screen": _end_screen}
 
 
 _BORD = re.compile(r"\\bord[0-9.]+")

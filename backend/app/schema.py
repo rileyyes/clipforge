@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .storage import ID_RE
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 EPS = 1e-3  # 1 ms tolerance for float comparisons
 MIN_CLIP_DURATION = 0.04  # ~1 frame at 25 fps
 
@@ -253,13 +253,15 @@ class Title(Strict):
     """A text graphic on the timeline (timeline seconds; drawn above video and captions)."""
     id: str
     start: float = Field(ge=0, le=86400)
-    duration: float = Field(default=4.0, ge=0.5, le=600)
+    duration: float = Field(default=4.0, ge=0.5, le=14400)   # up to 600 s, except a progress bar (whole video)
     template: Literal["lower_third", "big_title", "top_banner", "subscribe", "chapter",
                       "pop_text", "arrow", "circle", "box",
                       # Phase 18
                       "count_card", "tally", "number_card", "sticker",
                       # Phase 19
-                      "ticker", "stamp", "route", "highlight"] = "lower_third"
+                      "ticker", "stamp", "route", "highlight",
+                      # Phase 21: motion graphics
+                      "chart", "ring", "list", "progress", "quote", "end_screen"] = "lower_third"
     text: str = Field(default="Your name", max_length=80)
     subtext: str = Field(default="", max_length=100)
     color: str = Field(default="#ffffff", pattern=COLOR_HEX)
@@ -282,10 +284,12 @@ class Title(Strict):
     # Phase 19
     count_from: float = Field(default=60, ge=-1e9, le=1e9)        # ticker: value at the start...
     count_to: float = Field(default=0, ge=-1e9, le=1e9)           # ...and at the end of the title
-    format: Literal["time", "money", "number"] = "time"           # ticker: 1:05 / $1,250 / 1,250
+    format: Literal["time", "money", "number", "percent"] = "time"   # ticker / chart / ring: 1:05 / $1,250 / 1,250 / 45%
     points: list[tuple[float, float]] = Field(default_factory=list, max_length=20)   # route (frame fractions)
     w: float = Field(default=0.4, ge=0.01, le=1)                  # highlight: box size (fractions)
     h: float = Field(default=0.08, ge=0.01, le=1)
+    # Phase 21: bar chart rows / list points (label, value)
+    items: list["TitleItem"] = Field(default_factory=list, max_length=10)
 
     @field_validator("id")
     @classmethod
@@ -300,11 +304,22 @@ class Title(Strict):
                 raise ValueError("route points must be inside the frame (0-1)")
         return [(round(float(x), 5), round(float(y), 5)) for x, y in v]
 
+    @model_validator(mode="after")
+    def _v_long(self):
+        if self.duration > 600 and self.template != "progress":
+            raise ValueError("titles last at most 600 s (a progress bar can span the whole video)")
+        return self
+
     @field_validator("template", mode="before")
     @classmethod
     def _v_old_names(cls, v):
         # the callout card was saved as "death_card" for a short while in Phase 18
         return "count_card" if v == "death_card" else v
+
+
+class TitleItem(Strict):
+    label: str = Field(default="", max_length=40)
+    value: float = Field(default=0, ge=-1e9, le=1e9)
 
 
 class BlurKey(Strict):
@@ -362,6 +377,7 @@ class Timeline(Strict):
     markers: list[Marker] = Field(default_factory=list, max_length=500)
     counters: list["Counter"] = Field(default_factory=list, max_length=4)   # Phase 18
     name_tags: "NameTags" = Field(default_factory=lambda: NameTags())        # Phase 18
+    multicam: Optional["Multicam"] = None                                     # Phase 21
 
     @property
     def duration(self) -> float:
@@ -541,6 +557,54 @@ class Counter(Strict):
         return _check_id(v)
 
 
+class MulticamAngle(Strict):
+    media_id: str
+    offset: float = Field(default=0, ge=-86400, le=86400)       # camera time = main time + offset
+    mic_media_id: Optional[str] = None                           # this person's own mic (speaker mode)
+    mic_offset: float = Field(default=0, ge=-86400, le=86400)
+    label: str = Field(default="", max_length=40)
+
+    @field_validator("media_id", "mic_media_id")
+    @classmethod
+    def _v_ids(cls, v):
+        return v if v is None else _check_id(v)
+
+
+class MulticamSwitch(Strict):
+    t: float = Field(ge=0, le=86400)                             # main recording time
+    angle: int = Field(ge=0, le=3)
+
+
+class Multicam(Strict):
+    """Phase 21: several cameras of the same moment. Angle 0 is the main recording (the one
+    the edit on V1 uses); ``switches`` say which camera shows from each time on."""
+    main_media_id: str
+    angles: list[MulticamAngle] = Field(min_length=2, max_length=4)
+    mode: Literal["speaker", "pace"] = "speaker"
+    wide: Optional[int] = Field(default=None, ge=0, le=3)
+    min_shot: float = Field(default=2.0, ge=0.5, le=20)
+    pace: float = Field(default=5.0, ge=1, le=60)
+    switches: list[MulticamSwitch] = Field(default_factory=list, max_length=20000)
+
+    @field_validator("main_media_id")
+    @classmethod
+    def _v_main(cls, v):
+        return _check_id(v)
+
+    @model_validator(mode="after")
+    def _v_refs(self):
+        n = len(self.angles)
+        if self.angles[0].media_id != self.main_media_id:
+            raise ValueError("angle 0 must be the main recording")
+        if self.wide is not None and self.wide >= n:
+            raise ValueError("wide camera out of range")
+        if any(s.angle >= n for s in self.switches):
+            raise ValueError("switch to a camera that isn't there")
+        if any(b.t < a.t for a, b in zip(self.switches, self.switches[1:])):
+            raise ValueError("switches out of order")
+        return self
+
+
 class NameTags(Strict):
     """Phase 18: names of the people talking (one per audio track with a tag), like a voice
     chat overlay. The one whose track is talking lights up."""
@@ -593,6 +657,16 @@ def validate_timeline(project: Project) -> None:
             raise ValueError("the face cam needs a video file")
         if fc.media_id == fc.main_media_id:
             raise ValueError("the face cam must be a different recording from the main one")
+    mc = project.timeline.multicam
+    if mc is not None:
+        for a in mc.angles:
+            cam = media.get(a.media_id)
+            if cam is None or (a.mic_media_id and a.mic_media_id not in media):
+                raise ValueError("multicam references unknown media")
+            if not cam.has_video:
+                raise ValueError("every multicam camera needs a picture")
+        if len({a.media_id for a in mc.angles}) != len(mc.angles):
+            raise ValueError("the same camera is in the multicam twice")
     eids: set[str] = set()
     for e in project.effects:
         if e.id in eids:
@@ -692,6 +766,8 @@ def migrate(data: dict) -> dict:
         data = {**data, "schema_version": 8}
     if data.get("schema_version", 8) < 9:  # v8 -> v9: mixer (track volume/solo, effects level), blend modes (defaulted)
         data = {**data, "schema_version": 9}
+    if data.get("schema_version", 9) < 10:  # v9 -> v10: multicam, motion-graphics titles (defaulted)
+        data = {**data, "schema_version": 10}
     return data
 
 

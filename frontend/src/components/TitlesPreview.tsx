@@ -2,6 +2,9 @@ import React from "react";
 import { fontCss } from "../fonts";
 import { FREE_TEMPLATES, type Title } from "../timeline/types";
 import { routePart, routeProgress, routeDrawTime, tickerAt, tickerHot } from "../timeline/phase19";
+import { BAR_DELAY, BAR_GROW, BAR_STAGGER, barGrow, decimals, endScreenBoxes, fmtValue, listDelay, RING_DELAY, RING_GROW, ringDrawTime,
+  ringFraction, ringValue, rollingTime } from "../timeline/phase21";
+import type { Marker } from "../timeline/types";
 
 /** CSS versions of the title templates for the monitor (export: backend/app/titles.py, libass).
  *  Same sizes (relative to the output height), positions and in/out timing. */
@@ -23,8 +26,10 @@ export function styleCss(x: Title, s: number, k: number): React.CSSProperties {
 
 export interface TallyInfo { entries: [string, string][]; total: number }
 
-export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove, tally }: {
+export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove, tally, markers = [] }: {
   titles: Title[]; t: number; k: number; W: number; H: number; ox: number; oy: number;
+  /** chapters for a progress bar (Phase 21) */
+  markers?: Marker[];
   /** what a tally screen lists (callout cards before it, total) */
   tally?: (x: Title) => TallyInfo;
   /** the selected title; pop-up words and shapes can then be dragged into place */
@@ -35,7 +40,8 @@ export default function TitlesPreview({ titles, t, k, W, H, ox, oy, sel, onMove,
   return <>{on.map((x) => FREE_TEMPLATES.includes(x.template)
     ? <Free key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy} selected={sel === x.id} onMove={onMove} />
     : <One key={x.id} x={x} t={Math.max(0, t - x.start)} k={k} W={W} H={H} ox={ox} oy={oy}
-        cardN={x.template === "count_card" ? cardNumber(titles, x) : 0} tally={x.template === "tally" ? tally?.(x) : undefined} />)}</>;
+        cardN={x.template === "count_card" ? cardNumber(titles, x) : 0} tally={x.template === "tally" ? tally?.(x) : undefined}
+        markers={x.template === "progress" ? markers : undefined} abs={t} />)}</>;
 }
 
 function cardNumber(all: Title[], x: Title): number {
@@ -132,8 +138,8 @@ function Free({ x, t, k, W, H, ox, oy, selected, onMove }: {
   );
 }
 
-function One({ x, t, k, W, H, ox, oy, cardN, tally }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number;
-  cardN: number; tally?: TallyInfo }) {
+function One({ x, t, k, W, H, ox, oy, cardN, tally, markers, abs }: { x: Title; t: number; k: number; W: number; H: number; ox: number; oy: number;
+  cardN: number; tally?: TallyInfo; markers?: Marker[]; abs: number }) {
   const s = (H / 1080) * x.size * k;             // px on screen per design px at 1080p
   const fadeOut = Math.min(1, Math.max(0, (x.duration - t) / OUT));
   const pin = ease(t / IN);
@@ -259,6 +265,109 @@ function One({ x, t, k, W, H, ox, oy, cardN, tally }: { x: Title; t: number; k: 
             transform: cols === 1 ? "translateX(-50%)" : undefined, fontSize: fe, lineHeight: 1.2, opacity: Math.min(1, Math.max(0, (t - t0) / 0.18)) },
             <>{i + 1}. {name}{how && <span style={{ opacity: 0.7 }}>  — {how}</span>}</>)}</React.Fragment>;
         })}
+      </>;
+    }
+    // ---- Phase 21 motion graphics (export: titles.py _chart, _ring, _list, _progress, _quote, _end_screen)
+    case "chart": {
+      const items = (x.items?.length ? x.items : [{ label: "", value: 0 }]).slice(0, 10);
+      const vmax = Math.max(1e-9, ...items.map((it) => Math.abs(it.value)));
+      const fmt = x.format === "time" || !x.format ? "number" : x.format;
+      const fade = Math.min(1, t / 0.2);
+      return frame({ left: left + (x.x ?? 0.5) * w, top: top + (x.y ?? 0.5) * h, transform: "translate(-50%,-50%)", width: (x.w ?? 0.6) * w,
+        boxSizing: "border-box", background: "rgba(0,0,0,.69)", borderRadius: 14 * s, padding: `${32 * s * 0.8}px ${32 * s}px ${32 * s * 0.6}px`, opacity: fade }, <>
+        {x.text && <div style={{ fontSize: 52 * s, lineHeight: 1.5 }}>{x.text}</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "fit-content(35%) minmax(0, 1fr)", columnGap: 16 * s, alignItems: "center" }}>
+          {items.map((it, i) => {
+            const g = barGrow(t, i), r = Math.max(0, it.value) / vmax;
+            const shown = fmtValue(it.value * barGrow(rollingTime(t, BAR_DELAY + i * BAR_STAGGER, BAR_DELAY + i * BAR_STAGGER + BAR_GROW), i), fmt, decimals([it.value]));
+            return <React.Fragment key={i}>
+              <div style={{ fontSize: 34 * s, fontWeight: 400, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", height: 58 * s, lineHeight: `${58 * s}px` }}>{it.label}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 * s, minWidth: 0 }}>
+                <div style={{ width: `calc((100% - ${8 * 34 * s * 0.6}px) * ${r * g})`, height: 36 * s, background: x.accent, borderRadius: 6 * s, flex: "none" }} />
+                <span style={{ fontSize: 34 * s }}>{shown}</span>
+              </div>
+            </React.Fragment>;
+          })}
+        </div>
+        {x.subtext && <div style={{ fontSize: 28 * s, fontWeight: 400, opacity: 0.6, marginTop: 6 * s }}>{x.subtext}</div>}
+      </>);
+    }
+    case "ring": {
+      const R = 150 * s, th = 26 * s;
+      const fmt = x.format === "time" || !x.format ? "number" : x.format;
+      const dt = ringDrawTime(t);
+      const f = dt < 0 ? 0 : ringFraction(ringValue(dt, x), x);
+      const val = fmtValue(ringValue(rollingTime(t, RING_DELAY, RING_DELAY + RING_GROW), x), fmt, decimals([x.count_from ?? 0, x.count_to ?? 0]));
+      const cx = left + (x.x ?? 0.5) * w, cy = top + (x.y ?? 0.5) * h, C = 2 * Math.PI * R;
+      const pop = t < 0.2 ? 0.6 + 0.44 * (t / 0.2) : t < 0.3 ? 1.04 - 0.04 * ((t - 0.2) / 0.1) : 1;
+      return <div data-testid="title-preview" data-template="ring" style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: fadeOut * Math.min(1, t / 0.2), zIndex: 1600 }}>
+        <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, overflow: "visible" }}>
+          <circle cx={cx} cy={cy} r={R + th * 0.9} fill="rgba(0,0,0,.62)" />
+          <circle cx={cx} cy={cy} r={R} fill="none" stroke={x.color} strokeOpacity={0.31} strokeWidth={th} />
+          {f > 0.002 && <circle cx={cx} cy={cy} r={R} fill="none" stroke={x.accent} strokeWidth={th} strokeDasharray={`${C * f} ${C}`} transform={`rotate(-90 ${cx} ${cy})`} />}
+        </svg>
+        <div style={{ ...base, left: cx, top: cy, transform: "translate(-50%,-50%)", fontSize: 96 * s, lineHeight: 1 }} data-testid="ring-value">{val}</div>
+        {x.text && <div style={{ ...base, left: cx, top: cy + R + th + 18 * s, transform: `translateX(-50%) scale(${pop})`, fontSize: 44 * s,
+          WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }}>{x.text}</div>}
+        {x.subtext && <div style={{ ...base, left: cx, top: cy - R - th - 14 * s, transform: "translate(-50%,-100%)", fontSize: 34 * s, color: x.accent,
+          WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }}>{x.subtext}</div>}
+      </div>;
+    }
+    case "list": {
+      const items = (x.items ?? []).filter((it) => it.label).slice(0, 10);
+      const list = items.length ? items : [{ label: "…", value: 0 }];
+      const fi = 44 * s, badge = fi * 1.15;
+      return frame({ left: left + (x.x ?? 0.5) * w, top: top + (x.y ?? 0.5) * h, transform: "translate(-50%,-50%)", textShadow: `${2 * s}px ${2 * s}px 0 rgba(0,0,0,.5)`,
+        WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }, <>
+        {x.text && <div style={{ fontSize: 60 * s, lineHeight: 1.5, opacity: Math.min(1, t / 0.2) }}>{x.text}</div>}
+        {list.map((it, i) => {
+          const p = Math.min(1, Math.max(0, (t - listDelay(i, list.length, x.duration)) / 0.25));
+          return <div key={i} style={{ display: "flex", alignItems: "center", gap: 20 * s, height: fi * 1.55, opacity: p, transform: `translateX(${-40 * s * (1 - p)}px)` }}>
+            <span style={{ width: badge, height: badge, borderRadius: 10 * s, background: x.accent, display: "grid", placeItems: "center", fontSize: fi * 0.8,
+              color: "#fff", WebkitTextStroke: "0 transparent", flex: "none" }}>{i + 1}</span>
+            <span style={{ fontSize: fi }}>{it.label}</span>
+          </div>;
+        })}
+      </>);
+    }
+    case "progress": {
+      const mx = w * 0.03, bw = w - 2 * mx, bh = Math.max(4 * k, 10 * s);
+      const y = top + (x.y ?? 0.97) * h;
+      const chapters = (markers ?? []).filter((m) => m.t >= x.start && m.t < x.start + x.duration).sort((a, b) => a.t - b.t);
+      const now = [...chapters].reverse().find((m) => m.t <= abs);
+      return <div data-testid="title-preview" data-template="progress" style={{ position: "absolute", inset: 0, pointerEvents: "none", opacity: fadeOut * Math.min(1, t / 0.3), zIndex: 1600 }}>
+        <div style={{ position: "absolute", left: left + mx, top: y - bh / 2, width: bw, height: bh, background: "rgba(255,255,255,.37)" }} />
+        <div data-testid="progress-fill" style={{ position: "absolute", left: left + mx, top: y - bh / 2, width: bw * Math.min(1, t / x.duration), height: bh, background: x.accent }} />
+        {chapters.filter((m) => m.t > x.start + 0.05).map((m) => <div key={m.id} style={{ position: "absolute", left: left + mx + bw * (m.t - x.start) / x.duration - Math.max(1, 2 * s),
+          top: y - bh / 2 - 1, width: Math.max(2 * k, 4 * s), height: bh + 2, background: "#000" }} />)}
+        {now?.label && <div style={{ ...base, left: left + mx, top: y - bh / 2 - 8 * s, transform: "translateY(-100%)", fontSize: 30 * s,
+          WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }}>{now.label}</div>}
+      </div>;
+    }
+    case "quote": {
+      const pad = 56 * s;
+      return frame({ left: left + (x.x ?? 0.5) * w, top: top + (x.y ?? 0.5) * h, transform: "translate(-50%,-50%)", width: w * 0.76, boxSizing: "border-box",
+        background: "rgba(0,0,0,.78)", borderRadius: 18 * s, padding: `${pad * 1.6}px ${pad}px ${pad * 0.6}px`, whiteSpace: "normal", opacity: Math.min(1, t / 0.25) }, <>
+        <div style={{ position: "absolute", left: pad * 0.5, top: -200 * s * 0.25, fontSize: 200 * s, lineHeight: 1, color: x.accent }}>{"\u201c"}</div>
+        <div style={{ fontSize: 58 * s, lineHeight: 1.3, opacity: Math.min(1, Math.max(0, (t - 0.3) / 0.3)) }}>{x.text}</div>
+        {x.subtext && <div style={{ fontSize: 38 * s, fontWeight: 400, color: x.accent, textAlign: "right", marginTop: 38 * s * 0.4,
+          opacity: Math.min(1, Math.max(0, (t - 0.6) / 0.3)) }}>— {x.subtext}</div>}
+      </>);
+    }
+    case "end_screen": {
+      const lay = endScreenBoxes(w, h);
+      const pop = (d: number) => Math.min(1, Math.max(0, (t - d) / 0.25));
+      const [scx, scy, sr] = lay.subscribe;
+      return <>
+        {frame({ left, top, width: w, height: h, background: "rgba(0,0,0,.56)", opacity: Math.min(1, t / 0.4) }, null)}
+        {frame({ left: left + w / 2, top: top + h * 0.1, transform: "translateX(-50%)", fontSize: 70 * s, WebkitTextStroke: `${4 * s * 2}px #000`,
+          paintOrder: "stroke fill", opacity: Math.min(1, t / 0.3) }, x.text || "WATCH NEXT")}
+        {lay.videos.map(([bx, by, bw2, bh2], i) => <React.Fragment key={i}>{frame({ left: left + bx, top: top + by, width: bw2, height: bh2, boxSizing: "border-box",
+          border: `${Math.max(2 * k, 6 * s)}px solid ${x.accent}`, borderRadius: 12 * s, background: "rgba(0,0,0,.62)", opacity: pop(0.25 + i * 0.15) }, null)}</React.Fragment>)}
+        {frame({ left: left + scx - sr, top: top + scy - sr, width: 2 * sr, height: 2 * sr, borderRadius: "50%", boxSizing: "border-box",
+          border: `${Math.max(2 * k, 5 * s)}px solid ${x.color}`, background: "rgba(0,0,0,.62)", opacity: pop(0.55) }, null)}
+        {x.subtext && frame({ left: left + scx, top: top + scy + sr + 14 * s, transform: "translateX(-50%)", fontSize: 34 * s, opacity: pop(0.55),
+          WebkitTextStroke: `${3 * s * 2}px #000`, paintOrder: "stroke fill" }, x.subtext)}
       </>;
     }
     case "chapter":

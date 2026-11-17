@@ -28,7 +28,7 @@ export function tickerText(v: number, t: Pick<Title, "count_from" | "count_to" |
   }
   const n = pyRound(v);
   const body = Math.abs(n).toLocaleString("en-US");
-  return (n < 0 ? "-" : "") + (fmt === "money" ? "$" : "") + body;
+  return (n < 0 ? "-" : "") + (fmt === "money" ? "$" : "") + body + (fmt === "percent" ? "%" : "");
 }
 
 /** Python's round(): halves go to the even neighbour (so preview and export agree on .5). */

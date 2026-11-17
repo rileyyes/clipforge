@@ -182,6 +182,34 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 21 — Auto-editor tools: multicam, motion graphics, auto colour, edit by typing 🟡 (built and tested automatically; waiting for your hands-on test)
+
+From the "How I Fully Automated My Video Editing (Claude Code)" video you sent (RJClip can't watch YouTube, so this is from its title, description and the other videos in that series: switching between cameras, colour, motion graphics, editing from typed instructions) and the best-known auto editors (Descript, AutoPod, FireCut, AutoCut, Gling). RJClip already had their silence/filler/retake cutting, captions, B-roll, zooms, chapters and Shorts; these were missing:
+
+**Multicam** (AI tab)
+- ✅ Pick 2–4 cameras (the first is the main one, whose edit is on V1) and, for podcasts, each person's own mic. **Line up & switch** lines every camera and mic up with the main recording by sound, then cuts your edit to whoever is talking: each mic is compared with its own normal level (so a loud mic doesn't always win and the other person's voice leaking in doesn't count), a short "yeah" doesn't cut away, every shot lasts at least the **Shortest shot**, and the cut lands where they started talking. Optional **wide shot** for people talking at once or long pauses
+- ✅ **At a steady pace** (one person, several cameras, or game + face): a switch about every N seconds, at the quietest moment nearby, going round the cameras
+- ✅ Your cuts stay; the sound stays the main recording's. Where a camera didn't film a moment, the main camera stays. Select a shot and click a camera to change it by hand. **Redo the switching** with new settings; **Back to one camera** undoes it
+- ✅ **Match colours to Cam 1** (see Auto colour)
+- It goes by loudness, not faces or speech: background noise on a mic counts as talking, and a camera without sound needs its offset typed (the small box next to it: seconds to add to the main camera's time)
+
+**Motion graphics** (Text tab), drawn by the export (libass) and previewed with the same timing rules (checked against a shared test file)
+- ✅ **Bar chart**: heading, up to 10 bars growing one after another, numbers rolling up (1,250 / $1,250 / 45%), optional source line
+- ✅ **Percent ring**: a ring fills while the number rolls up; label under it, small line over it
+- ✅ **List reveal**: numbered points appearing one by one
+- ✅ **Progress bar**: along the bottom (or top) of the whole video, with a tick at each marker and the current chapter's name
+- ✅ **Quote card**: a big quotation mark, the quote line by line, who said it
+- ✅ **End screen**: the last 20 s, leaving room for YouTube's own end-screen elements (two videos, subscribe), which you add in YouTube Studio
+
+**Auto colour** (Clip tab → Colour)
+- ✅ **Auto fix**: measures frames from across the recording (as used in your edit) and sets brightness, contrast, gamma and warmth so it isn't too dark, flat or blue/orange. It corrects most of a clear colour cast but not all of it (a sunset should stay warm). Every candidate is rendered with the export's own filters, so what's measured is what you get
+- ✅ **Match another camera**: makes this recording's brightness, contrast, warmth and colourfulness match another one's (with its own colour settings)
+- Applies to every clip of that recording; your look (VHS, cinematic…) stays; one Ctrl+Z undoes it
+
+**Edit by typing** (AI tab → Tell RJClip what to do; press **/** to jump there)
+- ✅ Plain commands: cut 0:10 to 0:20, split at 1:05, add a zoom / shake / flash / bass boost / whoosh (any built-in sound) at 1:05, add text "NO WAY" at 0:30, add a title / lower third, add a marker "Intro" at 0:00, add a bar chart / percent ring / list / progress bar / quote card / end screen / timer, music to 30%, voice to 120%, sound effects to 50%, mute / solo a track, go to 1:30, blend screen (selected clip), undo. Several at once with ";" or "then" — all as one undo step
+- ✅ Other wording goes to the free local AI (Ollama) if it's running, which can only answer with those same commands (the editor checks each one). Without it you get the examples
+
 ## Phase 20 — Sound mixer and blend modes 🟡 (built and tested automatically; waiting for your hands-on test)
 
 For reviews and reaction/gaming videos: balance the movie or game sound against your music and your voice, and layer footage the way editors do.

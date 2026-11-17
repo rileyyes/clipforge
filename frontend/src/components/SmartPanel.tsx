@@ -42,7 +42,9 @@ export function placeBroll(tl: Timeline, s: Broll): OpResult {
 }
 
 /** Editor → AI: hook checker, B-roll from your own recordings, offline voiceover. */
-export default function SmartPanel({ projectId, timeline, playhead, seek, commit, jobs, onJobs, onMediaAdded, saved, effects = [], addEffects, onPacing }: {
+export default function SmartPanel({ projectId, timeline, playhead, seek, commit, jobs, onJobs, onMediaAdded, saved, effects = [], addEffects, onPacing, top = null }: {
+  /** Phase 21: shown first (multicam) */
+  top?: React.ReactNode;
   projectId: string; timeline: Timeline; playhead: number; seek: (t: number) => void;
   /** Phase 19 pacing checker: the effects (it counts zooms, pop-ups…) and a way to add punch-ins */
   effects?: Effect[]; addEffects?: (list: Effect[], label: string) => void;
@@ -131,6 +133,7 @@ export default function SmartPanel({ projectId, timeline, playhead, seek, commit
 
   return (
     <div className="pane-body" style={{ display: "grid", gap: 12, alignContent: "start", gridTemplateColumns: "minmax(0, 1fr)" }} data-testid="smart-panel">
+      {top}
       <div className="insp-section" style={{ marginBottom: 0, display: "grid", gap: 6 }} data-testid="pacing">
         <h3 style={{ margin: 0 }}>Pacing checker</h3>
         <div className="dim" style={{ fontSize: 11 }}>Well-edited videos keep giving the eye something new: a cut, a zoom, B-roll, text. This finds stretches where nothing on screen changes for longer than your pace allows (shown in red on the ruler). It counts the changes your edit makes{motion ? ", plus movement in footage the Auto Editor has analysed" : ""}.</div>

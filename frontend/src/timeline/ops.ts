@@ -829,7 +829,17 @@ export const TITLE_TEMPLATES: [TitleTemplate, string, Partial<Title>][] = [
   ["stamp", "Time & place", { text: "DAY 1", subtext: "6:00 AM", duration: 4, accent: "#ffde00" }],
   ["route", "Route on a map", { text: "", points: [[0.25, 0.7], [0.45, 0.45], [0.7, 0.55]], duration: 5, accent: "#ff3b30" }],
   ["highlight", "Highlighter", { text: "", x: 0.5, y: 0.5, w: 0.4, h: 0.08, duration: 3, accent: "#ffde00" }],
+  // Phase 21: motion graphics
+  ["chart", "Bar chart", { text: "Box office ($M)", subtext: "", format: "number", w: 0.6, x: 0.5, y: 0.5, duration: 6, accent: "#ff5a3c",
+    items: [{ label: "First", value: 120 }, { label: "Second", value: 95 }, { label: "Third", value: 60 }] }],
+  ["ring", "Percent ring", { text: "Critics' score", subtext: "", count_from: 0, count_to: 87, format: "percent", x: 0.5, y: 0.5, duration: 4, accent: "#2bb38a" }],
+  ["list", "List reveal", { text: "Why it works", x: 0.5, y: 0.5, duration: 6, accent: "#ff5a3c",
+    items: [{ label: "First point", value: 0 }, { label: "Second point", value: 0 }, { label: "Third point", value: 0 }] }],
+  ["progress", "Progress bar", { text: "", y: 0.97, accent: "#ff5a3c" }],
+  ["quote", "Quote card", { text: "The best line goes here.", subtext: "Who said it", x: 0.5, y: 0.5, duration: 5, accent: "#ffde00" }],
+  ["end_screen", "End screen", { text: "WATCH NEXT", subtext: "SUBSCRIBE", duration: 20, accent: "#ff5a3c" }],
 ];
+export const MAX_TITLE = 600, MAX_PROGRESS = 14400;
 
 /** Kept so older projects still show and export them, but no longer offered as new titles (removed at the owner's request). */
 export const RETIRED_TEMPLATES: string[] = ["count_card", "tally"];
@@ -839,6 +849,13 @@ export function addTitle(tl: Timeline, template: TitleTemplate, at: number, labe
     ?? TITLE_TEMPLATES.find((x) => x[0] === template)?.[2] ?? {};
   const t: Title = { id: newId(), start: round6(Math.max(0, at)), duration: 4, template, text: "", subtext: "",
     color: "#ffffff", accent: "#ff5a3c", align: "left", size: 1, ...preset };
+  if (preset.items) t.items = preset.items.map((it) => ({ ...it }));
+  const end = timelineDuration(tl);
+  if (template === "progress") {                     // the whole video
+    t.start = 0; t.duration = round6(Math.max(0.5, Math.min(MAX_PROGRESS, end || 10)));
+  } else if (template === "end_screen" && end > 0) {  // the last 20 s (YouTube allows 5-20 s)
+    t.duration = round6(Math.max(0.5, Math.min(20, end))); t.start = round6(Math.max(0, end - t.duration));
+  }
   return { timeline: { ...tl, titles: [...(tl.titles ?? []), t] }, id: t.id };
 }
 
@@ -847,7 +864,7 @@ export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title,
   if (!t) return { error: "Title not found" };
   const n: Title = { ...t, ...patch };
   n.start = round6(Math.max(0, n.start));
-  n.duration = round6(Math.max(0.5, Math.min(600, n.duration)));
+  n.duration = round6(Math.max(0.5, Math.min(n.template === "progress" ? MAX_PROGRESS : MAX_TITLE, n.duration)));
   n.size = Math.max(0.5, Math.min(2, n.size));
   n.text = n.text.slice(0, 80); n.subtext = n.subtext.slice(0, 100);
   if (!/^#[0-9a-fA-F]{6}$/.test(n.color) || !/^#[0-9a-fA-F]{6}$/.test(n.accent)) return { error: "Colours must be like #ff5a3c" };
@@ -861,6 +878,10 @@ export function updateTitle(tl: Timeline, id: string, patch: Partial<Omit<Title,
   if (n.points) n.points = n.points.slice(0, 20).map(([x, y]) => [round6(Math.max(0, Math.min(1, x))), round6(Math.max(0, Math.min(1, y)))]);
   if (n.w != null) n.w = Math.max(0.01, Math.min(1, n.w));
   if (n.h != null) n.h = Math.max(0.01, Math.min(1, n.h));
+  if (n.items) n.items = n.items.slice(0, 10).map((it) => ({ label: String(it.label ?? "").slice(0, 40),
+    value: Number.isFinite(it.value) ? Math.max(-1e9, Math.min(1e9, it.value)) : 0 }));
+  if (n.x != null) n.x = Math.max(0, Math.min(1, n.x));
+  if (n.y != null) n.y = Math.max(0, Math.min(1, n.y));
   return { timeline: { ...tl, titles: (tl.titles ?? []).map((x) => (x.id === id ? n : x)) } };
 }
 

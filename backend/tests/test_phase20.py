@@ -35,9 +35,9 @@ def test_mixer_and_blend_fields_validate():
 
 
 def test_old_projects_upgrade_to_v9():
-    assert SCHEMA_VERSION == 9
+    assert SCHEMA_VERSION >= 9
     d = migrate({"schema_version": 8, "id": new_id(), "name": "x"})
-    assert d["schema_version"] == 9
+    assert d["schema_version"] == SCHEMA_VERSION
 
 
 def test_every_blend_mode_has_an_ffmpeg_name():

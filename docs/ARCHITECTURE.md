@@ -59,6 +59,12 @@ Single-user and local. One document per project, always loaded whole. JSON is hu
 
 Pure, immutable functions return `{timeline}` or `{error}` and never partially apply. Every UI gesture (drag, keyboard, inspector field) goes through them, so the 20 unit tests cover the real behaviour. Undo/redo stores structurally-shared snapshots. Linked clips (video + its audio) move, trim, split, delete and change speed together so sync can't break. Overlaps are rejected, never silently overwritten.
 
+## Phase 21 helpers
+
+- `multicam.py`: per-mic loudness on the main recording's clock → who's talking per 50 ms frame (each mic against its own normal level, smoothed by a 0.5 s majority vote) → shots with a hold time, a shortest shot and an optional wide camera; or switches at a pace, snapped to the quietest nearby moment. The Editor puts the switches on the edit (`frontend/src/timeline/phase21.ts`), splitting V1 and swapping each piece's file and source times by the camera's offset.
+- `colorfix.py`: samples 8 small frames of a recording, measures brightness percentiles, grey-world cast and saturation, and searches the Clip → Colour sliders by rendering each candidate through the export's own colour filters.
+- `frontend/src/timeline/commands.ts`: the typed commands (a fixed grammar mapped onto the normal edit operations). The optional local AI only produces such lines.
+
 ## Render pipeline (`render.py`)
 
 1. **Plan**: every clip/gap boundary is converted to an absolute frame (`round(t·fps)`) and sample (`round(t·48000)`) index. Rounding is from absolute positions, so **drift can't accumulate**: a 300-clip edit stays within ½ frame everywhere (unit-tested).

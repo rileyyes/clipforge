@@ -77,7 +77,8 @@ export interface Track {
 
 export type TitleTemplate = "lower_third" | "big_title" | "top_banner" | "subscribe" | "chapter" | "pop_text" | "arrow" | "circle" | "box"
   | "count_card" | "tally" | "number_card" | "sticker"
-  | "ticker" | "stamp" | "route" | "highlight";
+  | "ticker" | "stamp" | "route" | "highlight"
+  | "chart" | "ring" | "list" | "progress" | "quote" | "end_screen";
 export interface Title {
   id: string; start: number; duration: number; template: TitleTemplate; text: string; subtext: string;
   color: string; accent: string; align: "left" | "center" | "right"; size: number;
@@ -87,9 +88,12 @@ export interface Title {
   font?: string | null; stroke?: number | null; stroke_color?: string; shadow?: number | null;
   glow?: number; glow_color?: string; number?: number;
   /** Phase 19: ticker (timer / money / number), route points (frame fractions), highlight box size */
-  count_from?: number; count_to?: number; format?: "time" | "money" | "number";
+  count_from?: number; count_to?: number; format?: "time" | "money" | "number" | "percent";
   points?: [number, number][]; w?: number; h?: number;
+  /** Phase 21: bar chart rows / list points */
+  items?: TitleItem[];
 }
+export interface TitleItem { label: string; value: number }
 /** The style part of a title, saved as a preset */
 export type TextStyle = Pick<Title, "font" | "color" | "accent" | "stroke" | "stroke_color" | "shadow" | "glow" | "glow_color"> & { name: string };
 export type TitleAnim = "none" | "pop" | "typewriter" | "slide_up" | "bounce" | "words";
@@ -118,6 +122,16 @@ export interface Timeline {
   markers?: Marker[];
   counters?: Counter[];
   name_tags?: NameTags;
+  /** Phase 21: several cameras of the same moment (angle 0 = the main recording) */
+  multicam?: Multicam | null;
+}
+
+export interface MulticamAngle {
+  media_id: string; offset: number; mic_media_id?: string | null; mic_offset?: number; label?: string;
+}
+export interface Multicam {
+  main_media_id: string; angles: MulticamAngle[]; mode: "speaker" | "pace"; wide?: number | null;
+  min_shot: number; pace: number; switches: { t: number; angle: number }[];
 }
 
 /** An on-screen tally (Phase 18). Each enabled "count" effect for it adds one when it plays. */
