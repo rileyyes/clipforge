@@ -56,6 +56,8 @@ echo "== browser E2E: Phase 20 (sound mixer, solo, effects level, blend modes in
 python3 scripts/e2e_phase20.py 2>&1 | grep -E "OK|mixer rows|export pixels|music vs movie|Error|assert"
 echo "== browser E2E: Phase 21 (edit by typing, multicam, auto colour, motion graphics)"
 python3 scripts/e2e_phase21.py 2>&1 | grep -E "OK|multicam shots|camera B colour|export pixels|Error|assert"
+echo "== browser E2E: Phase 22 (resizable panels, tool search, folding, title gallery, track headers, light theme)"
+python3 scripts/e2e_phase22.py 2>&1 | grep -E "OK|tool panel at|track headers|preview width|Error|assert|waiting for|line [0-9]+, in main"
 echo "== smoke test: import, export, cached re-export through a running server"
 SMOKE_WS=$(mktemp -d)
 pushd backend >/dev/null

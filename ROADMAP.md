@@ -182,6 +182,21 @@ Picked by looking for what earlier phases left unfinished (the four ⬜ items in
 - ✅ The effect is re-pinned to whatever footage is at the new time (so it still follows that moment when you move clips). Sounds and bleeps prefer the audio track. A time with no footage is refused with a message; an effect whose moment was cut out can be brought back by typing a time
 - ✅ Effect cards fit the side panel on a 1280-wide screen (the delete button and colour box were cut off)
 
+## Phase 22 — A roomier, easier editor 🟡 (built and tested automatically; waiting for your hands-on test)
+
+From a look at the editor at 1280×720 and 1920×1080, where the tool panel was cramped and tools were hard to find:
+
+- ✅ **Resizable panels**: drag the divider between the preview and the tool panel, between the media bin and the preview, and above the timeline. Arrow keys work on a focused divider; double-click one puts everything back. Sizes are kept in this browser and squeezed to fit when the window is smaller (the preview always keeps at least 320×220)
+- ✅ **Fold the media bin away** to a thin strip (‹ in its header; › brings it back)
+- ✅ **Find a tool** (Ctrl+K, or the button in the top bar): type "mixer", "blur", "subtitles", "white balance"… and it opens the right tab, unfolds the section and scrolls to it. Also runs a few commands (export, add a marker, shortcuts, reset panels, theme, tour)
+- ✅ **Fold any section** of the tool panel by clicking its heading (or Enter / Space on it); kept in this browser
+- ✅ **Title gallery**: the Text tab shows small live previews in groups (Titles, Arrows & shapes, Motion graphics, YouTube) instead of 25 plain buttons
+- ✅ **Tab bar**: icons only when the panel is narrow (the name shows on hover), names when it's wider; "History" is now "Saves" in the bar. When a clip is selected while another tab is open, the Clip tab gets a dot (switching tabs on its own got in the way, e.g. deleting a clip and then comparing versions)
+- ✅ **Track headers** say what a sound track is (Voice / Music / Voice-over) and show its mixer level and solo
+- ✅ **Media bin**: tiles when it's wide, a search + Video/Audio filter once there are more than 4 files, and a "drop more files" area
+- ✅ **Preview controls** shorten their labels when the preview is narrow instead of spilling over
+- ✅ **Light theme** (button at the bottom of the left bar, or search "theme"); the preview area stays dark
+
 ## Phase 21 — Auto-editor tools: multicam, motion graphics, auto colour, edit by typing 🟡 (built and tested automatically; waiting for your hands-on test)
 
 From the "How I Fully Automated My Video Editing (Claude Code)" video you sent (RJClip can't watch YouTube, so this is from its title, description and the other videos in that series: switching between cameras, colour, motion graphics, editing from typed instructions) and the best-known auto editors (Descript, AutoPod, FireCut, AutoCut, Gling). RJClip already had their silence/filler/retake cutting, captions, B-roll, zooms, chapters and Shorts; these were missing:

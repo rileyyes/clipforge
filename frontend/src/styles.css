@@ -375,3 +375,130 @@ textarea { width: 100%; font: inherit; font-size: 12px; background: var(--bg); c
 .tour-card h3 { margin: 0; font-size: 16px; }
 .tour-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .tour-count { font-size: 11px; color: var(--dim); }
+
+/* ---- Phase 22: resizable panels */
+.ed-mid { position: relative; }
+.vsplit { position: absolute; top: 44px; bottom: 0; width: 7px; z-index: 30; cursor: col-resize; background: transparent; }
+.vsplit::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .12s; }
+.vsplit:hover::after, .vsplit:focus-visible::after { background: var(--accent); width: 2px; left: 2px; }
+.vsplit:focus-visible, .splitter:focus-visible { outline: none; }
+.splitter:focus-visible { background: var(--accent); }
+body.resizing, body.resizing * { cursor: inherit !important; user-select: none !important; }
+body.resizing video { pointer-events: none; }
+.media-strip { align-items: center; padding-top: 8px; gap: 10px; overflow: hidden; }
+.media-strip-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 11px; color: var(--muted); white-space: nowrap; letter-spacing: .04em; }
+
+/* ---- Phase 22: fold a tool-panel section by clicking its heading */
+.insp-section[data-foldable] > h3, .insp-section[data-foldable] > .row > h3:first-child { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.insp-section[data-foldable] > h3::before, .insp-section[data-foldable] > .row > h3:first-child::before {
+  content: ""; width: 0; height: 0; border-left: 4px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+  transform: rotate(90deg); transition: transform .12s; flex: none; opacity: .7; }
+.insp-section[data-folded] > h3::before, .insp-section[data-folded] > .row > h3:first-child::before { transform: rotate(0deg); }
+.insp-section[data-foldable] h3[role=button]:hover { color: var(--text); }
+.insp-section[data-foldable] h3[role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.insp-section[data-folded] > :not(:first-child) { display: none !important; }
+.insp-section[data-folded] { padding-bottom: 8px; gap: 0; }
+.insp-section[data-folded] > h3 { margin-bottom: 0; }
+
+/* ---- Phase 22: the tool panel's tab bar adapts to the panel's width */
+.pane.side { container-type: inline-size; }
+.side-tab { font-size: 10.5px; }
+@container (max-width: 340px) {
+  .side-tab span { display: none; }
+  .side-tab { padding: 9px 0 8px; }
+  .side-tab svg { width: 18px; height: 18px; }
+}
+@container (min-width: 460px) {
+  .side-tab { font-size: 11.5px; }
+}
+
+/* ---- Phase 22: light theme (same layout, light surfaces; the preview stays dark) */
+:root[data-theme="light"] {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #f4f5f8;
+  --panel-3: #e8ebf1;
+  --line: #dde1e8;
+  --line-2: #c9cfd9;
+  --text: #1b1f27;
+  --muted: #5b6372;
+  --dim: #8a92a1;
+  --accent: #e8483c;
+  --accent-2: #f0645a;
+  --accent-soft: rgba(232, 72, 60, 0.12);
+  --video: #3d6ee8;
+  --video-2: #5b86f0;
+  --audio: #23a07a;
+  --audio-2: #2fbf93;
+  --warn: #c98a12;
+  --ok: #1f9e66;
+  --err: #d93a4b;
+  color-scheme: light;
+}
+:root[data-theme="light"] .btn:hover, :root[data-theme="light"] .nav-item:hover, :root[data-theme="light"] .side-tab:hover { background: rgba(0, 0, 0, .05); }
+:root[data-theme="light"] .monitor, :root[data-theme="light"] .screen { background: #1a1d24; }
+:root[data-theme="light"] .clip .name, :root[data-theme="light"] .clip { color: #fff; }
+.theme-btn { width: 100%; }
+
+/* ---- Phase 22: tool search */
+.tool-search-back { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); z-index: 95; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
+.tool-search { width: 560px; max-width: 92vw; background: var(--panel); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 20px 60px rgba(0, 0, 0, .45); overflow: hidden; }
+.tool-search-input { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.tool-search-input input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font-size: 15px; outline: none; padding: 2px 0; }
+.tool-search-input kbd { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line-2); border-radius: 4px; color: var(--dim); }
+.tool-search-list { max-height: 52vh; overflow: auto; padding: 6px; }
+.tool-search-item { display: grid; gap: 1px; padding: 8px 10px; border-radius: 7px; cursor: pointer; }
+.tool-search-item .name { font-weight: 600; }
+.tool-search-item .where { font-size: 11.5px; color: var(--muted); }
+.tool-search-item.on { background: var(--accent-soft); }
+.tool-search-item.on .name { color: var(--accent); }
+.tool-search-hint { padding: 6px 10px; font-size: 11px; }
+.section-flash { animation: section-flash 1.4s ease-out; }
+@keyframes section-flash { 0%, 30% { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); } 100% { box-shadow: inset 3px 0 0 transparent; background: transparent; } }
+
+/* ---- Phase 22: track headers say what the track is */
+.tl-head .name { display: grid; line-height: 1.15; width: 58px; min-width: 0; flex: none; }
+.tl-head .name .sub { font-size: 9.5px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-head .name .sub b { color: var(--text); font-weight: 600; }
+.tl-head .name .sub b.solo { color: var(--warn); }
+
+/* ---- Phase 22: media bin — tiles when it's wide, a filter when it's full, room to drop more */
+.media-pane { container-type: inline-size; }
+.media-list { display: grid; gap: 2px; }
+.media-filter { display: flex; gap: 4px; align-items: center; margin-bottom: 6px; }
+.media-filter input { flex: 1; min-width: 0; }
+.dropzone.small { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 10px; margin-top: 10px; font-size: 12px; color: var(--muted); min-height: 0; }
+@container (min-width: 380px) {
+  .media-list { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+  .media-list .media-item { grid-template-columns: 1fr; gap: 6px; }
+}
+
+/* ---- Phase 22: title gallery */
+.title-gallery { display: grid; gap: 10px; }
+.tg-head { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.tg-grid { display: grid; grid-template-columns: repeat(auto-fill, 114px); gap: 6px; }
+.tg-card { display: grid; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); cursor: pointer; color: var(--text); text-align: left; }
+.tg-card:hover, .tg-card:focus-visible { border-color: var(--accent); outline: none; }
+.tg-thumb { position: relative; width: 104px; max-width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 5px; isolation: isolate; pointer-events: none;
+  background: linear-gradient(135deg, #3b4a63 0%, #26303f 55%, #1a2029 100%); }
+.tg-label { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Phase 22: preview controls and media header fit narrow panels */
+.monitor { container-type: inline-size; }
+.transport .lbl-short { display: none; }
+@container (max-width: 600px) {
+  .transport .res { display: none; }
+  .transport .lbl { display: none; }
+  .transport .lbl-short { display: inline; }
+}
+@container (max-width: 470px) {
+  .transport .lbl-short { display: none; }
+}
+.media-pane .pane-head { padding-right: 10px; gap: 6px; }
+@container (max-width: 250px) { .media-pane .pane-head .lbl { display: none; } }
+
+/* ---- Phase 22: a dot on the Clip tab when a clip is selected and another tab is open */
+.side-tab { position: relative; }
+.side-tab.attn::after { content: ""; position: absolute; top: 5px; right: calc(50% - 13px); width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 0 2px var(--panel); animation: attn-pop .3s ease-out; }
+@keyframes attn-pop { from { transform: scale(0); } to { transform: scale(1); } }

@@ -54,6 +54,7 @@ A local-first, AI-assisted video editor for making YouTube videos. Import a raw 
 
 ### Manual editor & export
 
+- **Roomy, findable editor**: drag panels to the size you like (kept), fold the media bin and any tool section away, Ctrl+K to find any tool, a gallery of title previews, and a light theme.
 - **Auto-editor tools**: multicam that lines cameras up by sound and cuts to whoever is talking (or at a steady pace), animated bar charts, percent rings, lists, a chapter progress bar, quote cards and an end screen, one-click colour fixing and camera matching, and a box where you type what to do ("cut 0:10 to 0:20", "music to 30%") — with the free local AI for anything else.
 - **Sound mixer & blend modes**: a level, mute and solo for every sound track (movie or game sound, music, your voice) plus one for all sound effects, heard the same in the preview and the export; Screen, Multiply, Overlay, Soft light, Add and more for layering light leaks, textures and overlays.
 - **What well-edited videos do**: a pacing checker that finds still stretches (with one-click punch-ins), slow push-ins, word-by-word titles, key words in captions, timers and money tickers, time & place stamps, routes drawn on a map, a highlighter for screenshots, and automatic sound design (whooshes, risers, hits).

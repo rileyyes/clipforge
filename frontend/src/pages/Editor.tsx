@@ -18,8 +18,13 @@ import { Icon, useJobs, useToast } from "../components/ui";
 import { captionChunks } from "../timeline/captions";
 import MusicSection from "../components/MusicSection";
 import MixerSection from "../components/MixerSection";
+import { columns, defaultLayout, fit, loadLayout, saveLayout, type Layout } from "../timeline/layout";
 import MulticamPanel from "../components/MulticamPanel";
 import AutoColor from "../components/AutoColor";
+import { headingOf, sectionKey, useFoldable } from "../components/useFoldable";
+import ToolSearch from "../components/ToolSearch";
+import type { Tool } from "../timeline/tools";
+import { toggleTheme } from "../theme";
 import CommandBox from "../components/CommandBox";
 import ProTools from "../components/ProTools";
 import BrandApply from "../components/BrandApply";
@@ -50,6 +55,7 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [overlaySel, setOverlaySel] = useState<string | null>(null);
   const [markerSel, setMarkerSel] = useState<string | null>(null);
   const [showKeys, setShowKeys] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [tour, setTour] = useState(tourWanted);
   const [beats, setBeats] = useState<Record<string, { bpm: number; beats: number[] }>>({});
   const [showBeats, setShowBeats] = useState(true);
@@ -65,7 +71,22 @@ export default function Editor({ projectId }: { projectId: string }) {
   const [save, setSave] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState("");
   const [loadError, setLoadError] = useState("");
-  const [tlHeight, setTlHeight] = useState(() => Math.round(window.innerHeight * 0.38));
+  // Phase 22: panel sizes (dragged, remembered, squeezed to fit the window)
+  const [layout, setLayoutState] = useState<Layout>(() => loadLayout(window.innerWidth, window.innerHeight));
+  const layoutRef = useRef(layout);
+  const setLayout = (next: Layout, save = false) => {
+    const f = fit(next, window.innerWidth, window.innerHeight);
+    layoutRef.current = f; setLayoutState(f);
+    if (save) saveLayout(f);
+  };
+  useEffect(() => {
+    const on = () => setLayout(layoutRef.current);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  const tlHeight = layout.timeline;
+  const sideRef = useRef<HTMLDivElement>(null);
+  const fold = useFoldable(sideRef, rightTab);
   const [, force] = useState(0);
   const history = useRef(new History<Doc>());
   const lastLabel = useRef<{ label: string; at: number }>({ label: "", at: 0 });
@@ -292,6 +313,9 @@ export default function Editor({ projectId }: { projectId: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && !e.shiftKey && !e.altKey) {   // Phase 22: find a tool
+        e.preventDefault(); setShowSearch(true); return;
+      }
       if (el.closest("input, select, textarea")) return;
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
@@ -338,11 +362,71 @@ export default function Editor({ projectId }: { projectId: string }) {
   });
 
   // ---------------------------------------------------------------- resize splitter
-  const startResize = (e: React.PointerEvent) => {
-    const y0 = e.clientY, h0 = tlHeight;
-    const mv = (ev: PointerEvent) => setTlHeight(Math.max(140, Math.min(window.innerHeight - 260, h0 - (ev.clientY - y0))));
+  const drag = (e: React.PointerEvent, apply: (dx: number, dy: number, l0: Layout) => Layout) => {
+    e.preventDefault();
+    const x0 = e.clientX, y0 = e.clientY, l0 = layoutRef.current;
+    document.body.classList.add("resizing");
+    const mv = (ev: PointerEvent) => setLayout(apply(ev.clientX - x0, ev.clientY - y0, l0));
     window.addEventListener("pointermove", mv);
-    window.addEventListener("pointerup", () => window.removeEventListener("pointermove", mv), { once: true });
+    window.addEventListener("pointerup", () => {
+      window.removeEventListener("pointermove", mv);
+      document.body.classList.remove("resizing");
+      setLayout(layoutRef.current, true);
+    }, { once: true });
+  };
+  const startResize = (e: React.PointerEvent) => drag(e, (_, dy, l0) => ({ ...l0, timeline: l0.timeline - dy }));
+  /** Arrow keys on a divider move it 16 px (Shift: 64 px); Home puts all panels back. */
+  const splitKeys = (which: "left" | "right" | "timeline") => (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 64 : 16, l = layoutRef.current;
+    const d = { ArrowLeft: -step, ArrowRight: step, ArrowUp: step, ArrowDown: -step }[e.key as "ArrowLeft"];
+    if (e.key === "Home") { e.preventDefault(); setLayout(defaultLayout(window.innerWidth, window.innerHeight), true); return; }
+    if (d === undefined) return;
+    e.preventDefault(); e.stopPropagation();
+    if (which === "left" && !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    if (which === "right" && !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    if (which === "timeline" && !["ArrowUp", "ArrowDown"].includes(e.key)) return;
+    setLayout(which === "left" ? { ...l, left: l.left + d } : which === "right" ? { ...l, right: l.right - d } : { ...l, timeline: l.timeline + d }, true);
+  };
+  const resetPanels = () => setLayout(defaultLayout(window.innerWidth, window.innerHeight), true);
+
+  /** Tool search: open the tab, unfold the section, scroll to it and flash it. */
+  const goToTool = (t: Tool) => {
+    if (t.action) {
+      const a = t.action;
+      if (a === "export") { dirty.current = true; flush().then(() => go(`export/${projectId}`)); }
+      else if (a === "marker") actions.marker();
+      else if (a === "fit") (document.querySelector("button[title='Fit timeline']") as HTMLButtonElement | null)?.click();
+      else if (a === "shortcuts") setShowKeys(true);
+      else if (a === "reset-panels") { resetPanels(); toast("Panels back to their normal sizes"); }
+      else if (a === "toggle-media") setLayout({ ...layoutRef.current, mediaOpen: !layoutRef.current.mediaOpen }, true);
+      else if (a === "theme") toggleTheme();
+      else if (a === "tour") setTour(true);
+      else if (a === "command") setRightTab("ai");
+      return;
+    }
+    if (!t.tab) return;
+    setRightTab(t.tab);
+    let tries = 0;
+    const find = () => {
+      const root = sideRef.current;
+      const want = (t.section ?? "").toLowerCase();
+      const sec = root && want ? [...root.querySelectorAll(".insp-section")].find((x) => {
+        const h = headingOf(x);
+        return h && (h.textContent ?? "").trim().toLowerCase() === want;
+      }) : null;
+      if (!sec) {
+        if (tries++ < 8) { setTimeout(find, 60); return; }
+        if (t.needsClip) toast("Select a clip on the timeline first: this is in the Clip tab for the selected clip");
+        return;
+      }
+      fold.unfold(sectionKey(t.tab!, headingOf(sec)!));
+      setTimeout(() => {
+        sec.scrollIntoView({ block: "start", behavior: "smooth" });
+        sec.classList.remove("section-flash"); void (sec as HTMLElement).offsetWidth; sec.classList.add("section-flash");
+        (sec.querySelector("input, select, button:not([role=button])") as HTMLElement | null)?.focus({ preventScroll: true });
+      }, 30);
+    };
+    setTimeout(find, 30);
   };
 
   if (loadError) return <div className="page"><h1>Can't open project</h1><p className="muted">{loadError}</p><a href="#/projects">Back to projects</a></div>;
@@ -422,6 +506,8 @@ export default function Editor({ projectId }: { projectId: string }) {
         </span>
         {missing > 0 && <span className="chip err" title="Media panel → Find file to relink">{missing} media file(s) missing</span>}
         <span className="spacer" />
+        <button className="btn sm ghost tool-search-btn" title="Find a tool (Ctrl+K)" aria-label="Find a tool" onClick={() => setShowSearch(true)}>
+          <Icon name="search" size={14} /><span className="lbl">Find a tool</span><kbd className="kbd">Ctrl K</kbd></button>
         {jobs.filter((j) => j.kind === "render" && (j.status === "running" || j.status === "queued")).map((j) => (
           <span key={j.id} className="chip run">Exporting {j.progress != null ? `${Math.round(j.progress * 100)}%` : "…"}</span>
         ))}
@@ -438,8 +524,15 @@ export default function Editor({ projectId }: { projectId: string }) {
       {save === "error" && saveError && (
         <div className="banner" style={{ position: "absolute", top: 46, left: 56, right: 0, zIndex: 20 }}>{saveError}</div>
       )}
-      <div className="ed-mid">
+      <div className="ed-mid" style={{ gridTemplateColumns: columns(layout) }}>
+        {layout.mediaOpen && <div className="vsplit" role="separator" aria-orientation="vertical" aria-label="Resize the media panel" tabIndex={0}
+          title="Drag to resize (double-click: back to normal)" style={{ left: layout.left - 3 }}
+          onPointerDown={(e) => drag(e, (dx, _, l0) => ({ ...l0, left: l0.left + dx }))} onDoubleClick={resetPanels} onKeyDown={splitKeys("left")} />}
+        <div className="vsplit" role="separator" aria-orientation="vertical" aria-label="Resize the tool panel" tabIndex={0}
+          title="Drag to resize (double-click: back to normal)" style={{ right: layout.right - 3 }}
+          onPointerDown={(e) => drag(e, (dx, _, l0) => ({ ...l0, right: l0.right - dx }))} onDoubleClick={resetPanels} onKeyDown={splitKeys("right")} />
         <MediaLibrary project={project} jobs={jobs} usedIds={usedIds}
+          open={layout.mediaOpen} onToggle={() => setLayout({ ...layoutRef.current, mediaOpen: !layoutRef.current.mediaOpen }, true)}
           onAdd={(m) => commit(addMedia(timeline, m), "Add clip")}
           onChanged={() => { reloadMedia(); refreshJobs(); }} />
         <Monitor projectId={projectId} timeline={timeline} media={media} output={project.output} effects={effects} facecam={facecam} fxVolume={audio?.fx_volume ?? 1}
@@ -463,7 +556,7 @@ export default function Editor({ projectId }: { projectId: string }) {
             commit(r, "Move title", true);  // one undo step for the whole drag
           }}
           playhead={playhead} setPlayhead={setPlayhead} playing={playing} setPlaying={setPlaying} />
-        <div className="pane">
+        <div className="pane side" ref={sideRef}>
           <div className="pane-head side-tabs" role="tablist">
             {([
               ["clip", "sliders", "Clip", "Selected clip: speed, volume, position, colour, keyframes, transition"],
@@ -474,10 +567,11 @@ export default function Editor({ projectId }: { projectId: string }) {
               ["beat", "music", "Music", "Background music and beat sync"],
               ["cam", "webcam", "Cam", "Face cam"],
               ["ai", "ai", "AI", "Hook checker, B-roll from your clips, voiceover"],
-              ["history", "undo", "History", "Saved versions"],
+              ["history", "undo", "Saves", "Saved versions (history)"],
             ] as const).map(([id, icon, label, tip]) => (
-              <button key={id} role="tab" aria-selected={rightTab === id} aria-label={id === "fx" ? "Effects" : id === "cam" ? "Face cam" : label}
-                className={"side-tab" + (rightTab === id ? " on" : "")} title={tip} onClick={() => setRightTab(id)}>
+              <button key={id} role="tab" aria-selected={rightTab === id} aria-label={id === "fx" ? "Effects" : id === "cam" ? "Face cam" : id === "history" ? "History" : label}
+                className={"side-tab" + (rightTab === id ? " on" : "") + (id === "clip" && rightTab !== "clip" && selection.length > 0 ? " attn" : "")}
+                title={id === "clip" && rightTab !== "clip" && selection.length > 0 ? "The selected clip's settings are here" : tip} onClick={() => setRightTab(id)}>
                 <Icon name={icon} size={15} /><span>{label}{id === "fx" && effects.length ? ` ${effects.length}` : ""}</span>
               </button>
             ))}
@@ -541,9 +635,14 @@ export default function Editor({ projectId }: { projectId: string }) {
       </div>
       {showKeys && <ShortcutSheet onClose={() => setShowKeys(false)} />}
       {tour && <Tour onClose={() => setTour(false)} />}
-      <div className="splitter" onPointerDown={startResize} />
+      {showSearch && <ToolSearch onClose={() => setShowSearch(false)} onPick={goToTool} />}
+      <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Resize the timeline" tabIndex={0}
+        title="Drag to resize (double-click: back to normal)" onPointerDown={startResize} onDoubleClick={resetPanels} onKeyDown={splitKeys("timeline")} />
       <TimelineView projectId={projectId} timeline={timeline} media={media} selection={selection}
-        setSelection={(sel) => { setSelection(sel); if (sel.length) setMarkerSel(null); }}
+        setSelection={(sel) => {
+          setSelection(sel);
+          if (sel.length) setMarkerSel(null);
+        }}
         userMarkers={timeline.markers ?? []} markerSel={markerSel}
         onMarkerSelect={(id) => { setMarkerSel(id); setSelection([]); setOverlaySel(null); }}
         playhead={playhead} seek={(t) => { seek(t); }} playing={playing} pps={pps} setPps={setPps} snapping={snapping}
@@ -577,7 +676,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl + A", "Select every clip"], ["Ctrl + L", "Link / unlink picture and sound"],
   ["Shift-click / Ctrl-click", "Select several clips (drag one to move them all)"],
   ["M", "Add a marker at the playhead"], ["Shift + ← / →", "Previous / next marker"],
-  ["Script tab: Delete", "Cut the selected words"], ["Esc", "Clear selection / close this"], ["?", "Show this list"],
+  ["Script tab: Delete", "Cut the selected words"], ["Esc", "Clear selection / close this"], ["?", "Show this list"], ["Ctrl+K", "Find a tool"], ["/", "Type a command (AI tab)"],
 ];
 
 function ShortcutSheet({ onClose }: { onClose: () => void }) {

@@ -6,10 +6,14 @@ import { Icon, useToast } from "./ui";
 
 type Upload = { key: string; name: string; progress: number; phase: "uploading" | "checking" };
 
-export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged }: {
+export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged, open = true, onToggle }: {
   project: Project; jobs: Job[]; usedIds: Set<string>;
   onAdd: (m: MediaAsset) => void; onChanged: () => void;
+  /** Phase 22: folded away to a thin strip */
+  open?: boolean; onToggle?: () => void;
 }) {
+  const [filter, setFilter] = useState("");
+  const [kind, setKind] = useState<"all" | "video" | "audio">("all");
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [over, setOver] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -53,10 +57,21 @@ export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged 
     jobs.find((j) => j.kind === "derive_media" && j.params.media_id === m.id && (j.status === "running" || j.status === "queued"));
   const missing = new Set(project.missing_media ?? []);
 
+  if (!open) return (
+    <div className="pane media-strip" data-testid="media-strip">
+      <button className="btn icon ghost" title="Show the media panel" aria-label="Show the media panel" onClick={onToggle}><Icon name="chevron" size={14} /></button>
+      <span className="media-strip-label">Media · {project.media.length}</span>
+    </div>
+  );
+  const q = filter.trim().toLowerCase();
+  const shown = project.media.filter((m) => (kind === "all" || (kind === "video" ? m.has_video : !m.has_video))
+    && (!q || m.original_name.toLowerCase().includes(q)));
   return (
-    <div className="pane">
+    <div className="pane media-pane">
       <div className="pane-head">Media <span className="chip">{project.media.length}</span><span className="spacer" />
-        <button className="btn sm" onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} />Import</button>
+        <button className="btn sm" aria-label="Import" title="Import video, audio or pictures" onClick={() => fileRef.current?.click()}><Icon name="upload" size={14} /><span className="lbl">Import</span></button>
+        {onToggle && <button className="btn icon ghost xs" title="Hide the media panel (more room for the preview)" aria-label="Hide the media panel"
+          onClick={onToggle} style={{ transform: "scaleX(-1)" }}><Icon name="chevron" size={14} /></button>}
       </div>
       <div className="pane-body"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); setOver(true); } }}
@@ -85,7 +100,17 @@ export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged 
             <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>MP4, MOV, MKV, WebM, AVI, MP3, WAV, M4A…</div>
           </div>
         )}
-        {project.media.map((m) => {
+        {project.media.length > 4 && (
+          <div className="media-filter" data-testid="media-filter">
+            <input type="search" aria-label="Find media" placeholder="Find…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            {(["all", "video", "audio"] as const).map((k) => (
+              <button key={k} className={"btn xs" + (kind === k ? " on" : " ghost")} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                {k === "all" ? "All" : k === "video" ? "Video" : "Audio"}</button>))}
+          </div>
+        )}
+        {project.media.length > 0 && !shown.length && <div className="dim" style={{ fontSize: 12, padding: 8 }}>Nothing matches.</div>}
+        <div className="media-list">
+        {shown.map((m) => {
           const prep = preparing(m);
           return (
             <div key={m.id} className="media-item" draggable title="Drag onto the timeline, or double-click to append"
@@ -126,6 +151,12 @@ export default function MediaLibrary({ project, jobs, usedIds, onAdd, onChanged 
             </div>
           );
         })}
+        </div>
+        {project.media.length > 0 && (
+          <div className={"dropzone small" + (over ? " over" : "")} onClick={() => fileRef.current?.click()} data-testid="media-drop-more">
+            <Icon name="upload" size={16} /><span>Drop more files here, or click to import</span>
+          </div>
+        )}
       </div>
     </div>
   );

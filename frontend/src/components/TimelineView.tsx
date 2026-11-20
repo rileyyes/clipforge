@@ -307,7 +307,13 @@ export default function TimelineView(p: TimelineProps) {
           {hasOverlays && <div className="tl-head ov-head" style={{ height: OV_H }} title="Titles and blurs (Text and Blur tabs)"><span className="name" style={{ color: "#c77dff" }}>Text·Blur</span></div>}
           {timeline.tracks.map((t) => (
             <div key={t.id} className="tl-head" style={{ height: ROW_H[t.kind] }}>
-              <span className="name" style={{ color: t.kind === "video" ? "var(--video-2)" : "var(--audio-2)" }}>{t.name}</span>
+              <span className="name" style={{ color: t.kind === "video" ? "var(--video-2)" : "var(--audio-2)" }}>{t.name}
+                {/* Phase 22: what the track is, and its mixer level / solo */}
+                <span className="sub" data-testid="track-sub">
+                  {t.kind === "video" ? (t.tag ? t.tag : "") : t.role === "music" ? "Music" : t.role === "narration" ? "Voice-over" : "Voice"}
+                  {t.kind === "audio" && Math.abs((t.volume ?? 1) - 1) > 0.004 && <b title="Level in the sound mixer (Music tab)"> {Math.round((t.volume ?? 1) * 100)}%</b>}
+                  {t.kind === "audio" && t.solo && <b className="solo" title="Solo: only solo tracks are heard"> S</b>}
+                </span></span>
               {t.kind === "video" ? (
                 <button className={"tbtn" + (t.hidden ? " on" : "")} title={t.hidden ? "Show track" : "Hide track"} onClick={() => p.onTrackToggle(t.id, "hidden")}><Icon name={t.hidden ? "eyeoff" : "eye"} size={14} /></button>
               ) : (

@@ -457,19 +457,19 @@ export default function Monitor({ projectId, timeline, media, output, playhead, 
         <button className="btn icon ghost" title="Next frame (→)" onClick={() => step(1)}><Icon name="next" /></button>
         <button className="btn icon ghost" title="Go to end (End)" onClick={() => { setPlaying(false); setPlayhead(duration); }}><Icon name="end" /></button>
         <span className="tc">{fmtTime(playhead)}</span>
-        <span className="muted mono" style={{ fontSize: 12 }}>/ {fmtTime(duration)}</span>
+        <span className="muted mono" style={{ fontSize: 12, whiteSpace: "nowrap" }}>/ {fmtTime(duration)}</span>
         <span className="spacer" />
         <button className={"btn sm" + (guides ? " on" : " ghost")} aria-label="Safe-area guides"
           title={output.height > output.width ? "Show where YouTube Shorts puts its buttons and captions" : "Show title-safe and action-safe areas"}
           onClick={() => { setGuides(!guides); try { localStorage.setItem("cf:guides", guides ? "0" : "1"); } catch { /* storage unavailable */ } }}>
-          <Icon name="guides" size={14} />Guides</button>
+          <Icon name="guides" size={14} /><span className="lbl">Guides</span></button>
         {onLightPreview && (
-          <button className={"btn sm" + (lightPreview ? " on" : " ghost")} onClick={() => onLightPreview(!lightPreview)}
+          <button className={"btn sm" + (lightPreview ? " on" : " ghost")} onClick={() => onLightPreview(!lightPreview)} aria-label={lightPreview ? "Light preview on" : "Light preview"}
             title="Play small 540p preview copies instead of the full files — smoother on slow computers. Exports always use the originals.">
-            {lightPreview ? "Light preview on" : "Light preview"}
+            <span className="lbl-short">{lightPreview ? "Light on" : "Light"}</span><span className="lbl">{lightPreview ? "Light preview on" : "Light preview"}</span>
           </button>
         )}
-        <span className="muted" style={{ fontSize: 11 }}>{output.width}×{output.height} · {output.fps} fps</span>
+        <span className="muted res" style={{ fontSize: 11, whiteSpace: "nowrap" }}>{output.width}×{output.height} · {output.fps} fps</span>
       </div>
     </div>
   );

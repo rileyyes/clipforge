@@ -198,6 +198,22 @@ Use a talking video with speech transcribed (Effects → Transcribe speech), ide
 
 **Notes:** the caption preview is a close look-alike; the export is exact. Fixing a word changes only its text (not when it's said). If you transcribe that recording again, its fixes are replaced.
 
+## Phase 22: a roomier, easier editor
+
+| # | Do this | You should see |
+|---|---|---|
+| 22.1 | In the editor, hover the left edge of the tool panel (right side) and drag it left | The panel gets wider, the tab names appear, the preview gets smaller. Reload the page: the size is kept |
+| 22.2 | Drag the edge between the media bin and the preview, and the bar above the timeline | Both resize. Double-click any divider: everything goes back to normal |
+| 22.3 | Click ‹ in the Media header | The media bin folds to a thin strip and the preview grows; › opens it again |
+| 22.4 | Press **Ctrl+K**, type `mixer`, press Enter | The Music tab opens at the Sound mixer, which flashes. Try `blur`, `subtitles`, `green screen`, `export`, `theme` |
+| 22.5 | Click a section heading in the tool panel (e.g. SOUND MIXER) | It folds to just its heading (▸). Click again to open. It stays folded after a reload |
+| 22.6 | Text tab | Small previews of every title style in groups; clicking one adds it at the playhead |
+| 22.7 | Open the History (Saves) tab, then click a clip on the timeline | History stays open; the Clip tab gets a small red dot (its settings are there) |
+| 22.8 | Look at the track names on the left of the timeline | Sound tracks say Voice / Music / Voice-over; a track turned down in the mixer shows its % |
+| 22.9 | Import 5+ files | A search box and All / Video / Audio filter appear in the media bin; widen the bin and the files show as tiles |
+| 22.10 | Click the sun at the bottom of the left bar | Light theme everywhere (the preview stays dark); the moon switches back. Kept after a reload |
+| 22.11 | Make the window small (about 1024×640) | Everything still fits; the preview stays usable |
+
 ## Phase 21: multicam, motion graphics, auto colour, edit by typing
 
 | # | Do this | You should see |

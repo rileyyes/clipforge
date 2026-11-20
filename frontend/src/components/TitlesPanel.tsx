@@ -5,6 +5,7 @@ import { applyStyle, styleOf, TEXT_PRESETS } from "../timeline/phase18";
 import { realTimeDuration } from "../timeline/phase19";
 import { parseTime } from "../timeline/effects";
 import FontSelect from "./FontSelect";
+import TitleGallery from "./TitleGallery";
 import { addTitle, MAX_PROGRESS, removeTitle, RETIRED_TEMPLATES, timelineDuration, TITLE_TEMPLATES, updateTitle, type OpResult } from "../timeline/ops";
 import { FREE_TEMPLATES, type TextStyle, type Timeline, type Title, type TitleAnim, type TitleTemplate } from "../timeline/types";
 
@@ -52,14 +53,10 @@ export default function TitlesPanel({ timeline, playhead, seek, commit, sel, set
       {top}
       <div className="insp-section" style={{ marginBottom: 0 }}>
         <h3 style={{ margin: 0 }}>Add a title or shape at the playhead</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-          {TITLE_TEMPLATES.filter(([tpl]) => !RETIRED_TEMPLATES.includes(tpl)).map(([tpl, label]) => (
-            <button key={tpl + label} className="btn sm" onClick={() => {
-              const r = addTitle(timeline, tpl as TitleTemplate, playhead, label);
-              if (commit(r, `Add ${label.toLowerCase()}`) && r.id) setSel(r.id);
-            }}><Icon name="plus" size={13} />{label}</button>
-          ))}
-        </div>
+        <TitleGallery onAdd={(tpl, label) => {
+          const r = addTitle(timeline, tpl, playhead, label);
+          if (commit(r, `Add ${label.toLowerCase()}`) && r.id) setSel(r.id);
+        }} />
       </div>
       {titles.length > 0 && (
         <div style={{ display: "grid", gap: 4 }}>

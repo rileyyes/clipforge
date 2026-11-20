@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import { applyTheme, getTheme, toggleTheme } from "./theme";
 import { Icon, ToastProvider } from "./components/ui";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
@@ -36,6 +37,23 @@ const NAV = [
   { page: "settings", label: "Settings", icon: "gear" },
 ];
 
+applyTheme(getTheme());
+
+function ThemeButton({ wide }: { wide: boolean }) {
+  const [t, setT] = useState(getTheme());
+  useEffect(() => {
+    const on = (e: Event) => setT((e as CustomEvent).detail);
+    window.addEventListener("rjclip-theme", on);
+    return () => window.removeEventListener("rjclip-theme", on);
+  }, []);
+  const next = t === "light" ? "dark" : "light";
+  return (
+    <button className="nav-item theme-btn" title={`Switch to the ${next} theme`} aria-label={`Switch to the ${next} theme`} onClick={toggleTheme}>
+      <Icon name={t === "light" ? "moon" : "sun"} size={18} />{wide && (t === "light" ? "Dark theme" : "Light theme")}
+    </button>
+  );
+}
+
 function App() {
   const route = useRoute();
   const inEditor = route.page === "editor" && !!route.id;
@@ -53,7 +71,9 @@ function App() {
             </a>
           );
         })}
-        {!inEditor && <div className="nav-foot">Local-first · v0.21</div>}
+        <span style={{ flex: 1 }} />
+        <ThemeButton wide={!inEditor} />
+        {!inEditor && <div className="nav-foot">Local-first · v0.22</div>}
       </nav>
       <main className="main">
         {route.page === "dashboard" && <Dashboard />}
